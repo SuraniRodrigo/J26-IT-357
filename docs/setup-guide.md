@@ -20,4 +20,4 @@ npm run dev
 
 ## Database
 
-The default configuration expects PostgreSQL running locally or in Docker Compose. Credentials should be provided using environment variables and the `.env` file.
+The backend uses SQLite and creates `optichain.db` in its working directory.
