@@ -18,18 +18,65 @@ export default function InventoryOptimizationView() {
   const [isBackendSyncing, setIsBackendSyncing] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState('Local 60fps Model + API Ready');
   const [dispatchedPOs, setDispatchedPOs] = useState({});
+  const [poModalItem, setPoModalItem] = useState(null);
+  const [customOrderQty, setCustomOrderQty] = useState(0);
+  const [freightMode, setFreightMode] = useState('sea'); // 'sea' or 'air'
+  const [toastNotification, setToastNotification] = useState(null);
 
-  const handleTriggerPo = (e, item) => {
+  const handleOpenPoModal = (e, item) => {
     e.stopPropagation();
+    setPoModalItem(item);
+    setCustomOrderQty(item.recommendedROQ || Math.round(item.dynamicSafetyStock * 1.8));
+    setFreightMode('sea');
+  };
+
+  const handleConfirmDispatchPO = () => {
+    if (!poModalItem) return;
     const poNum = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const unitPrice =
+      poModalItem.category === 'Fabrics'
+        ? 2.40
+        : poModalItem.category === 'Dyes & Chemicals'
+        ? 8.50
+        : poModalItem.category === 'Trims & Fasteners'
+        ? 0.35
+        : 1.80;
+    const freightMultiplier = freightMode === 'air' ? 1.5 : 1.0;
+    const landedTotal = Math.round(customOrderQty * unitPrice * freightMultiplier + 420);
+    const etaDays = freightMode === 'air' ? Math.max(2, poModalItem.baseLeadTime - 4) : poModalItem.baseLeadTime;
+
     setDispatchedPOs((prev) => ({
       ...prev,
-      [item.sku]: {
+      [poModalItem.sku]: {
         poNumber: poNum,
-        qty: item.recommendedROQ,
+        qty: customOrderQty,
+        unit: poModalItem.unit,
+        unitCost: (unitPrice * freightMultiplier).toFixed(2),
+        totalCost: landedTotal,
+        vendor: poModalItem.primarySupplier,
+        freightMode: freightMode,
+        etaDays: etaDays,
         date: new Date().toLocaleDateString(),
       },
     }));
+
+    setToastNotification({
+      poNumber: poNum,
+      sku: poModalItem.sku,
+      name: poModalItem.name,
+      vendor: poModalItem.primarySupplier,
+      qty: customOrderQty,
+      unit: poModalItem.unit,
+      cost: landedTotal,
+      etaDays: etaDays,
+      freightMode: freightMode,
+    });
+
+    setTimeout(() => {
+      setToastNotification(null);
+    }, 5500);
+
+    setPoModalItem(null);
   };
 
   // Baseline SKU inventory base parameters
@@ -981,14 +1028,15 @@ export default function InventoryOptimizationView() {
                   <td style={styles.td}>
                     {dispatchedPOs[item.sku] ? (
                       <span
-                        style={styles.poIssuedBadge}
-                        title="ERP Purchase Order active. Replenishment scheduled."
+                        onClick={(e) => handleOpenPoModal(e, item)}
+                        style={{ ...styles.poIssuedBadge, cursor: 'pointer' }}
+                        title="Click to view issued ERP Purchase Order requisition details"
                       >
-                        <span style={styles.poCheckDot}>✓</span> PO #{dispatchedPOs[item.sku].poNumber}
+                        <span style={styles.poCheckDot}>✓</span> PO #{dispatchedPOs[item.sku].poNumber} Dispatched ↗
                       </span>
                     ) : (
                       <button
-                        onClick={(e) => handleTriggerPo(e, item)}
+                        onClick={(e) => handleOpenPoModal(e, item)}
                         style={styles.approvePoBtn}
                         title="Generate ERP Purchase Requisition with AI buffer quantity"
                       >
@@ -1066,14 +1114,26 @@ export default function InventoryOptimizationView() {
               </div>
               <div>
                 <span style={styles.contractLabel}>Shortage:</span>
-                <span style={{ ...styles.contractVal, color: simulatedData.targetItem.materialShortage > 0 ? '#f87171' : '#34d399' }}>
-                  {simulatedData.targetItem.materialShortage.toLocaleString()} {simulatedData.targetItem.unit}
+                <span style={{
+                  ...styles.contractVal,
+                  color: dispatchedPOs[simulatedData.targetItem.sku] ? '#34d399' : simulatedData.targetItem.materialShortage > 0 ? '#f87171' : '#34d399'
+                }}>
+                  {dispatchedPOs[simulatedData.targetItem.sku]
+                    ? '0 (IN-TRANSIT)'
+                    : `${simulatedData.targetItem.materialShortage.toLocaleString()} ${simulatedData.targetItem.unit}`}
                 </span>
               </div>
               <div>
                 <span style={styles.contractLabel}>Avail Flag:</span>
-                <span style={{ ...styles.contractVal, color: simulatedData.targetItem.materialAvailability ? '#34d399' : '#f87171' }}>
-                  {simulatedData.targetItem.materialAvailability ? 'TRUE (READY)' : 'FALSE (HALT)'}
+                <span style={{
+                  ...styles.contractVal,
+                  color: dispatchedPOs[simulatedData.targetItem.sku] || simulatedData.targetItem.materialAvailability ? '#34d399' : '#f87171'
+                }}>
+                  {dispatchedPOs[simulatedData.targetItem.sku]
+                    ? 'TRUE (PO ISSUED)'
+                    : simulatedData.targetItem.materialAvailability
+                    ? 'TRUE (READY)'
+                    : 'FALSE (HALT)'}
                 </span>
               </div>
             </div>
@@ -1177,6 +1237,277 @@ export default function InventoryOptimizationView() {
                 Close Inspector
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------------------------
+          PURCHASE REQUISITION & PO DISPATCH MODAL (SUB-PARTS 1.2 - 1.4)
+      ---------------------------------------------------------------------- */}
+      {poModalItem && (
+        <div style={styles.modalOverlay} onClick={() => setPoModalItem(null)}>
+          <div style={styles.poModalContent} onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div style={styles.modalHeader}>
+              <div>
+                <div style={styles.poBadge}>
+                  <span style={styles.pulseGreenDot} />
+                  ERP PURCHASE REQUISITION · AUTOMATED PROCUREMENT DISPATCH
+                </div>
+                <h2 style={styles.modalTitle}>
+                  Purchase Order Requisition — {poModalItem.name}
+                </h2>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                  SKU: <strong style={{ color: '#38bdf8' }}>{poModalItem.sku}</strong> | Category: {poModalItem.category} | Destination: <strong>SL FACTORY NODE 01 (Biyagama)</strong>
+                </div>
+              </div>
+              <button onClick={() => setPoModalItem(null)} style={styles.closeBtn}>✕</button>
+            </div>
+
+            <div style={styles.poModalBody}>
+              {/* Top Summary Bar */}
+              <div style={styles.poMetaBar}>
+                <div>
+                  <span style={styles.poMetaLabel}>PO REFERENCE</span>
+                  <span style={styles.poMetaVal}>
+                    {dispatchedPOs[poModalItem.sku]
+                      ? `#${dispatchedPOs[poModalItem.sku].poNumber}`
+                      : `#PO-2026-89${Math.floor(10 + Math.random() * 89)}-${poModalItem.sku.split('-')[0]}`}
+                  </span>
+                </div>
+                <div>
+                  <span style={styles.poMetaLabel}>DOWNSTREAM LINE ALLOCATION</span>
+                  <span style={{ ...styles.poMetaVal, color: '#38bdf8' }}>{poModalItem.downstreamLine}</span>
+                </div>
+                <div>
+                  <span style={styles.poMetaLabel}>TARGET VENDOR</span>
+                  <span style={styles.poMetaVal}>{poModalItem.primarySupplier}</span>
+                </div>
+                <div>
+                  <span style={styles.poMetaLabel}>ORDER STATUS</span>
+                  <span style={{
+                    ...styles.poMetaVal,
+                    color: dispatchedPOs[poModalItem.sku] ? '#34d399' : '#fbbf24'
+                  }}>
+                    {dispatchedPOs[poModalItem.sku] ? 'DISPATCHED (IN-TRANSIT)' : 'PENDING APPROVAL'}
+                  </span>
+                </div>
+              </div>
+
+              {/* 2-Column Grid: Config & Financial Breakdown */}
+              <div style={styles.poGrid}>
+                {/* Left Column: Reorder Configuration & Logistics */}
+                <div style={styles.poLeftCol}>
+                  <div style={styles.poSectionTitle}>1. REORDER VOLUME & LOGISTICS</div>
+
+                  {/* Quantity Input */}
+                  <div style={styles.poInputGroup}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label style={styles.poInputLabel}>
+                        Order Quantity ({poModalItem.unit})
+                      </label>
+                      <span style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 600 }}>
+                        AI Recommended: {poModalItem.recommendedROQ.toLocaleString()} {poModalItem.unit}
+                      </span>
+                    </div>
+
+                    <div style={styles.poQtyInputRow}>
+                      <button
+                        onClick={() => setCustomOrderQty(Math.max(100, customOrderQty - 500))}
+                        style={styles.qtyStepBtn}
+                      >
+                        -500
+                      </button>
+                      <input
+                        type="number"
+                        min="100"
+                        step="100"
+                        value={customOrderQty}
+                        onChange={(e) => setCustomOrderQty(Math.max(0, parseInt(e.target.value) || 0))}
+                        style={styles.poQtyInput}
+                      />
+                      <button
+                        onClick={() => setCustomOrderQty(customOrderQty + 500)}
+                        style={styles.qtyStepBtn}
+                      >
+                        +500
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Freight Transport Mode Selector */}
+                  <div style={{ marginTop: '14px' }}>
+                    <label style={styles.poInputLabel}>Freight Shipping Mode</label>
+                    <div style={styles.freightSelectorGrid}>
+                      <button
+                        onClick={() => setFreightMode('sea')}
+                        style={{
+                          ...styles.freightBtn,
+                          borderColor: freightMode === 'sea' ? '#38bdf8' : 'rgba(255,255,255,0.08)',
+                          background: freightMode === 'sea' ? 'rgba(56,189,248,0.12)' : '#090e1a',
+                          color: freightMode === 'sea' ? '#ffffff' : '#94a3b8',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+                          <span>🚢 Sea Freight</span>
+                          {freightMode === 'sea' && <span style={styles.activeCheck}>✓</span>}
+                        </div>
+                        <div style={styles.freightSub}>Lead Time: {poModalItem.baseLeadTime}d · Standard Cost</div>
+                      </button>
+
+                      <button
+                        onClick={() => setFreightMode('air')}
+                        style={{
+                          ...styles.freightBtn,
+                          borderColor: freightMode === 'air' ? '#f59e0b' : 'rgba(255,255,255,0.08)',
+                          background: freightMode === 'air' ? 'rgba(245,158,11,0.12)' : '#090e1a',
+                          color: freightMode === 'air' ? '#ffffff' : '#94a3b8',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+                          <span>✈️ Air Express</span>
+                          {freightMode === 'air' && <span style={{ ...styles.activeCheck, color: '#f59e0b' }}>✓</span>}
+                        </div>
+                        <div style={styles.freightSub}>Lead Time: {Math.max(2, poModalItem.baseLeadTime - 4)}d · Express</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Logistics Summary */}
+                  <div style={styles.poLogisticsBox}>
+                    <div style={styles.logisticsRow}>
+                      <span>Estimated Lead Time:</span>
+                      <strong style={{ color: '#ffffff' }}>
+                        {freightMode === 'air' ? Math.max(2, poModalItem.baseLeadTime - 4) : poModalItem.baseLeadTime} Days
+                      </strong>
+                    </div>
+                    <div style={styles.logisticsRow}>
+                      <span>Expected Warehouse Arrival:</span>
+                      <strong style={{ color: '#38bdf8' }}>
+                        Day {freightMode === 'air' ? '4' : '9'} (Buffer Maintained)
+                      </strong>
+                    </div>
+                    <div style={styles.logisticsRow}>
+                      <span>Primary Vendor Risk Index:</span>
+                      <strong style={{ color: poModalItem.curDisrupt > 0.6 ? '#f87171' : '#34d399' }}>
+                        {(poModalItem.curDisrupt * 100).toFixed(0)}% Disruption Probability
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Financial & Cost Itemization */}
+                <div style={styles.poRightCol}>
+                  <div style={styles.poSectionTitle}>2. ITEMIZED FINANCIAL SUMMARY</div>
+
+                  {(() => {
+                    const unitPrice =
+                      poModalItem.category === 'Fabrics'
+                        ? 2.40
+                        : poModalItem.category === 'Dyes & Chemicals'
+                        ? 8.50
+                        : poModalItem.category === 'Trims & Fasteners'
+                        ? 0.35
+                        : 1.80;
+                    const subtotal = Math.round(customOrderQty * unitPrice);
+                    const freightSurcharge = freightMode === 'air' ? Math.round(subtotal * 0.5) : 0;
+                    const customsInsurance = 420;
+                    const landedTotal = subtotal + freightSurcharge + customsInsurance;
+
+                    return (
+                      <div style={styles.receiptBox}>
+                        <div style={styles.receiptRow}>
+                          <span>Base Unit Price:</span>
+                          <strong>${unitPrice.toFixed(2)} / {poModalItem.unit}</strong>
+                        </div>
+                        <div style={styles.receiptRow}>
+                          <span>Raw Material Subtotal:</span>
+                          <strong>${subtotal.toLocaleString()}.00</strong>
+                        </div>
+                        <div style={styles.receiptRow}>
+                          <span>Freight Transport ({freightMode === 'air' ? 'Air Express' : 'Sea Freight'}):</span>
+                          <strong style={{ color: freightMode === 'air' ? '#fbbf24' : '#cbd5e1' }}>
+                            {freightMode === 'air' ? `+$${freightSurcharge.toLocaleString()}.00` : 'Included in Base'}
+                          </strong>
+                        </div>
+                        <div style={styles.receiptRow}>
+                          <span>Customs & Disruption Insurance Buffer:</span>
+                          <strong>+${customsInsurance.toFixed(2)}</strong>
+                        </div>
+
+                        <div style={styles.receiptTotalRow}>
+                          <div style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff' }}>
+                            TOTAL ESTIMATED LANDED COST:
+                          </div>
+                          <div style={styles.receiptTotalVal}>
+                            ${landedTotal.toLocaleString()}.00
+                          </div>
+                        </div>
+
+                        {/* Economic Savings Callout */}
+                        <div style={styles.savingsCallout}>
+                          <div style={{ fontWeight: 700, color: '#34d399', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>🛡️ Cost-Benefit Proof:</span>
+                          </div>
+                          <div style={{ fontSize: '10.5px', color: '#94a3b8', marginTop: '2px', lineHeight: 1.4 }}>
+                            Issuing this PO prevents an estimated <strong>$18,750</strong> downtime penalty on {poModalItem.downstreamLine}.
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Bottom AI Justification Bar */}
+              <div style={styles.poAiAssuranceBox}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" style={{ flexShrink: 0 }}>
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+                <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  <strong>Adaptive Optimization Justification:</strong> Pre-allocates a dynamic safety buffer of <strong>+{poModalItem.dynamicSafetyStock.toLocaleString()} {poModalItem.unit}</strong> to shield production lines against the {(poModalItem.curDisrupt * 100).toFixed(0)}% upstream disruption risk on {poModalItem.primarySupplier}.
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer Buttons */}
+            <div style={styles.modalFooter}>
+              <button onClick={() => setPoModalItem(null)} style={styles.modalCancelBtn}>
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDispatchPO}
+                style={styles.modalConfirmBtn}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '6px' }}>
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                Confirm & Dispatch PO to ERP
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------------------------------------------------------------
+          FLOATING TOAST NOTIFICATION BANNER (SUB-PART 1.4)
+      ---------------------------------------------------------------------- */}
+      {toastNotification && (
+        <div style={styles.toastContainer} className="animate-fade-in">
+          <div style={styles.toastCard}>
+            <div style={styles.toastIcon}>✓</div>
+            <div style={{ flex: 1 }}>
+              <div style={styles.toastTitle}>
+                PURCHASE ORDER #{toastNotification.poNumber} DISPATCHED
+              </div>
+              <div style={styles.toastDesc}>
+                Requisition for <strong>{toastNotification.qty.toLocaleString()} {toastNotification.unit}</strong> of {toastNotification.name} issued to <em>{toastNotification.vendor}</em>.
+              </div>
+              <div style={styles.toastMeta}>
+                Landed Total: <strong>${toastNotification.cost.toLocaleString()}</strong> | ETA: <strong>Day {toastNotification.etaDays}</strong> | Mode: {toastNotification.freightMode === 'air' ? '✈️ Air Express' : '🚢 Sea Freight'}
+              </div>
+            </div>
+            <button onClick={() => setToastNotification(null)} style={styles.toastCloseBtn}>✕</button>
           </div>
         </div>
       )}
@@ -2078,5 +2409,296 @@ const styles = {
     fontSize: '12px',
     fontWeight: 600,
     cursor: 'pointer',
+  },
+
+  // ---------------------------------------------------------------------------
+  // PO Requisition Modal & Toast Styles
+  // ---------------------------------------------------------------------------
+  poModalContent: {
+    background: '#0c1424',
+    border: '1px solid rgba(59, 130, 246, 0.4)',
+    borderRadius: '16px',
+    width: '100%',
+    maxWidth: '820px',
+    padding: '24px',
+    boxShadow: '0 25px 60px rgba(0, 0, 0, 0.85)',
+    maxHeight: '90vh',
+    overflowY: 'auto',
+  },
+  poBadge: {
+    fontSize: '10px',
+    fontWeight: 700,
+    color: '#38bdf8',
+    letterSpacing: '0.08em',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  poModalBody: {
+    padding: '16px 0',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  poMetaBar: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '10px',
+    padding: '12px 16px',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '12px',
+  },
+  poMetaLabel: {
+    fontSize: '9px',
+    fontWeight: 700,
+    letterSpacing: '0.06em',
+    color: '#64748b',
+    display: 'block',
+  },
+  poMetaVal: {
+    fontSize: '12px',
+    fontWeight: 700,
+    color: '#f1f5f9',
+    marginTop: '2px',
+    display: 'block',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  poGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1.1fr 1fr',
+    gap: '16px',
+  },
+  poLeftCol: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '10px',
+    padding: '14px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    gap: '12px',
+  },
+  poRightCol: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '10px',
+    padding: '14px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+  },
+  poSectionTitle: {
+    fontSize: '10px',
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+    color: '#38bdf8',
+    marginBottom: '8px',
+  },
+  poInputGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  poInputLabel: {
+    fontSize: '11px',
+    fontWeight: 600,
+    color: '#cbd5e1',
+    marginBottom: '6px',
+    display: 'block',
+  },
+  poQtyInputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  qtyStepBtn: {
+    background: '#1e293b',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    color: '#cbd5e1',
+    borderRadius: '6px',
+    padding: '6px 10px',
+    fontSize: '11px',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  poQtyInput: {
+    flex: 1,
+    background: '#10192e',
+    border: '1px solid rgba(56, 189, 248, 0.3)',
+    color: '#38bdf8',
+    borderRadius: '6px',
+    padding: '6px 12px',
+    fontSize: '14px',
+    fontWeight: 700,
+    textAlign: 'center',
+    fontFamily: 'Outfit, sans-serif',
+  },
+  freightSelectorGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '8px',
+    marginTop: '6px',
+  },
+  freightBtn: {
+    border: '1px solid',
+    borderRadius: '8px',
+    padding: '10px',
+    textAlign: 'left',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  freightSub: {
+    fontSize: '9.5px',
+    color: '#64748b',
+    marginTop: '4px',
+  },
+  activeCheck: {
+    color: '#38bdf8',
+    fontSize: '12px',
+    marginLeft: 'auto',
+  },
+  poLogisticsBox: {
+    background: 'rgba(255, 255, 255, 0.02)',
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+    borderRadius: '8px',
+    padding: '10px 12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    marginTop: 'auto',
+  },
+  logisticsRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '11px',
+    color: '#94a3b8',
+  },
+  receiptBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  receiptRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '11px',
+    color: '#94a3b8',
+    padding: '2px 0',
+  },
+  receiptTotalRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    padding: '10px 0',
+    marginTop: '6px',
+  },
+  receiptTotalVal: {
+    fontSize: '18px',
+    fontWeight: 800,
+    fontFamily: 'Outfit, sans-serif',
+    color: '#34d399',
+  },
+  savingsCallout: {
+    background: 'rgba(16, 185, 129, 0.08)',
+    border: '1px solid rgba(16, 185, 129, 0.25)',
+    borderRadius: '8px',
+    padding: '10px',
+    marginTop: '8px',
+  },
+  poAiAssuranceBox: {
+    background: '#090e1a',
+    border: '1px solid rgba(56, 189, 248, 0.2)',
+    borderRadius: '10px',
+    padding: '12px 14px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  modalCancelBtn: {
+    background: 'transparent',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    color: '#94a3b8',
+    borderRadius: '6px',
+    padding: '8px 16px',
+    fontSize: '12px',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  modalConfirmBtn: {
+    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+    border: '1px solid rgba(16, 185, 129, 0.5)',
+    color: '#ffffff',
+    borderRadius: '6px',
+    padding: '8px 18px',
+    fontSize: '12px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    boxShadow: '0 4px 15px rgba(16, 185, 129, 0.35)',
+  },
+
+  // Toast Styles
+  toastContainer: {
+    position: 'fixed',
+    top: '24px',
+    right: '24px',
+    zIndex: 9999,
+    maxWidth: '460px',
+  },
+  toastCard: {
+    background: '#0d172a',
+    border: '1px solid #10b981',
+    borderRadius: '12px',
+    padding: '14px 16px',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.7), 0 0 15px rgba(16, 185, 129, 0.3)',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '12px',
+  },
+  toastIcon: {
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    background: 'rgba(16, 185, 129, 0.2)',
+    color: '#34d399',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 900,
+    fontSize: '13px',
+    flexShrink: 0,
+    border: '1px solid #10b981',
+  },
+  toastTitle: {
+    fontSize: '11px',
+    fontWeight: 800,
+    color: '#34d399',
+    letterSpacing: '0.06em',
+  },
+  toastDesc: {
+    fontSize: '11.5px',
+    color: '#f1f5f9',
+    marginTop: '3px',
+    lineHeight: 1.4,
+  },
+  toastMeta: {
+    fontSize: '10px',
+    color: '#94a3b8',
+    marginTop: '4px',
+    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+    paddingTop: '4px',
+  },
+  toastCloseBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: '#64748b',
+    fontSize: '14px',
+    cursor: 'pointer',
+    padding: '0 4px',
   },
 };
