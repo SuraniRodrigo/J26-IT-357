@@ -17,6 +17,20 @@ export default function InventoryOptimizationView() {
   const [inspectedSku, setInspectedSku] = useState(null);    // for XAI formula modal
   const [isBackendSyncing, setIsBackendSyncing] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState('Local 60fps Model + API Ready');
+  const [dispatchedPOs, setDispatchedPOs] = useState({});
+
+  const handleTriggerPo = (e, item) => {
+    e.stopPropagation();
+    const poNum = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    setDispatchedPOs((prev) => ({
+      ...prev,
+      [item.sku]: {
+        poNumber: poNum,
+        qty: item.recommendedROQ,
+        date: new Date().toLocaleDateString(),
+      },
+    }));
+  };
 
   // Baseline SKU inventory base parameters
   const rawSkuList = [
@@ -920,6 +934,7 @@ export default function InventoryOptimizationView() {
                 <th style={styles.th}>AI RISK LEVEL</th>
                 <th style={styles.th}>DYNAMIC SAFETY STOCK</th>
                 <th style={styles.th}>AI REORDER (ROQ)</th>
+                <th style={styles.th}>PO ACTION</th>
                 <th style={styles.th}>EXPLAIN</th>
               </tr>
             </thead>
@@ -962,6 +977,24 @@ export default function InventoryOptimizationView() {
                   </td>
                   <td style={styles.td}>
                     <span style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8' }}>{item.recomFormatted}</span>
+                  </td>
+                  <td style={styles.td}>
+                    {dispatchedPOs[item.sku] ? (
+                      <span
+                        style={styles.poIssuedBadge}
+                        title="ERP Purchase Order active. Replenishment scheduled."
+                      >
+                        <span style={styles.poCheckDot}>✓</span> PO #{dispatchedPOs[item.sku].poNumber}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={(e) => handleTriggerPo(e, item)}
+                        style={styles.approvePoBtn}
+                        title="Generate ERP Purchase Requisition with AI buffer quantity"
+                      >
+                        <span style={{ marginRight: '4px' }}>🛒</span> Approve PO
+                      </button>
+                    )}
                   </td>
                   <td style={styles.td}>
                     <button
@@ -1795,6 +1828,38 @@ const styles = {
     fontSize: '10px',
     fontWeight: 600,
     cursor: 'pointer',
+  },
+  approvePoBtn: {
+    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(37, 99, 235, 0.35) 100%)',
+    border: '1px solid rgba(59, 130, 246, 0.5)',
+    color: '#93c5fd',
+    borderRadius: '6px',
+    padding: '4px 10px',
+    fontSize: '11px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    transition: 'all 0.15s ease',
+    whiteSpace: 'nowrap',
+  },
+  poIssuedBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    background: 'rgba(16, 185, 129, 0.12)',
+    border: '1px solid rgba(16, 185, 129, 0.35)',
+    color: '#34d399',
+    borderRadius: '6px',
+    padding: '3px 8px',
+    fontSize: '10px',
+    fontWeight: 700,
+    letterSpacing: '0.02em',
+    whiteSpace: 'nowrap',
+  },
+  poCheckDot: {
+    color: '#10b981',
+    fontWeight: 900,
   },
   healthCard: {
     background: '#0d1322',
