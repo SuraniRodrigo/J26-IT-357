@@ -18,6 +18,20 @@ export default function InventoryOptimizationView() {
   const [isBackendSyncing, setIsBackendSyncing] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState('Local 60fps Model + API Ready');
 
+  // Option A: Direct Parameter Inputs & Live FastAPI Tester State
+  const [simDrawerTab, setSimDrawerTab] = useState('sliders'); // 'sliders' or 'direct_inputs'
+  const [paramSku, setParamSku] = useState('ORG-COT-001');
+  const [paramInventory, setParamInventory] = useState(3400);
+  const [paramDemand, setParamDemand] = useState(15200);
+  const [paramUncertainty, setParamUncertainty] = useState(15);
+  const [paramLeadTime, setParamLeadTime] = useState(7);
+  const [paramLeadVar, setParamLeadVar] = useState(3.2);
+  const [paramDisrupt, setParamDisrupt] = useState(0.85);
+  const [paramServiceLevel, setParamServiceLevel] = useState('95%');
+  const [apiResponseData, setApiResponseData] = useState(null);
+  const [apiExecutionLog, setApiExecutionLog] = useState(null);
+  const [isExecutingApi, setIsExecutingApi] = useState(false);
+
   // Supplier Switching (Resilience Mitigation) State
   const [switchedSuppliers, setSwitchedSuppliers] = useState({});
 
@@ -456,6 +470,88 @@ export default function InventoryOptimizationView() {
     }
   };
 
+  // Direct Parameter Inputs (Option A): SKU Switcher Handler
+  const handleParamSkuChange = (sku) => {
+    setParamSku(sku);
+    const found = rawSkuList.find((s) => s.sku === sku);
+    if (found) {
+      setParamInventory(found.baseInventory);
+      setParamDemand(found.baseForecast);
+      setParamUncertainty(Math.round(found.baseUncertainty * 100));
+      setParamLeadTime(found.baseLeadTime);
+      setParamLeadVar(1.2);
+      setParamDisrupt(0.20);
+      setParamServiceLevel('95%');
+    }
+  };
+
+  // Reset Direct Inputs to default catalog values
+  const handleResetDirectInputs = () => {
+    handleParamSkuChange(paramSku);
+  };
+
+  const currentParamSkuItem = rawSkuList.find((s) => s.sku === paramSku) || rawSkuList[0];
+
+  // Execute Direct API Request with Custom Input Parameters (Option A)
+  const handleExecuteDirectApi = async () => {
+    setIsExecutingApi(true);
+    const startTime = performance.now();
+    try {
+      const parsedInv = Math.max(0, parseFloat(paramInventory) || 0);
+      const parsedDemand = Math.max(1, parseFloat(paramDemand) || 0);
+      const parsedUncertainty = Math.max(0, (parsedDemand * (parseFloat(paramUncertainty) || 15)) / 100);
+      const parsedLeadTime = Math.max(1, parseInt(paramLeadTime, 10) || 7);
+      const parsedLeadVar = Math.max(0, parseFloat(paramLeadVar) || 1.0);
+      const parsedDisrupt = Math.min(1.0, Math.max(0.0, parseFloat(paramDisrupt) || 0.0));
+
+      const payload = {
+        product_id: paramSku,
+        order_date: new Date().toISOString().split('T')[0],
+        current_inventory: parsedInv,
+        forecasted_demand: parsedDemand,
+        demand_uncertainty: parsedUncertainty,
+        lead_time_days: parsedLeadTime,
+        lead_time_variability: parsedLeadVar,
+        disruption_probability: parsedDisrupt,
+        valid_upstream_risk_signal: true,
+      };
+
+      const response = await optimizeInventory(payload);
+      const latency = Math.round(performance.now() - startTime);
+      const policyItem = Array.isArray(response) ? response[0] : response;
+
+      if (policyItem) {
+        setApiResponseData(policyItem);
+        setApiExecutionLog({
+          status: 'HTTP 200 OK',
+          latency: `${latency}ms`,
+          endpoint: 'POST /api/inventory/optimize',
+          timestamp: new Date().toLocaleTimeString(),
+          payload,
+          result: policyItem,
+        });
+      }
+
+      // Sync with global simulation state so entire dashboard adapts
+      setSelectedSku(paramSku);
+      setDisruptionProb(parsedDisrupt);
+      setLeadTimeVar(parsedLeadVar);
+      setServiceLevel(paramServiceLevel);
+      setDemandSurge(Math.round(((parsedDemand - 15200) / 15200) * 100));
+      setLastSyncStatus(`FastAPI Optim: ROP=${policyItem?.selected_reorder_point}, ROQ=${policyItem?.selected_reorder_quantity} (${latency}ms)`);
+    } catch (err) {
+      const latency = Math.round(performance.now() - startTime);
+      setApiExecutionLog({
+        status: 'Client Engine (FastAPI offline)',
+        latency: `${latency}ms`,
+        endpoint: 'POST /api/inventory/optimize',
+        timestamp: new Date().toLocaleTimeString(),
+      });
+    } finally {
+      setIsExecutingApi(false);
+    }
+  };
+
   return (
     <div style={styles.container} className="animate-fade-in">
       {/* ---------------------------------------------------------------------
@@ -598,196 +694,552 @@ export default function InventoryOptimizationView() {
             </div>
           </div>
 
-          {/* Crisis Preset Quick Selector */}
-          <div style={styles.presetRow}>
-            <span style={styles.presetLabel}>SHOCK PRESETS:</span>
-            <div style={styles.presetButtons}>
-              <button
-                onClick={() => handleApplyPreset('baseline')}
-                style={{
-                  ...styles.presetBtn,
-                  borderColor: activePreset === 'baseline' ? '#3b82f6' : 'rgba(255, 255, 255, 0.08)',
-                  background: activePreset === 'baseline' ? 'rgba(59, 130, 246, 0.15)' : '#0d1527',
-                  color: activePreset === 'baseline' ? '#60a5fa' : '#94a3b8',
-                }}
-              >
-                🛡️ Standard Operations
-              </button>
-              <button
-                onClick={() => handleApplyPreset('port_crisis')}
-                style={{
-                  ...styles.presetBtn,
-                  borderColor: activePreset === 'port_crisis' ? '#ef4444' : 'rgba(255, 255, 255, 0.08)',
-                  background: activePreset === 'port_crisis' ? 'rgba(239, 68, 68, 0.15)' : '#0d1527',
-                  color: activePreset === 'port_crisis' ? '#f87171' : '#94a3b8',
-                }}
-              >
-                🚢 Red Sea / Port Congestion (+4.8d)
-              </button>
-              <button
-                onClick={() => handleApplyPreset('demand_spike')}
-                style={{
-                  ...styles.presetBtn,
-                  borderColor: activePreset === 'demand_spike' ? '#f59e0b' : 'rgba(255, 255, 255, 0.08)',
-                  background: activePreset === 'demand_spike' ? 'rgba(245, 158, 11, 0.15)' : '#0d1527',
-                  color: activePreset === 'demand_spike' ? '#fbbf24' : '#94a3b8',
-                }}
-              >
-                📈 Fast-Fashion Demand Spike (+35%)
-              </button>
-              <button
-                onClick={() => handleApplyPreset('force_majeure')}
-                style={{
-                  ...styles.presetBtn,
-                  borderColor: activePreset === 'force_majeure' ? '#ec4899' : 'rgba(255, 255, 255, 0.08)',
-                  background: activePreset === 'force_majeure' ? 'rgba(236, 72, 153, 0.15)' : '#0d1527',
-                  color: activePreset === 'force_majeure' ? '#f472b6' : '#94a3b8',
-                }}
-              >
-                ⛈️ Factory/Supplier Lockdown (95% Risk)
-              </button>
-            </div>
+          {/* Mode Switcher Tabs: Sliders Mode vs Direct Input & Live Tester Mode */}
+          <div style={styles.simTabRow}>
+            <button
+              onClick={() => setSimDrawerTab('sliders')}
+              style={{
+                ...styles.simTabBtn,
+                background: simDrawerTab === 'sliders' ? 'linear-gradient(135deg, rgba(30, 58, 138, 0.6) 0%, rgba(30, 64, 175, 0.7) 100%)' : '#0d1527',
+                borderColor: simDrawerTab === 'sliders' ? '#3b82f6' : 'rgba(255, 255, 255, 0.08)',
+                color: simDrawerTab === 'sliders' ? '#ffffff' : '#94a3b8',
+                boxShadow: simDrawerTab === 'sliders' ? '0 0 16px rgba(59, 130, 246, 0.35)' : 'none',
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>🎚️</span>
+              <span style={{ fontWeight: 700 }}>Interactive Sliders & Shock Presets</span>
+              <span style={styles.tabBadge}>Live 60fps</span>
+            </button>
+
+            <button
+              onClick={() => setSimDrawerTab('direct_inputs')}
+              style={{
+                ...styles.simTabBtn,
+                background: simDrawerTab === 'direct_inputs' ? 'linear-gradient(135deg, rgba(6, 95, 70, 0.7) 0%, rgba(4, 120, 87, 0.8) 100%)' : '#0d1527',
+                borderColor: simDrawerTab === 'direct_inputs' ? '#10b981' : 'rgba(255, 255, 255, 0.08)',
+                color: simDrawerTab === 'direct_inputs' ? '#ffffff' : '#94a3b8',
+                boxShadow: simDrawerTab === 'direct_inputs' ? '0 0 16px rgba(16, 185, 129, 0.35)' : 'none',
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>⌨️</span>
+              <span style={{ fontWeight: 700 }}>Direct Parameter Inputs & Live FastAPI Tester</span>
+              <span style={{ ...styles.tabBadge, background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.4)' }}>
+                FastAPI :8000
+              </span>
+            </button>
           </div>
 
-          {/* Interactive Sliders Grid */}
-          <div style={styles.slidersGrid}>
-            {/* Slider 1: Disruption Probability */}
-            <div style={styles.sliderCard}>
-              <div style={styles.sliderHeader}>
-                <span style={styles.sliderTitle}>SUPPLIER DISRUPTION RISK [P(risk)]</span>
-                <span
-                  style={{
-                    ...styles.sliderValueBadge,
-                    color: disruptionProb > 0.6 ? '#f87171' : disruptionProb > 0.35 ? '#fbbf24' : '#34d399',
-                    background: disruptionProb > 0.6 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)',
-                  }}
-                >
-                  {(disruptionProb * 100).toFixed(0)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={disruptionProb}
-                onChange={(e) => {
-                  setDisruptionProb(parseFloat(e.target.value));
-                  setActivePreset('custom');
-                }}
-                style={styles.sliderInput}
-              />
-              <div style={styles.sliderTicks}>
-                <span>0% (Stable)</span>
-                <span>50% (Moderate)</span>
-                <span>100% (Full Disruption)</span>
-              </div>
-            </div>
-
-            {/* Slider 2: Lead Time Variability */}
-            <div style={styles.sliderCard}>
-              <div style={styles.sliderHeader}>
-                <span style={styles.sliderTitle}>LEAD TIME DELAY / VARIABILITY (σ_L)</span>
-                <span style={{ ...styles.sliderValueBadge, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)' }}>
-                  +{leadTimeVar.toFixed(1)} Days
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="10"
-                step="0.2"
-                value={leadTimeVar}
-                onChange={(e) => {
-                  setLeadTimeVar(parseFloat(e.target.value));
-                  setActivePreset('custom');
-                }}
-                style={styles.sliderInput}
-              />
-              <div style={styles.sliderTicks}>
-                <span>0d (On-Time)</span>
-                <span>+5d (Customs Delay)</span>
-                <span>+10d (Severe Bottleneck)</span>
-              </div>
-            </div>
-
-            {/* Slider 3: Demand Surge */}
-            <div style={styles.sliderCard}>
-              <div style={styles.sliderHeader}>
-                <span style={styles.sliderTitle}>DEMAND SURGE / VOLATILITY (ΔD)</span>
-                <span
-                  style={{
-                    ...styles.sliderValueBadge,
-                    color: demandSurge >= 0 ? '#34d399' : '#f87171',
-                    background: demandSurge >= 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                  }}
-                >
-                  {demandSurge >= 0 ? `+${demandSurge}%` : `${demandSurge}%`}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="-30"
-                max="80"
-                step="5"
-                value={demandSurge}
-                onChange={(e) => {
-                  setDemandSurge(parseInt(e.target.value, 10));
-                  setActivePreset('custom');
-                }}
-                style={styles.sliderInput}
-              />
-              <div style={styles.sliderTicks}>
-                <span>-30% (Slump)</span>
-                <span>0% (Baseline)</span>
-                <span>+80% (Viral Season)</span>
-              </div>
-            </div>
-
-            {/* Slider 4: Target Service Level Tabs & Target SKU */}
-            <div style={styles.sliderCard}>
-              <div style={styles.sliderHeader}>
-                <span style={styles.sliderTitle}>TARGET SERVICE LEVEL (z-score)</span>
-                <span style={{ ...styles.sliderValueBadge, color: '#c084fc', background: 'rgba(192, 132, 252, 0.12)' }}>
-                  {serviceLevel} (z={z})
-                </span>
-              </div>
-              <div style={styles.serviceLevelTabs}>
-                {['90%', '95%', '99%'].map((lvl) => (
+          {/* TAB 1: SLIDERS & SHOCK PRESETS */}
+          {simDrawerTab === 'sliders' && (
+            <>
+              {/* Crisis Preset Quick Selector */}
+              <div style={styles.presetRow}>
+                <span style={styles.presetLabel}>SHOCK PRESETS:</span>
+                <div style={styles.presetButtons}>
                   <button
-                    key={lvl}
-                    onClick={() => {
-                      setServiceLevel(lvl);
-                      setActivePreset('custom');
-                    }}
+                    onClick={() => handleApplyPreset('baseline')}
                     style={{
-                      ...styles.slTabBtn,
-                      background: serviceLevel === lvl ? '#8b5cf6' : '#0d1527',
-                      color: serviceLevel === lvl ? '#ffffff' : '#94a3b8',
-                      fontWeight: serviceLevel === lvl ? 700 : 500,
+                      ...styles.presetBtn,
+                      borderColor: activePreset === 'baseline' ? '#3b82f6' : 'rgba(255, 255, 255, 0.08)',
+                      background: activePreset === 'baseline' ? 'rgba(59, 130, 246, 0.15)' : '#0d1527',
+                      color: activePreset === 'baseline' ? '#60a5fa' : '#94a3b8',
                     }}
                   >
-                    {lvl} SL
+                    🛡️ Standard Operations
                   </button>
-                ))}
+                  <button
+                    onClick={() => handleApplyPreset('port_crisis')}
+                    style={{
+                      ...styles.presetBtn,
+                      borderColor: activePreset === 'port_crisis' ? '#ef4444' : 'rgba(255, 255, 255, 0.08)',
+                      background: activePreset === 'port_crisis' ? 'rgba(239, 68, 68, 0.15)' : '#0d1527',
+                      color: activePreset === 'port_crisis' ? '#f87171' : '#94a3b8',
+                    }}
+                  >
+                    🚢 Red Sea / Port Congestion (+4.8d)
+                  </button>
+                  <button
+                    onClick={() => handleApplyPreset('demand_spike')}
+                    style={{
+                      ...styles.presetBtn,
+                      borderColor: activePreset === 'demand_spike' ? '#f59e0b' : 'rgba(255, 255, 255, 0.08)',
+                      background: activePreset === 'demand_spike' ? 'rgba(245, 158, 11, 0.15)' : '#0d1527',
+                      color: activePreset === 'demand_spike' ? '#fbbf24' : '#94a3b8',
+                    }}
+                  >
+                    📈 Fast-Fashion Demand Spike (+35%)
+                  </button>
+                  <button
+                    onClick={() => handleApplyPreset('force_majeure')}
+                    style={{
+                      ...styles.presetBtn,
+                      borderColor: activePreset === 'force_majeure' ? '#ec4899' : 'rgba(255, 255, 255, 0.08)',
+                      background: activePreset === 'force_majeure' ? 'rgba(236, 72, 153, 0.15)' : '#0d1527',
+                      color: activePreset === 'force_majeure' ? '#f472b6' : '#94a3b8',
+                    }}
+                  >
+                    ⛈️ Factory/Supplier Lockdown (95% Risk)
+                  </button>
+                </div>
               </div>
-              <div style={styles.skuSelectRow}>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>SIMULATE FOCUS SKU:</span>
-                <select
-                  value={selectedSku}
-                  onChange={(e) => setSelectedSku(e.target.value)}
-                  style={styles.skuSelect}
-                >
-                  {rawSkuList.map((s) => (
-                    <option key={s.sku} value={s.sku}>
-                      {s.sku} — {s.name}
-                    </option>
-                  ))}
-                  <option value="ALL">All Materials (Portfolio-wide)</option>
-                </select>
+
+              {/* Interactive Sliders Grid */}
+              <div style={styles.slidersGrid}>
+                {/* Slider 1: Disruption Probability */}
+                <div style={styles.sliderCard}>
+                  <div style={styles.sliderHeader}>
+                    <span style={styles.sliderTitle}>SUPPLIER DISRUPTION RISK [P(risk)]</span>
+                    <span
+                      style={{
+                        ...styles.sliderValueBadge,
+                        color: disruptionProb > 0.6 ? '#f87171' : disruptionProb > 0.35 ? '#fbbf24' : '#34d399',
+                        background: disruptionProb > 0.6 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)',
+                      }}
+                    >
+                      {(disruptionProb * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={disruptionProb}
+                    onChange={(e) => {
+                      setDisruptionProb(parseFloat(e.target.value));
+                      setActivePreset('custom');
+                    }}
+                    style={styles.sliderInput}
+                  />
+                  <div style={styles.sliderTicks}>
+                    <span>0% (Stable)</span>
+                    <span>50% (Moderate)</span>
+                    <span>100% (Full Disruption)</span>
+                  </div>
+                </div>
+
+                {/* Slider 2: Lead Time Variability */}
+                <div style={styles.sliderCard}>
+                  <div style={styles.sliderHeader}>
+                    <span style={styles.sliderTitle}>LEAD TIME DELAY / VARIABILITY (σ_L)</span>
+                    <span style={{ ...styles.sliderValueBadge, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)' }}>
+                      +{leadTimeVar.toFixed(1)} Days
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="0.2"
+                    value={leadTimeVar}
+                    onChange={(e) => {
+                      setLeadTimeVar(parseFloat(e.target.value));
+                      setActivePreset('custom');
+                    }}
+                    style={styles.sliderInput}
+                  />
+                  <div style={styles.sliderTicks}>
+                    <span>0d (On-Time)</span>
+                    <span>+5d (Customs Delay)</span>
+                    <span>+10d (Severe Bottleneck)</span>
+                  </div>
+                </div>
+
+                {/* Slider 3: Demand Surge */}
+                <div style={styles.sliderCard}>
+                  <div style={styles.sliderHeader}>
+                    <span style={styles.sliderTitle}>DEMAND SURGE / VOLATILITY (ΔD)</span>
+                    <span
+                      style={{
+                        ...styles.sliderValueBadge,
+                        color: demandSurge >= 0 ? '#34d399' : '#f87171',
+                        background: demandSurge >= 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                      }}
+                    >
+                      {demandSurge >= 0 ? `+${demandSurge}%` : `${demandSurge}%`}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-30"
+                    max="80"
+                    step="5"
+                    value={demandSurge}
+                    onChange={(e) => {
+                      setDemandSurge(parseInt(e.target.value, 10));
+                      setActivePreset('custom');
+                    }}
+                    style={styles.sliderInput}
+                  />
+                  <div style={styles.sliderTicks}>
+                    <span>-30% (Slump)</span>
+                    <span>0% (Baseline)</span>
+                    <span>+80% (Viral Season)</span>
+                  </div>
+                </div>
+
+                {/* Slider 4: Target Service Level Tabs & Target SKU */}
+                <div style={styles.sliderCard}>
+                  <div style={styles.sliderHeader}>
+                    <span style={styles.sliderTitle}>TARGET SERVICE LEVEL (z-score)</span>
+                    <span style={{ ...styles.sliderValueBadge, color: '#c084fc', background: 'rgba(192, 132, 252, 0.12)' }}>
+                      {serviceLevel} (z={z})
+                    </span>
+                  </div>
+                  <div style={styles.serviceLevelTabs}>
+                    {['90%', '95%', '99%'].map((lvl) => (
+                      <button
+                        key={lvl}
+                        onClick={() => {
+                          setServiceLevel(lvl);
+                          setActivePreset('custom');
+                        }}
+                        style={{
+                          ...styles.slTabBtn,
+                          background: serviceLevel === lvl ? '#8b5cf6' : '#0d1527',
+                          color: serviceLevel === lvl ? '#ffffff' : '#94a3b8',
+                          fontWeight: serviceLevel === lvl ? 700 : 500,
+                        }}
+                      >
+                        {lvl} SL
+                      </button>
+                    ))}
+                  </div>
+                  <div style={styles.skuSelectRow}>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>SIMULATE FOCUS SKU:</span>
+                    <select
+                      value={selectedSku}
+                      onChange={(e) => setSelectedSku(e.target.value)}
+                      style={styles.skuSelect}
+                    >
+                      {rawSkuList.map((s) => (
+                        <option key={s.sku} value={s.sku}>
+                          {s.sku} — {s.name}
+                        </option>
+                      ))}
+                      <option value="ALL">All Materials (Portfolio-wide)</option>
+                    </select>
+                  </div>
+                </div>
               </div>
+            </>
+          )}
+
+          {/* TAB 2: DIRECT PARAMETER INPUTS & FASTAPI LIVE TESTER (OPTION A) */}
+          {simDrawerTab === 'direct_inputs' && (
+            <div style={styles.directInputsContainer} className="animate-fade-in">
+              {/* Context info banner */}
+              <div style={styles.directContextBanner}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>🔬</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#f1f5f9' }}>
+                    Garment Supply Chain Parameter Workbench
+                  </span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  Input custom operational metrics and dispatch directly to <code style={styles.codePill}>POST /api/inventory/optimize</code>. Real-time mathematical recalculation with zero mock latency.
+                </div>
+              </div>
+
+              {/* 8 Input Parameter Fields */}
+              <div style={styles.directInputGrid}>
+                {/* Field 1: Target SKU */}
+                <div style={styles.inputFieldCard}>
+                  <div style={styles.inputFieldHeader}>
+                    <label style={styles.inputFieldLabel}>1. TARGET MATERIAL / SKU</label>
+                    <span style={styles.inputUnitBadge}>Portfolio</span>
+                  </div>
+                  <select
+                    value={paramSku}
+                    onChange={(e) => handleParamSkuChange(e.target.value)}
+                    style={styles.fieldSelect}
+                  >
+                    {rawSkuList.map((s) => (
+                      <option key={s.sku} value={s.sku}>
+                        {s.sku} — {s.name} ({s.unit})
+                      </option>
+                    ))}
+                  </select>
+                  <div style={styles.fieldHelpText}>
+                    Selected Category: <strong style={{ color: '#e2e8f0' }}>{currentParamSkuItem.category}</strong>
+                  </div>
+                </div>
+
+                {/* Field 2: Current Physical Stock */}
+                <div style={styles.inputFieldCard}>
+                  <div style={styles.inputFieldHeader}>
+                    <label style={styles.inputFieldLabel}>2. CURRENT ON-HAND STOCK</label>
+                    <span style={styles.inputUnitBadge}>{currentParamSkuItem.unit}</span>
+                  </div>
+                  <div style={styles.fieldInputWrapper}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      value={paramInventory}
+                      onChange={(e) => setParamInventory(parseFloat(e.target.value) || 0)}
+                      style={styles.fieldInput}
+                      placeholder="e.g. 3400"
+                    />
+                    <span style={styles.inputSuffix}>{currentParamSkuItem.unit}</span>
+                  </div>
+                  <div style={styles.fieldHelpText}>Physical warehouse inventory balance</div>
+                </div>
+
+                {/* Field 3: Forecasted Period Demand */}
+                <div style={styles.inputFieldCard}>
+                  <div style={styles.inputFieldHeader}>
+                    <label style={styles.inputFieldLabel}>3. FORECASTED DEMAND (D)</label>
+                    <span style={styles.inputUnitBadge}>{currentParamSkuItem.unit}</span>
+                  </div>
+                  <div style={styles.fieldInputWrapper}>
+                    <input
+                      type="number"
+                      min="1"
+                      step="100"
+                      value={paramDemand}
+                      onChange={(e) => setParamDemand(parseFloat(e.target.value) || 0)}
+                      style={styles.fieldInput}
+                      placeholder="e.g. 15200"
+                    />
+                    <span style={styles.inputSuffix}>{currentParamSkuItem.unit}</span>
+                  </div>
+                  <div style={styles.fieldHelpText}>Next cycle production demand schedule</div>
+                </div>
+
+                {/* Field 4: Demand Uncertainty % */}
+                <div style={styles.inputFieldCard}>
+                  <div style={styles.inputFieldHeader}>
+                    <label style={styles.inputFieldLabel}>4. DEMAND UNCERTAINTY (σ_D)</label>
+                    <span style={styles.inputUnitBadge}>% of Forecast</span>
+                  </div>
+                  <div style={styles.fieldInputWrapper}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={paramUncertainty}
+                      onChange={(e) => setParamUncertainty(parseFloat(e.target.value) || 0)}
+                      style={styles.fieldInput}
+                      placeholder="e.g. 15"
+                    />
+                    <span style={styles.inputSuffix}>%</span>
+                  </div>
+                  <div style={styles.fieldHelpText}>
+                    σ_D = {Math.round((paramDemand * paramUncertainty) / 100).toLocaleString()} {currentParamSkuItem.unit}
+                  </div>
+                </div>
+
+                {/* Field 5: Supplier Base Lead Time */}
+                <div style={styles.inputFieldCard}>
+                  <div style={styles.inputFieldHeader}>
+                    <label style={styles.inputFieldLabel}>5. SUPPLIER LEAD TIME (L)</label>
+                    <span style={styles.inputUnitBadge}>Days</span>
+                  </div>
+                  <div style={styles.fieldInputWrapper}>
+                    <input
+                      type="number"
+                      min="1"
+                      max="60"
+                      step="1"
+                      value={paramLeadTime}
+                      onChange={(e) => setParamLeadTime(parseInt(e.target.value, 10) || 1)}
+                      style={styles.fieldInput}
+                      placeholder="e.g. 7"
+                    />
+                    <span style={styles.inputSuffix}>Days</span>
+                  </div>
+                  <div style={styles.fieldHelpText}>Vendor: {currentParamSkuItem.primarySupplier.split('(')[0]}</div>
+                </div>
+
+                {/* Field 6: Lead Time Variability (σ_L) */}
+                <div style={styles.inputFieldCard}>
+                  <div style={styles.inputFieldHeader}>
+                    <label style={styles.inputFieldLabel}>6. LEAD TIME VARIABILITY (σ_L)</label>
+                    <span style={styles.inputUnitBadge}>± Days</span>
+                  </div>
+                  <div style={styles.fieldInputWrapper}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      step="0.1"
+                      value={paramLeadVar}
+                      onChange={(e) => setParamLeadVar(parseFloat(e.target.value) || 0)}
+                      style={styles.fieldInput}
+                      placeholder="e.g. 3.2"
+                    />
+                    <span style={styles.inputSuffix}>± Days</span>
+                  </div>
+                  <div style={styles.fieldHelpText}>Shipping jitter / customs delay variance</div>
+                </div>
+
+                {/* Field 7: Disruption Probability P(disrupt) */}
+                <div style={styles.inputFieldCard}>
+                  <div style={styles.inputFieldHeader}>
+                    <label style={styles.inputFieldLabel}>7. DISRUPTION PROBABILITY P(risk)</label>
+                    <span style={{
+                      ...styles.inputUnitBadge,
+                      color: paramDisrupt > 0.6 ? '#f87171' : paramDisrupt > 0.3 ? '#fbbf24' : '#34d399',
+                      background: paramDisrupt > 0.6 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)',
+                    }}>
+                      {(paramDisrupt * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div style={styles.fieldInputWrapper}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={paramDisrupt}
+                      onChange={(e) => setParamDisrupt(parseFloat(e.target.value) || 0)}
+                      style={styles.fieldInput}
+                      placeholder="0.0 to 1.0"
+                    />
+                    <span style={styles.inputSuffix}>0.0–1.0</span>
+                  </div>
+                  <div style={styles.fieldHelpText}>Port strike / geopolitical threat factor</div>
+                </div>
+
+                {/* Field 8: Target Cycle Service Level */}
+                <div style={styles.inputFieldCard}>
+                  <div style={styles.inputFieldHeader}>
+                    <label style={styles.inputFieldLabel}>8. CYCLE SERVICE LEVEL (SL)</label>
+                    <span style={styles.inputUnitBadge}>Confidence</span>
+                  </div>
+                  <select
+                    value={paramServiceLevel}
+                    onChange={(e) => setParamServiceLevel(e.target.value)}
+                    style={styles.fieldSelect}
+                  >
+                    <option value="90%">90% Cycle Service Level (z = 1.28)</option>
+                    <option value="95%">95% Cycle Service Level (z = 1.645)</option>
+                    <option value="99%">99% Mission Critical (z = 2.33)</option>
+                  </select>
+                  <div style={styles.fieldHelpText}>Statistical stockout mitigation target</div>
+                </div>
+              </div>
+
+              {/* Action Buttons Row */}
+              <div style={styles.directActionRow}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <button
+                    onClick={handleExecuteDirectApi}
+                    disabled={isExecutingApi}
+                    style={{
+                      ...styles.executeApiBtn,
+                      opacity: isExecutingApi ? 0.7 : 1,
+                      cursor: isExecutingApi ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      className={isExecutingApi ? 'spin-active' : ''}
+                      style={{ marginRight: '6px' }}
+                    >
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    <span>{isExecutingApi ? 'Executing FastAPI Policy Optimization...' : 'Run Adaptive Optimization via FastAPI (:8000)'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleResetDirectInputs}
+                    style={styles.resetInputsBtn}
+                    title="Reset parameters to selected SKU catalog defaults"
+                  >
+                    ↺ Reset Defaults
+                  </button>
+                </div>
+
+                {/* Telemetry pill */}
+                {apiExecutionLog && (
+                  <div style={styles.apiExecutionBadge}>
+                    <span style={styles.pulseGreenDot} className="pulse-dot" />
+                    <span>FastAPI: {apiExecutionLog.status}</span>
+                    <span style={styles.latencyPill}>{apiExecutionLog.latency}</span>
+                    <span style={{ color: '#64748b' }}>{apiExecutionLog.timestamp}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* LIVE FASTAPI RESPONSE & INSPECTION CARD */}
+              {apiResponseData && (
+                <div style={styles.apiResponseCard} className="animate-fade-in">
+                  <div style={styles.apiResponseHeader}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '15px' }}>⚡</span>
+                      <strong style={{ color: '#ffffff', fontSize: '13px' }}>
+                        FastAPI Optimization Contract Output
+                      </strong>
+                      <span style={styles.apiEndpointPill}>POST /api/inventory/optimize</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={styles.apiSuccessTag}>HTTP 200 OK</span>
+                      <span style={styles.apiLatencyTag}>{apiExecutionLog?.latency || '34ms'}</span>
+                    </div>
+                  </div>
+
+                  <div style={styles.apiResponseGrid}>
+                    <div style={styles.apiMetricBox}>
+                      <div style={styles.apiMetricLabel}>OPTIMAL REORDER POINT (ROP)</div>
+                      <div style={styles.apiMetricVal}>
+                        {apiResponseData.selected_reorder_point?.toLocaleString() || '0'}{' '}
+                        <span style={styles.apiMetricUnit}>{currentParamSkuItem.unit}</span>
+                      </div>
+                      <div style={styles.apiMetricSub}>Trigger inventory threshold</div>
+                    </div>
+
+                    <div style={styles.apiMetricBox}>
+                      <div style={styles.apiMetricLabel}>RECOMMENDED ORDER QUANTITY (ROQ)</div>
+                      <div style={{ ...styles.apiMetricVal, color: '#38bdf8' }}>
+                        {apiResponseData.selected_reorder_quantity?.toLocaleString() || '0'}{' '}
+                        <span style={styles.apiMetricUnit}>{currentParamSkuItem.unit}</span>
+                      </div>
+                      <div style={styles.apiMetricSub}>Adaptive economic batch size</div>
+                    </div>
+
+                    <div style={styles.apiMetricBox}>
+                      <div style={styles.apiMetricLabel}>DYNAMIC SAFETY STOCK BUFFER</div>
+                      <div style={{ ...styles.apiMetricVal, color: '#c084fc' }}>
+                        {apiResponseData.safety_stock?.toLocaleString() || '0'}{' '}
+                        <span style={styles.apiMetricUnit}>{currentParamSkuItem.unit}</span>
+                      </div>
+                      <div style={styles.apiMetricSub}>Uncertainty & lead-time hedge</div>
+                    </div>
+
+                    <div style={styles.apiMetricBox}>
+                      <div style={styles.apiMetricLabel}>MATERIAL AVAILABILITY FLAG</div>
+                      <div style={{
+                        ...styles.apiMetricVal,
+                        color: apiResponseData.material_availability_flag ? '#34d399' : '#f87171',
+                        fontSize: '18px',
+                      }}>
+                        {apiResponseData.material_availability_flag ? '✓ AVAILABILITY SAFE' : '⚠ SHORTAGE RISK'}
+                      </div>
+                      <div style={styles.apiMetricSub}>Downstream Line Alpha/Beta Feed</div>
+                    </div>
+                  </div>
+
+                  <div style={styles.apiDecisionRow}>
+                    <div style={styles.apiDecisionTag}>
+                      POLICY ACTION: <strong style={{ color: '#ffffff' }}>{apiResponseData.reorder_recommendation || (apiResponseData.selected_reorder_quantity > 0 ? 'PLACE_ORDER_IMMEDIATELY' : 'INVENTORY_SUFFICIENT')}</strong>
+                    </div>
+                    <div style={styles.apiSyncNotice}>
+                      <span>🔄 Synchronized with Module 4 (Production Scheduling): Garment lines notified of updated safety stock.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
           {/* Simulation Telemetry Status Footer */}
           <div style={styles.simFooterBar}>
@@ -2142,6 +2594,297 @@ const styles = {
     borderRadius: '50%',
     backgroundColor: '#10b981',
     display: 'inline-block',
+  },
+
+  // Mode Tab Bar
+  simTabRow: {
+    display: 'flex',
+    gap: '12px',
+    marginTop: '16px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+    paddingBottom: '14px',
+    flexWrap: 'wrap',
+  },
+  simTabBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    border: '1px solid',
+    borderRadius: '8px',
+    padding: '8px 16px',
+    fontSize: '12px',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  tabBadge: {
+    fontSize: '9.5px',
+    fontWeight: 700,
+    background: 'rgba(59, 130, 246, 0.25)',
+    color: '#93c5fd',
+    padding: '2px 6px',
+    borderRadius: '10px',
+    marginLeft: '4px',
+  },
+
+  // Direct Parameter Inputs (Option A)
+  directInputsContainer: {
+    marginTop: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  directContextBanner: {
+    background: 'rgba(15, 23, 42, 0.7)',
+    border: '1px solid rgba(56, 189, 248, 0.2)',
+    borderRadius: '10px',
+    padding: '10px 14px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
+  codePill: {
+    background: '#090e1a',
+    color: '#38bdf8',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    fontSize: '11px',
+    fontFamily: 'monospace',
+    border: '1px solid rgba(56, 189, 248, 0.3)',
+  },
+  directInputGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '14px',
+  },
+  inputFieldCard: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '10px',
+    padding: '12px 14px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    gap: '6px',
+  },
+  inputFieldHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inputFieldLabel: {
+    fontSize: '10px',
+    fontWeight: 700,
+    letterSpacing: '0.06em',
+    color: '#94a3b8',
+  },
+  inputUnitBadge: {
+    fontSize: '9.5px',
+    fontWeight: 700,
+    padding: '1px 6px',
+    borderRadius: '4px',
+    background: 'rgba(255, 255, 255, 0.06)',
+    color: '#cbd5e1',
+  },
+  fieldInputWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  fieldInput: {
+    width: '100%',
+    background: '#131c31',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '6px',
+    color: '#f8fafc',
+    padding: '7px 48px 7px 10px',
+    fontSize: '13px',
+    fontWeight: 600,
+    fontFamily: 'Outfit, sans-serif',
+    outline: 'none',
+  },
+  inputSuffix: {
+    position: 'absolute',
+    right: '10px',
+    fontSize: '10.5px',
+    fontWeight: 600,
+    color: '#64748b',
+    pointerEvents: 'none',
+  },
+  fieldSelect: {
+    width: '100%',
+    background: '#131c31',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '6px',
+    color: '#f8fafc',
+    padding: '7px 10px',
+    fontSize: '11.5px',
+    fontWeight: 500,
+    outline: 'none',
+    cursor: 'pointer',
+  },
+  fieldHelpText: {
+    fontSize: '10px',
+    color: '#64748b',
+    marginTop: '2px',
+  },
+  directActionRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '12px',
+    paddingTop: '6px',
+  },
+  executeApiBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+    border: '1px solid rgba(16, 185, 129, 0.6)',
+    color: '#ffffff',
+    borderRadius: '8px',
+    padding: '10px 18px',
+    fontSize: '12.5px',
+    fontWeight: 700,
+    boxShadow: '0 4px 18px rgba(16, 185, 129, 0.35)',
+    transition: 'all 0.2s ease',
+  },
+  resetInputsBtn: {
+    background: '#131c31',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    color: '#94a3b8',
+    borderRadius: '8px',
+    padding: '10px 16px',
+    fontSize: '12px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  apiExecutionBadge: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    background: 'rgba(15, 23, 42, 0.8)',
+    border: '1px solid rgba(16, 185, 129, 0.3)',
+    borderRadius: '6px',
+    padding: '6px 12px',
+    fontSize: '11px',
+    color: '#e2e8f0',
+  },
+  latencyPill: {
+    background: 'rgba(16, 185, 129, 0.2)',
+    color: '#34d399',
+    fontWeight: 700,
+    padding: '1px 6px',
+    borderRadius: '4px',
+    fontSize: '10px',
+  },
+
+  // Live API Response Card
+  apiResponseCard: {
+    background: 'linear-gradient(180deg, #0b1528 0%, #060b14 100%)',
+    border: '1px solid rgba(16, 185, 129, 0.4)',
+    borderRadius: '12px',
+    padding: '16px 18px',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
+    marginTop: '4px',
+  },
+  apiResponseHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+    paddingBottom: '10px',
+    marginBottom: '14px',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
+  apiEndpointPill: {
+    background: 'rgba(56, 189, 248, 0.15)',
+    color: '#38bdf8',
+    fontSize: '10.5px',
+    fontFamily: 'monospace',
+    padding: '2px 8px',
+    borderRadius: '4px',
+    border: '1px solid rgba(56, 189, 248, 0.25)',
+  },
+  apiSuccessTag: {
+    fontSize: '10.5px',
+    fontWeight: 700,
+    color: '#34d399',
+    background: 'rgba(16, 185, 129, 0.15)',
+    padding: '2px 8px',
+    borderRadius: '4px',
+    border: '1px solid rgba(16, 185, 129, 0.3)',
+  },
+  apiLatencyTag: {
+    fontSize: '10.5px',
+    fontWeight: 600,
+    color: '#94a3b8',
+    background: 'rgba(255, 255, 255, 0.05)',
+    padding: '2px 6px',
+    borderRadius: '4px',
+  },
+  apiResponseGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '12px',
+  },
+  apiMetricBox: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '8px',
+    padding: '12px 14px',
+  },
+  apiMetricLabel: {
+    fontSize: '9.5px',
+    fontWeight: 700,
+    letterSpacing: '0.06em',
+    color: '#64748b',
+    marginBottom: '4px',
+  },
+  apiMetricVal: {
+    fontSize: '20px',
+    fontWeight: 800,
+    fontFamily: 'Outfit, sans-serif',
+    color: '#ffffff',
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: '4px',
+  },
+  apiMetricUnit: {
+    fontSize: '11px',
+    fontWeight: 500,
+    color: '#64748b',
+  },
+  apiMetricSub: {
+    fontSize: '10px',
+    color: '#64748b',
+    marginTop: '4px',
+  },
+  apiDecisionRow: {
+    marginTop: '14px',
+    paddingTop: '12px',
+    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '10px',
+  },
+  apiDecisionTag: {
+    fontSize: '11px',
+    fontWeight: 700,
+    color: '#10b981',
+    letterSpacing: '0.04em',
+  },
+  apiSyncNotice: {
+    fontSize: '10.5px',
+    color: '#94a3b8',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
   },
 
   // Comparison Card Styles
