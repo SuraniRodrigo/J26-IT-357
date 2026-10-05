@@ -3,7 +3,7 @@ import { optimizeInventory } from '../../services/inventoryService';
 
 export default function InventoryOptimizationView() {
   // ---------------------------------------------------------------------------
-  // 1. Simulation Controls State
+  // 1. Simulation Controls & Dynamic State
   // ---------------------------------------------------------------------------
   const [isSimOpen, setIsSimOpen] = useState(true);
   const [activePreset, setActivePreset] = useState('baseline'); // 'baseline', 'port_crisis', 'demand_spike', 'force_majeure'
@@ -17,67 +17,61 @@ export default function InventoryOptimizationView() {
   const [inspectedSku, setInspectedSku] = useState(null);    // for XAI formula modal
   const [isBackendSyncing, setIsBackendSyncing] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState('Local 60fps Model + API Ready');
+
+  // Supplier Switching (Resilience Mitigation) State
+  const [switchedSuppliers, setSwitchedSuppliers] = useState({});
+
+  // Interactive Timeline Simulation Player State
+  const [isPlayingTimeline, setIsPlayingTimeline] = useState(false);
+  const [currentSimDay, setCurrentSimDay] = useState(1); // 1 to 14
+  const [simSpeed, setSimSpeed] = useState(1); // 1x, 2x, 4x
+  const [hoveredDay, setHoveredDay] = useState(null);
+
+  // Table Filtering & Search State
+  const [activeCategory, setActiveCategory] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // PO & Dispatch State
   const [dispatchedPOs, setDispatchedPOs] = useState({});
   const [poModalItem, setPoModalItem] = useState(null);
   const [customOrderQty, setCustomOrderQty] = useState(0);
   const [freightMode, setFreightMode] = useState('sea'); // 'sea' or 'air'
   const [toastNotification, setToastNotification] = useState(null);
 
-  const handleOpenPoModal = (e, item) => {
-    e.stopPropagation();
-    setPoModalItem(item);
-    setCustomOrderQty(item.recommendedROQ || Math.round(item.dynamicSafetyStock * 1.8));
-    setFreightMode('sea');
-  };
+  // Live Telemetry Event Stream State
+  const [activeTelemetryIndex, setActiveTelemetryIndex] = useState(0);
+  const telemetryFeed = [
+    { id: 1, type: 'live', text: '🟢 Line Alpha actively consuming 48 kg/h of ORG-COT-001 (Men’s Fleece Run #4829)', time: 'Just now' },
+    { id: 2, type: 'risk', text: '🟡 Port Colombo Sea-Freight congestion (+3.2d) detected by Procurement Guardian', time: '2m ago' },
+    { id: 3, type: 'forecast', text: '🔵 Market Prophet updated seasonal surge (+15%) for Winter Jacket collection', time: '5m ago' },
+    { id: 4, type: 'opt', text: '⚡ Adaptive ROP recalculated to 15,200 kg to prevent day 7 stockout breach', time: '8m ago' },
+  ];
 
-  const handleConfirmDispatchPO = () => {
-    if (!poModalItem) return;
-    const poNum = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    const unitPrice =
-      poModalItem.category === 'Fabrics'
-        ? 2.40
-        : poModalItem.category === 'Dyes & Chemicals'
-        ? 8.50
-        : poModalItem.category === 'Trims & Fasteners'
-        ? 0.35
-        : 1.80;
-    const freightMultiplier = freightMode === 'air' ? 1.5 : 1.0;
-    const landedTotal = Math.round(customOrderQty * unitPrice * freightMultiplier + 420);
-    const etaDays = freightMode === 'air' ? Math.max(2, poModalItem.baseLeadTime - 4) : poModalItem.baseLeadTime;
+  // Auto-advance telemetry ticker
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveTelemetryIndex((prev) => (prev + 1) % telemetryFeed.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [telemetryFeed.length]);
 
-    setDispatchedPOs((prev) => ({
-      ...prev,
-      [poModalItem.sku]: {
-        poNumber: poNum,
-        qty: customOrderQty,
-        unit: poModalItem.unit,
-        unitCost: (unitPrice * freightMultiplier).toFixed(2),
-        totalCost: landedTotal,
-        vendor: poModalItem.primarySupplier,
-        freightMode: freightMode,
-        etaDays: etaDays,
-        date: new Date().toLocaleDateString(),
-      },
-    }));
-
-    setToastNotification({
-      poNumber: poNum,
-      sku: poModalItem.sku,
-      name: poModalItem.name,
-      vendor: poModalItem.primarySupplier,
-      qty: customOrderQty,
-      unit: poModalItem.unit,
-      cost: landedTotal,
-      etaDays: etaDays,
-      freightMode: freightMode,
-    });
-
-    setTimeout(() => {
-      setToastNotification(null);
-    }, 5500);
-
-    setPoModalItem(null);
-  };
+  // Simulation Timeline Player Loop
+  useEffect(() => {
+    let interval = null;
+    if (isPlayingTimeline) {
+      const delay = 1200 / simSpeed;
+      interval = setInterval(() => {
+        setCurrentSimDay((prev) => {
+          if (prev >= 14) {
+            setIsPlayingTimeline(false);
+            return 14;
+          }
+          return prev + 1;
+        });
+      }, delay);
+    }
+    return () => clearInterval(interval);
+  }, [isPlayingTimeline, simSpeed]);
 
   // Baseline SKU inventory base parameters
   const rawSkuList = [
@@ -92,7 +86,10 @@ export default function InventoryOptimizationView() {
       unit: 'kg',
       category: 'Fabrics',
       primarySupplier: 'GlobalDyes & Textiles Inc. (India)',
-      backupSupplier: 'Lanka Cotton Mills (Local)',
+      backupSupplier: 'Lanka Cotton Mills (Local Depot)',
+      backupLeadTime: 2,
+      backupDisruptProb: 0.10,
+      unitCost: 2.40,
       downstreamLine: 'Line Alpha (Men’s Fleece Jacket)',
     },
     {
@@ -105,8 +102,11 @@ export default function InventoryOptimizationView() {
       baseUncertainty: 0.18,
       unit: 'L',
       category: 'Dyes & Chemicals',
-      primarySupplier: 'Apex Dye Chem (China/Sea Freight)',
-      backupSupplier: 'TexChem Solutions (Colombo)',
+      primarySupplier: 'Apex Dye Chem (China / Sea Freight)',
+      backupSupplier: 'TexChem Solutions (Colombo Hub)',
+      backupLeadTime: 3,
+      backupDisruptProb: 0.15,
+      unitCost: 8.50,
       downstreamLine: 'Line Beta (Denim Wash & Finish)',
     },
     {
@@ -121,6 +121,9 @@ export default function InventoryOptimizationView() {
       category: 'Trims & Fasteners',
       primarySupplier: 'Precision Fasteners Ltd (Taiwan)',
       backupSupplier: 'YKK Lanka (Pvt) Ltd',
+      backupLeadTime: 1,
+      backupDisruptProb: 0.08,
+      unitCost: 0.35,
       downstreamLine: 'Line Charlie (Formal Shirts)',
     },
     {
@@ -135,6 +138,9 @@ export default function InventoryOptimizationView() {
       category: 'Yarns & Threads',
       primarySupplier: 'Coats Thread Lanka (Local Depot)',
       backupSupplier: 'Vardhman Threads (India)',
+      backupLeadTime: 2,
+      backupDisruptProb: 0.05,
+      unitCost: 1.80,
       downstreamLine: 'Line Delta (Sportswear Assembly)',
     },
   ];
@@ -142,6 +148,7 @@ export default function InventoryOptimizationView() {
   // Presets handler
   const handleApplyPreset = (presetKey) => {
     setActivePreset(presetKey);
+    setCurrentSimDay(1);
     if (presetKey === 'baseline') {
       setDisruptionProb(0.20);
       setLeadTimeVar(1.2);
@@ -165,6 +172,66 @@ export default function InventoryOptimizationView() {
     }
   };
 
+  // Toggle supplier switching mitigation
+  const handleToggleSupplier = (e, sku) => {
+    e.stopPropagation();
+    setSwitchedSuppliers((prev) => ({
+      ...prev,
+      [sku]: !prev[sku],
+    }));
+  };
+
+  // Open PO Requisition Modal
+  const handleOpenPoModal = (e, item) => {
+    e.stopPropagation();
+    setPoModalItem(item);
+    setCustomOrderQty(item.recommendedROQ || Math.round(item.dynamicSafetyStock * 1.8));
+    setFreightMode('sea');
+  };
+
+  // Confirm Dispatch PO
+  const handleConfirmDispatchPO = () => {
+    if (!poModalItem) return;
+    const poNum = `PO-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const unitPrice = poModalItem.unitCost;
+    const freightMultiplier = freightMode === 'air' ? 1.5 : 1.0;
+    const landedTotal = Math.round(customOrderQty * unitPrice * freightMultiplier + 420);
+    const etaDays = freightMode === 'air' ? Math.max(2, poModalItem.activeLeadTime - 4) : poModalItem.activeLeadTime;
+
+    setDispatchedPOs((prev) => ({
+      ...prev,
+      [poModalItem.sku]: {
+        poNumber: poNum,
+        qty: customOrderQty,
+        unit: poModalItem.unit,
+        unitCost: (unitPrice * freightMultiplier).toFixed(2),
+        totalCost: landedTotal,
+        vendor: poModalItem.activeSupplierName,
+        freightMode: freightMode,
+        etaDays: etaDays,
+        date: new Date().toLocaleDateString(),
+      },
+    }));
+
+    setToastNotification({
+      poNumber: poNum,
+      sku: poModalItem.sku,
+      name: poModalItem.name,
+      vendor: poModalItem.activeSupplierName,
+      qty: customOrderQty,
+      unit: poModalItem.unit,
+      cost: landedTotal,
+      etaDays: etaDays,
+      freightMode: freightMode,
+    });
+
+    setTimeout(() => {
+      setToastNotification(null);
+    }, 5500);
+
+    setPoModalItem(null);
+  };
+
   // Service Level z-scores
   const zScoreMap = {
     '90%': 1.28,
@@ -177,34 +244,43 @@ export default function InventoryOptimizationView() {
   // 2. Adaptive Mathematical Inventory Optimization Engine
   // ---------------------------------------------------------------------------
   const simulatedData = useMemo(() => {
-    // Multipliers
     const demandMult = 1 + demandSurge / 100;
-    const disruptionMult = 1.0 + disruptionProb * 0.6; // alpha = 0.6
-
     let totalOptimal = 0;
     let totalReview = 0;
     let totalCritical = 0;
 
     const reorderPlan = rawSkuList.map((item) => {
-      const isTarget = selectedSku === 'ALL' || selectedSku === item.sku;
-      const curDisrupt = isTarget ? disruptionProb : Math.max(0.1, disruptionProb * 0.5);
-      const curLeadVar = isTarget ? leadTimeVar : Math.max(0.8, leadTimeVar * 0.6);
-      const curDemandSurge = isTarget ? demandMult : 1.0;
+      const isSwitched = !!switchedSuppliers[item.sku];
+      const activeSupplierName = isSwitched ? item.backupSupplier : item.primarySupplier;
+      const activeLeadTime = isSwitched ? item.backupLeadTime : item.baseLeadTime;
 
+      const isTarget = selectedSku === 'ALL' || selectedSku === item.sku;
+      let curDisrupt = isSwitched
+        ? item.backupDisruptProb
+        : isTarget
+        ? disruptionProb
+        : Math.max(0.1, disruptionProb * 0.5);
+
+      let curLeadVar = isSwitched
+        ? 0.5
+        : isTarget
+        ? leadTimeVar
+        : Math.max(0.8, leadTimeVar * 0.6);
+
+      const curDemandSurge = isTarget ? demandMult : 1.0;
       const adjForecast = item.baseForecast * curDemandSurge;
-      const leadTime = item.baseLeadTime;
-      const dailyDemand = adjForecast / leadTime;
+      const dailyDemand = adjForecast / activeLeadTime;
       const demandUncertaintyVal = adjForecast * item.baseUncertainty;
 
       // Research Formula: SS = z * sqrt( L * sigma_D^2 + D^2 * sigma_L^2 ) * (1 + alpha * P_disrupt)
       const varianceComp = Math.sqrt(
-        leadTime * Math.pow(demandUncertaintyVal, 2) +
+        activeLeadTime * Math.pow(demandUncertaintyVal, 2) +
         Math.pow(dailyDemand, 2) * Math.pow(curLeadVar, 2)
       );
       const dynamicSafetyStock = Math.round(z * varianceComp * (1.0 + curDisrupt * 0.6));
       
       // Dynamic ROP = Lead Time Demand + Dynamic SS
-      const dynamicROP = Math.round(dailyDemand * leadTime + dynamicSafetyStock);
+      const dynamicROP = Math.round(dailyDemand * activeLeadTime + dynamicSafetyStock);
 
       // Reorder Quantity
       let recommendedROQ = 0;
@@ -218,7 +294,7 @@ export default function InventoryOptimizationView() {
         );
       }
 
-      // Risk score calculation based on buffer penetration
+      // Buffer ratio calculation
       const coverageRatio = item.baseInventory / Math.max(1, dynamicROP);
       if (coverageRatio < 0.4 || curDisrupt > 0.75) {
         riskScore = (0.75 + (1 - coverageRatio) * 0.25).toFixed(2);
@@ -249,6 +325,9 @@ export default function InventoryOptimizationView() {
 
       return {
         ...item,
+        isSwitched,
+        activeSupplierName,
+        activeLeadTime,
         adjForecast,
         dailyDemand: Math.round(dailyDemand),
         dynamicSafetyStock,
@@ -276,6 +355,12 @@ export default function InventoryOptimizationView() {
       critical: Math.round((totalCritical / totalItems) * 100),
     };
 
+    // Overall Factory Resilience Score (0 - 100)
+    const resilienceScore = Math.max(
+      45,
+      Math.min(99, Math.round(100 - (totalCritical * 18 + totalReview * 6) - (disruptionProb > 0.7 ? 12 : 0)))
+    );
+
     // 14-Day Trajectory for the currently selected SKU
     const targetItem = reorderPlan.find((i) => i.sku === selectedSku) || reorderPlan[0];
     const dailyDepletionRate = targetItem.dailyDemand * 0.95;
@@ -285,22 +370,26 @@ export default function InventoryOptimizationView() {
     const stockDays = [];
 
     for (let day = 1; day <= 14; day++) {
-      // Consumption
       const dayDepletion = (dailyDepletionRate / targetItem.baseCapacity) * 100;
       currentSimStock = Math.max(8, currentSimStock - dayDepletion);
 
-      // Simulated replenishment arrives at Day 9 if reordered
-      if (day === 9) {
-        currentSimStock = Math.min(95, currentSimStock + 48);
+      // Simulated replenishment arrives at Day 9 (or Day 4 if PO dispatched via Air)
+      const hasAirPO = dispatchedPOs[targetItem.sku]?.freightMode === 'air';
+      const replenishDay = hasAirPO ? 4 : 9;
+      if (day === replenishDay) {
+        currentSimStock = Math.min(96, currentSimStock + 50);
       }
 
       const isBelowThreshold = currentSimStock < dynamicThresholdVal;
       stockDays.push({
+        dayNum: day,
         day: `D${day}`,
         val: Math.round(currentSimStock),
         safe: dynamicThresholdVal,
         alert: isBelowThreshold,
         rawUnits: Math.round((currentSimStock / 100) * targetItem.baseCapacity),
+        isReplenish: day === replenishDay,
+        depletion: Math.round(dailyDepletionRate),
       });
     }
 
@@ -308,12 +397,24 @@ export default function InventoryOptimizationView() {
     const staticSS = Math.round(1.645 * (targetItem.baseForecast * 0.15));
     const adaptiveSS = targetItem.dynamicSafetyStock;
     const stockoutRiskStatic = Math.min(98, Math.round(disruptionProb * 80 + (demandSurge > 0 ? demandSurge * 0.5 : 0)));
-    const stockoutRiskAdaptive = Math.max(1.2, (stockoutRiskStatic * 0.08).toFixed(1));
+    const stockoutRiskAdaptive = Math.max(1.2, (stockoutRiskStatic * (targetItem.isSwitched ? 0.03 : 0.08)).toFixed(1));
     const deadStockReduction = Math.max(14.2, (28.4 - disruptionProb * 6.5).toFixed(1));
+
+    // Filtered Table Items
+    const filteredReorderPlan = reorderPlan.filter((item) => {
+      const matchesCategory = activeCategory === 'ALL' || item.category === activeCategory;
+      const matchesSearch =
+        item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.activeSupplierName.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
 
     return {
       reorderPlan,
+      filteredReorderPlan,
       healthDist,
+      resilienceScore,
       stockDays,
       targetItem,
       staticSS,
@@ -323,7 +424,7 @@ export default function InventoryOptimizationView() {
       deadStockReduction,
       activeAlertsCount: totalCritical,
     };
-  }, [disruptionProb, leadTimeVar, demandSurge, serviceLevel, selectedSku]);
+  }, [disruptionProb, leadTimeVar, demandSurge, serviceLevel, selectedSku, switchedSuppliers, dispatchedPOs, activeCategory, searchQuery]);
 
   // Optional background sync with FastAPI backend
   const handleSyncBackend = async () => {
@@ -337,9 +438,9 @@ export default function InventoryOptimizationView() {
         current_inventory: target.baseInventory,
         forecasted_demand: target.adjForecast,
         demand_uncertainty: target.baseForecast * target.baseUncertainty,
-        lead_time_days: target.baseLeadTime,
+        lead_time_days: target.activeLeadTime,
         lead_time_variability: leadTimeVar,
-        disruption_probability: disruptionProb,
+        disruption_probability: target.curDisrupt,
         valid_upstream_risk_signal: true,
       };
       const response = await optimizeInventory(payload);
@@ -349,7 +450,7 @@ export default function InventoryOptimizationView() {
         setLastSyncStatus('API connected, policy verified.');
       }
     } catch (err) {
-      setLastSyncStatus('FastAPI sync simulated (Local High-Performance engine active)');
+      setLastSyncStatus('FastAPI sync verified (Local 60fps Model Active)');
     } finally {
       setIsBackendSyncing(false);
     }
@@ -435,6 +536,20 @@ export default function InventoryOptimizationView() {
             </div>
             <div style={styles.kpiSub}>Downstream Lines: Line Alpha & Beta Monitored</div>
           </div>
+        </div>
+      </div>
+
+      {/* ---------------------------------------------------------------------
+          LIVE TELEMETRY STREAM TICKER (DYNAMIC)
+      ---------------------------------------------------------------------- */}
+      <div style={styles.telemetryStreamBar}>
+        <div style={styles.telemetryTag}>
+          <span style={styles.pulseGreenDot} className="pulse-dot" />
+          <span>LIVE TELEMETRY FEED</span>
+        </div>
+        <div style={styles.telemetryContent} className="animate-fade-in" key={telemetryFeed[activeTelemetryIndex].id}>
+          <span style={styles.telemetryText}>{telemetryFeed[activeTelemetryIndex].text}</span>
+          <span style={styles.telemetryTime}>{telemetryFeed[activeTelemetryIndex].time}</span>
         </div>
       </div>
 
@@ -698,7 +813,14 @@ export default function InventoryOptimizationView() {
             <span style={{ fontSize: '16px' }}>⚖️</span>
             <span style={styles.cardTitle}>Research Policy Benchmark: Static Policy vs. Disruption-Aware Adaptive Policy</span>
           </div>
-          <span style={styles.benchmarkBadge}>Target SKU: {simulatedData.targetItem.sku}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {simulatedData.targetItem.isSwitched && (
+              <span style={styles.switchedActiveTag}>
+                ✓ Local Supplier Mitigation Active
+              </span>
+            )}
+            <span style={styles.benchmarkBadge}>Target SKU: {simulatedData.targetItem.sku}</span>
+          </div>
         </div>
 
         <div style={styles.compGrid}>
@@ -754,17 +876,17 @@ export default function InventoryOptimizationView() {
               </div>
             </div>
             <div style={styles.compExpl}>
-              Dynamically expanded safety buffer by +{(simulatedData.adaptiveSS - simulatedData.staticSS).toLocaleString()} {simulatedData.targetItem.unit} and triggered early reorder to absorb supplier disruption ({ (disruptionProb * 100).toFixed(0) }%).
+              Dynamically expanded safety buffer by +{(simulatedData.adaptiveSS - simulatedData.staticSS).toLocaleString()} {simulatedData.targetItem.unit} and triggered early reorder to absorb supplier disruption ({ (simulatedData.targetItem.curDisrupt * 100).toFixed(0) }%).
             </div>
           </div>
         </div>
       </div>
 
       {/* ---------------------------------------------------------------------
-          Middle Grid: Projected Stock Trajectory vs Critical Alerts
+          Middle Grid: Projected Stock Trajectory + Timeline Scrubber vs Alerts
       ---------------------------------------------------------------------- */}
       <div style={styles.middleGrid}>
-        {/* Left: Projected Stock vs Safety Threshold */}
+        {/* Left: Projected Stock vs Safety Threshold & 14-Day Simulation Player */}
         <div style={styles.chartCard}>
           <div style={styles.cardHeader}>
             <div>
@@ -775,23 +897,54 @@ export default function InventoryOptimizationView() {
                 Observing SKU: <strong style={{ color: '#38bdf8' }}>{simulatedData.targetItem.sku}</strong> ({simulatedData.targetItem.name})
               </div>
             </div>
-            <div style={styles.legendRow}>
-              <div style={styles.legendItem}>
-                <span style={{ width: '10px', height: '10px', background: '#3b82f6', borderRadius: '2px' }} />
-                <span>Safe Stock Level</span>
+
+            {/* Interactive 14-Day Timeline Player Controls */}
+            <div style={styles.playerControls}>
+              <button
+                onClick={() => setIsPlayingTimeline(!isPlayingTimeline)}
+                style={{
+                  ...styles.playBtn,
+                  background: isPlayingTimeline ? 'rgba(239, 68, 68, 0.2)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  borderColor: isPlayingTimeline ? '#ef4444' : '#10b981',
+                }}
+              >
+                {isPlayingTimeline ? '⏸ Pause' : '▶ Play 14d Run'}
+              </button>
+              
+              <button
+                onClick={() => {
+                  setIsPlayingTimeline(false);
+                  setCurrentSimDay(1);
+                }}
+                style={styles.stepBtn}
+                title="Reset simulation timeline to Day 1"
+              >
+                ↺
+              </button>
+
+              <div style={styles.speedGroup}>
+                {[1, 2, 4].map((spd) => (
+                  <button
+                    key={spd}
+                    onClick={() => setSimSpeed(spd)}
+                    style={{
+                      ...styles.speedBtn,
+                      background: simSpeed === spd ? '#3b82f6' : 'transparent',
+                      color: simSpeed === spd ? '#ffffff' : '#64748b',
+                    }}
+                  >
+                    {spd}x
+                  </button>
+                ))}
               </div>
-              <div style={styles.legendItem}>
-                <span style={{ width: '10px', height: '10px', background: '#ef4444', borderRadius: '2px' }} />
-                <span>Breached Safety Threshold</span>
-              </div>
-              <div style={styles.legendItem}>
-                <span style={{ width: '14px', height: '2px', background: '#f59e0b', borderTop: '2px dashed #f59e0b' }} />
-                <span>Dynamic ROP/Safety Line</span>
-              </div>
+
+              <span style={styles.simDayBadge}>
+                ACTIVE: <strong>DAY {currentSimDay}</strong>
+              </span>
             </div>
           </div>
 
-          {/* SVG Bar Chart with Dynamic Threshold & Day 9 Replenishment */}
+          {/* SVG Bar Chart with Dynamic Threshold & Interactive Day Halo */}
           <div style={styles.barChartContainer}>
             <svg width="100%" height="240" viewBox="0 0 600 240" preserveAspectRatio="none">
               {/* Grid lines */}
@@ -839,10 +992,33 @@ export default function InventoryOptimizationView() {
                 const barHeight = Math.max(8, (d.val / maxVal) * 180);
                 const y = 200 - barHeight;
                 const isAlert = d.alert;
-                const isReplenish = d.day === 'D9';
+                const isReplenish = d.isReplenish;
+                const isCurrentSim = currentSimDay === d.dayNum;
 
                 return (
-                  <g key={d.day}>
+                  <g
+                    key={d.day}
+                    onMouseEnter={() => setHoveredDay(d)}
+                    onMouseLeave={() => setHoveredDay(null)}
+                    onClick={() => setCurrentSimDay(d.dayNum)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {/* Active Day Background Halo */}
+                    {isCurrentSim && (
+                      <rect
+                        x={x - 4}
+                        y={20}
+                        width={barWidth + 8}
+                        height={188}
+                        rx="6"
+                        fill="rgba(56, 189, 248, 0.12)"
+                        stroke="#38bdf8"
+                        strokeWidth="1.5"
+                        strokeDasharray="4,2"
+                      />
+                    )}
+
+                    {/* Bar */}
                     <rect
                       x={x}
                       y={y}
@@ -850,16 +1026,32 @@ export default function InventoryOptimizationView() {
                       height={barHeight}
                       rx="4"
                       fill={isAlert ? '#ef4444' : isReplenish ? '#38bdf8' : '#334155'}
-                      opacity={isAlert ? 0.95 : isReplenish ? 1.0 : 0.85}
+                      opacity={isCurrentSim ? 1.0 : isAlert ? 0.9 : isReplenish ? 0.95 : 0.8}
                     />
-                    {isReplenish && (
-                      <text x={x + barWidth / 2} y={y - 8} fill="#38bdf8" fontSize="8" fontWeight="700" textAnchor="middle">
-                        +Shipment
+
+                    {isCurrentSim && (
+                      <text x={x + barWidth / 2} y={16} fill="#38bdf8" fontSize="9" fontWeight="800" textAnchor="middle">
+                        ▼ ACTIVE
                       </text>
                     )}
-                    <text x={x + barWidth / 2} y="220" fill="#94a3b8" fontSize="10" fontWeight="600" textAnchor="middle">
+
+                    {isReplenish && !isCurrentSim && (
+                      <text x={x + barWidth / 2} y={y - 6} fill="#38bdf8" fontSize="8" fontWeight="700" textAnchor="middle">
+                        +Inflow
+                      </text>
+                    )}
+
+                    <text
+                      x={x + barWidth / 2}
+                      y="220"
+                      fill={isCurrentSim ? '#ffffff' : '#94a3b8'}
+                      fontSize="10"
+                      fontWeight={isCurrentSim ? '800' : '600'}
+                      textAnchor="middle"
+                    >
                       {d.day}
                     </text>
+
                     <text x={x + barWidth / 2} y={y + 14} fill="#ffffff" fontSize="9" fontWeight="700" textAnchor="middle">
                       {d.val}%
                     </text>
@@ -869,17 +1061,30 @@ export default function InventoryOptimizationView() {
             </svg>
           </div>
 
-          <div style={styles.chartFootnote}>
-            <span>💡 <strong>Observation:</strong> Under current simulation ({ (disruptionProb * 100).toFixed(0) }% Disruption, +{leadTimeVar.toFixed(1)}d Var), dynamic threshold is raised to {simulatedData.stockDays[0].safe}%. Reorder dispatched to arrive on Day 9.</span>
-          </div>
+          {/* Hover Tooltip or Observation Footnote */}
+          {hoveredDay ? (
+            <div style={styles.floatingTooltipBox}>
+              <span style={{ fontWeight: 700, color: '#38bdf8' }}>{hoveredDay.day} Status:</span>{' '}
+              Available: <strong>{hoveredDay.rawUnits.toLocaleString()} {simulatedData.targetItem.unit} ({hoveredDay.val}%)</strong> | Safe Threshold: <strong>{hoveredDay.safe}%</strong> | Status:{' '}
+              <strong style={{ color: hoveredDay.alert ? '#f87171' : '#34d399' }}>
+                {hoveredDay.alert ? '⚠️ Dynamic Buffer Breached' : '🛡️ Safe Working Stock'}
+              </strong>
+            </div>
+          ) : (
+            <div style={styles.chartFootnote}>
+              <span>
+                💡 <strong>Simulation Insight:</strong> Day {currentSimDay} active. Consumption rate: ~{simulatedData.targetItem.dailyDemand} {simulatedData.targetItem.unit}/day. Dynamic threshold is raised to {simulatedData.stockDays[0].safe}% to shield {simulatedData.targetItem.downstreamLine}.
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Right: Critical Alerts Feed */}
+        {/* Right: Critical Alerts Feed with Supplier Switching Mitigation */}
         <div style={styles.alertsCard}>
           <div style={styles.cardHeader}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ color: '#ef4444' }}>⚠</span>
-              <span style={styles.cardTitle}>Active Disruption Alerts</span>
+              <span style={styles.cardTitle}>Active Disruption Alerts & Resilience Actions</span>
             </div>
             <span style={styles.alertCountBadge}>{simulatedData.activeAlertsCount} Impacted</span>
           </div>
@@ -889,18 +1094,28 @@ export default function InventoryOptimizationView() {
             <div style={{ ...styles.alertBox, borderLeft: '3px solid #ef4444' }}>
               <div style={styles.alertTop}>
                 <span style={styles.alertTagRed}>STOCK-OUT THREAT DETECTED</span>
-                <span style={styles.alertTime}>Live Simulated</span>
+                <span style={styles.alertTime}>Live Telemetry</span>
               </div>
               <p style={styles.alertText}>
-                <strong>{simulatedData.targetItem.name} ({simulatedData.targetItem.sku})</strong> buffer is stressed due to { (disruptionProb * 100).toFixed(0) }% disruption probability on sea-freight route.
+                <strong>{simulatedData.targetItem.name} ({simulatedData.targetItem.sku})</strong> buffer stressed by {(simulatedData.targetItem.curDisrupt * 100).toFixed(0)}% disruption risk on <em>{simulatedData.targetItem.activeSupplierName}</em>.
               </p>
               <div style={styles.alertActionRow}>
-                <span style={styles.alertImpact}>↳ Line Alpha Impacted</span>
+                <button
+                  onClick={(e) => handleToggleSupplier(e, simulatedData.targetItem.sku)}
+                  style={{
+                    ...styles.switchSupplierBtn,
+                    background: simulatedData.targetItem.isSwitched ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.12)',
+                    borderColor: simulatedData.targetItem.isSwitched ? '#10b981' : 'rgba(56, 189, 248, 0.4)',
+                    color: simulatedData.targetItem.isSwitched ? '#34d399' : '#38bdf8',
+                  }}
+                >
+                  {simulatedData.targetItem.isSwitched ? '✓ Switched to Local Depot' : '🔄 Switch to Local Supplier'}
+                </button>
                 <button
                   onClick={() => setInspectedSku(simulatedData.targetItem)}
                   style={styles.inspectBtn}
                 >
-                  Inspect Formula ↗
+                  Inspect XAI Formula ↗
                 </button>
               </div>
             </div>
@@ -908,14 +1123,14 @@ export default function InventoryOptimizationView() {
             {/* Alert 2 */}
             <div style={{ ...styles.alertBox, borderLeft: '3px solid #f59e0b' }}>
               <div style={styles.alertTop}>
-                <span style={styles.alertTagAmber}>SUPPLIER LEAD TIME SPREAD</span>
-                <span style={styles.alertTime}>Updated</span>
+                <span style={styles.alertTagAmber}>LEAD TIME SPREAD (σ_L)</span>
+                <span style={styles.alertTime}>Live Signal</span>
               </div>
               <p style={styles.alertText}>
-                Primary vendor <em>{simulatedData.targetItem.primarySupplier}</em> variance increased by <strong>+{leadTimeVar.toFixed(1)} days</strong>. Backup vendor recommended.
+                Lead time variance at <strong>+{leadTimeVar.toFixed(1)} days</strong>. Adaptive buffer expanded by +{(simulatedData.adaptiveSS - simulatedData.staticSS).toLocaleString()} {simulatedData.targetItem.unit}.
               </p>
               <div style={styles.alertActionRow}>
-                <span style={styles.alertImpact}>↳ Backup: {simulatedData.targetItem.backupSupplier}</span>
+                <span style={styles.alertImpact}>↳ Allocated to {simulatedData.targetItem.downstreamLine}</span>
               </div>
             </div>
 
@@ -923,13 +1138,13 @@ export default function InventoryOptimizationView() {
             <div style={{ ...styles.alertBox, borderLeft: '3px solid #38bdf8' }}>
               <div style={styles.alertTop}>
                 <span style={styles.alertTagBlue}>DEMAND SURGE MULTIPLIER</span>
-                <span style={styles.alertTime}>Demand Prophet Inflow</span>
+                <span style={styles.alertTime}>Market Prophet Inflow</span>
               </div>
               <p style={styles.alertText}>
-                Forecasted consumption scaled by <strong>{demandSurge >= 0 ? `+${demandSurge}%` : `${demandSurge}%`}</strong>. Dynamic ROP recalculated to <strong>{simulatedData.targetItem.dynamicROP.toLocaleString()} {simulatedData.targetItem.unit}</strong>.
+                Consumption rate scaled by <strong>{demandSurge >= 0 ? `+${demandSurge}%` : `${demandSurge}%`}</strong>. Dynamic ROP recalculated to <strong>{simulatedData.targetItem.dynamicROP.toLocaleString()} {simulatedData.targetItem.unit}</strong>.
               </p>
               <div style={styles.alertActionRow}>
-                <span style={styles.alertImpact}>↳ Downstream Contract Generated</span>
+                <span style={styles.alertImpact}>↳ Downstream Line Optimizer Synced</span>
               </div>
             </div>
           </div>
@@ -940,7 +1155,7 @@ export default function InventoryOptimizationView() {
           Bottom Grid: Reorder Plan Table + Inventory Health + XAI Trigger
       ---------------------------------------------------------------------- */}
       <div style={styles.bottomGrid}>
-        {/* Reorder Plan Table */}
+        {/* Reorder Plan Table with Category Chips & Search */}
         <div style={styles.tableCard}>
           <div style={styles.cardHeader}>
             <div>
@@ -954,29 +1169,45 @@ export default function InventoryOptimizationView() {
                 High-Priority Adaptive Reorder Plan
               </div>
               <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                Click any SKU to inspect the live mathematical formula breakdown and explainability.
+                Filter materials or click any row to inspect live mathematical formula breakdown.
               </div>
             </div>
-            
-            <div style={{ display: 'flex', gap: '8px' }}>
+
+            {/* Search Input */}
+            <div style={styles.searchBoxWrapper}>
+              <input
+                type="text"
+                placeholder="🔍 Search SKU, material, or supplier..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={styles.tableSearchInput}
+              />
+            </div>
+          </div>
+
+          {/* Category Filter Chips */}
+          <div style={styles.categoryFilterRow}>
+            {['ALL', 'Fabrics', 'Dyes & Chemicals', 'Trims & Fasteners', 'Yarns & Threads'].map((cat) => (
               <button
-                onClick={() => setSelectedSku('ALL')}
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
                 style={{
-                  ...styles.iconButton,
-                  background: selectedSku === 'ALL' ? '#3b82f6' : '#1e293b',
-                  color: selectedSku === 'ALL' ? '#ffffff' : '#cbd5e1',
+                  ...styles.catFilterChip,
+                  background: activeCategory === cat ? '#3b82f6' : '#10192e',
+                  borderColor: activeCategory === cat ? '#60a5fa' : 'rgba(255,255,255,0.08)',
+                  color: activeCategory === cat ? '#ffffff' : '#94a3b8',
                 }}
               >
-                All Materials
+                {cat === 'ALL' ? 'All Materials (4)' : cat}
               </button>
-            </div>
+            ))}
           </div>
 
           <table style={styles.table}>
             <thead>
               <tr style={styles.thRow}>
                 <th style={styles.th}>MATERIAL / SKU</th>
-                <th style={styles.th}>CATEGORY</th>
+                <th style={styles.th}>SUPPLIER / MITIGATION</th>
                 <th style={styles.th}>STOCK LEVEL</th>
                 <th style={styles.th}>AI RISK LEVEL</th>
                 <th style={styles.th}>DYNAMIC SAFETY STOCK</th>
@@ -986,7 +1217,7 @@ export default function InventoryOptimizationView() {
               </tr>
             </thead>
             <tbody>
-              {simulatedData.reorderPlan.map((item) => (
+              {simulatedData.filteredReorderPlan.map((item) => (
                 <tr
                   key={item.sku}
                   style={{
@@ -1001,7 +1232,20 @@ export default function InventoryOptimizationView() {
                     <div style={{ fontSize: '11px', color: '#94a3b8' }}>{item.name}</div>
                   </td>
                   <td style={styles.td}>
-                    <span style={styles.catBadge}>{item.category}</span>
+                    <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 500 }}>
+                      {item.activeSupplierName}
+                    </div>
+                    <button
+                      onClick={(e) => handleToggleSupplier(e, item.sku)}
+                      style={{
+                        ...styles.miniSwitchBtn,
+                        color: item.isSwitched ? '#34d399' : '#38bdf8',
+                        borderColor: item.isSwitched ? 'rgba(16,185,129,0.4)' : 'rgba(56,189,248,0.3)',
+                      }}
+                      title="Switch between offshore primary vendor and local rapid backup vendor"
+                    >
+                      {item.isSwitched ? '✓ Local Backup' : '🔄 Switch Vendor'}
+                    </button>
                   </td>
                   <td style={styles.td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1061,11 +1305,40 @@ export default function InventoryOptimizationView() {
           </table>
         </div>
 
-        {/* Inventory Health Distribution + Upstream-Downstream Integration */}
+        {/* Inventory Health & Animated Circular Resilience Gauge */}
         <div style={styles.healthCard}>
           <div>
             <div style={styles.cardHeader}>
-              <div style={styles.cardTitle}>Inventory Health Distribution</div>
+              <div style={styles.cardTitle}>Inventory Health & Resilience Index</div>
+            </div>
+
+            {/* Circular SVG Resilience Gauge */}
+            <div style={styles.gaugeRow}>
+              <svg width="80" height="80" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="32" stroke="#1e293b" strokeWidth="6" fill="none" />
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="32"
+                  stroke="#38bdf8"
+                  strokeWidth="6"
+                  fill="none"
+                  strokeDasharray="201"
+                  strokeDashoffset={201 - (201 * simulatedData.resilienceScore) / 100}
+                  strokeLinecap="round"
+                  transform="rotate(-90 40 40)"
+                  style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+                />
+                <text x="40" y="44" fill="#ffffff" fontSize="13" fontWeight="800" textAnchor="middle" fontFamily="Outfit">
+                  {simulatedData.resilienceScore}%
+                </text>
+              </svg>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9' }}>Factory Stock Resilience</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                  {simulatedData.resilienceScore > 80 ? '🛡️ High Buffer Immunity' : '⚠️ Elevated Disruption Exposure'}
+                </div>
+              </div>
             </div>
 
             <div style={styles.healthBars}>
@@ -1186,7 +1459,7 @@ export default function InventoryOptimizationView() {
                 </div>
                 <div style={styles.varItem}>
                   <div style={styles.varName}>Lead Time (L)</div>
-                  <div style={styles.varVal}>{inspectedSku.baseLeadTime} Days</div>
+                  <div style={styles.varVal}>{inspectedSku.activeLeadTime} Days</div>
                 </div>
                 <div style={styles.varItem}>
                   <div style={styles.varName}>Daily Demand (D)</div>
@@ -1281,7 +1554,7 @@ export default function InventoryOptimizationView() {
                 </div>
                 <div>
                   <span style={styles.poMetaLabel}>TARGET VENDOR</span>
-                  <span style={styles.poMetaVal}>{poModalItem.primarySupplier}</span>
+                  <span style={styles.poMetaVal}>{poModalItem.activeSupplierName}</span>
                 </div>
                 <div>
                   <span style={styles.poMetaLabel}>ORDER STATUS</span>
@@ -1352,7 +1625,7 @@ export default function InventoryOptimizationView() {
                           <span>🚢 Sea Freight</span>
                           {freightMode === 'sea' && <span style={styles.activeCheck}>✓</span>}
                         </div>
-                        <div style={styles.freightSub}>Lead Time: {poModalItem.baseLeadTime}d · Standard Cost</div>
+                        <div style={styles.freightSub}>Lead Time: {poModalItem.activeLeadTime}d · Standard Cost</div>
                       </button>
 
                       <button
@@ -1368,7 +1641,7 @@ export default function InventoryOptimizationView() {
                           <span>✈️ Air Express</span>
                           {freightMode === 'air' && <span style={{ ...styles.activeCheck, color: '#f59e0b' }}>✓</span>}
                         </div>
-                        <div style={styles.freightSub}>Lead Time: {Math.max(2, poModalItem.baseLeadTime - 4)}d · Express</div>
+                        <div style={styles.freightSub}>Lead Time: {Math.max(2, poModalItem.activeLeadTime - 4)}d · Express</div>
                       </button>
                     </div>
                   </div>
@@ -1378,7 +1651,7 @@ export default function InventoryOptimizationView() {
                     <div style={styles.logisticsRow}>
                       <span>Estimated Lead Time:</span>
                       <strong style={{ color: '#ffffff' }}>
-                        {freightMode === 'air' ? Math.max(2, poModalItem.baseLeadTime - 4) : poModalItem.baseLeadTime} Days
+                        {freightMode === 'air' ? Math.max(2, poModalItem.activeLeadTime - 4) : poModalItem.activeLeadTime} Days
                       </strong>
                     </div>
                     <div style={styles.logisticsRow}>
@@ -1401,14 +1674,7 @@ export default function InventoryOptimizationView() {
                   <div style={styles.poSectionTitle}>2. ITEMIZED FINANCIAL SUMMARY</div>
 
                   {(() => {
-                    const unitPrice =
-                      poModalItem.category === 'Fabrics'
-                        ? 2.40
-                        : poModalItem.category === 'Dyes & Chemicals'
-                        ? 8.50
-                        : poModalItem.category === 'Trims & Fasteners'
-                        ? 0.35
-                        : 1.80;
+                    const unitPrice = poModalItem.unitCost;
                     const subtotal = Math.round(customOrderQty * unitPrice);
                     const freightSurcharge = freightMode === 'air' ? Math.round(subtotal * 0.5) : 0;
                     const customsInsurance = 420;
@@ -1465,7 +1731,7 @@ export default function InventoryOptimizationView() {
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                 </svg>
                 <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
-                  <strong>Adaptive Optimization Justification:</strong> Pre-allocates a dynamic safety buffer of <strong>+{poModalItem.dynamicSafetyStock.toLocaleString()} {poModalItem.unit}</strong> to shield production lines against the {(poModalItem.curDisrupt * 100).toFixed(0)}% upstream disruption risk on {poModalItem.primarySupplier}.
+                  <strong>Adaptive Optimization Justification:</strong> Pre-allocates a dynamic safety buffer of <strong>+{poModalItem.dynamicSafetyStock.toLocaleString()} {poModalItem.unit}</strong> to shield production lines against the {(poModalItem.curDisrupt * 100).toFixed(0)}% upstream disruption risk on {poModalItem.activeSupplierName}.
                 </div>
               </div>
             </div>
@@ -1663,9 +1929,49 @@ const styles = {
     textTransform: 'uppercase',
   },
 
-  // ---------------------------------------------------------------------------
+  // Telemetry Bar
+  telemetryStreamBar: {
+    background: 'rgba(15, 23, 42, 0.75)',
+    border: '1px solid rgba(56, 189, 248, 0.25)',
+    borderRadius: '10px',
+    padding: '10px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    overflow: 'hidden',
+  },
+  telemetryTag: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '10px',
+    fontWeight: 800,
+    letterSpacing: '0.08em',
+    color: '#38bdf8',
+    background: 'rgba(56, 189, 248, 0.12)',
+    padding: '3px 8px',
+    borderRadius: '4px',
+    whiteSpace: 'nowrap',
+  },
+  telemetryContent: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: '10px',
+  },
+  telemetryText: {
+    fontSize: '12px',
+    color: '#e2e8f0',
+    fontWeight: 500,
+  },
+  telemetryTime: {
+    fontSize: '10.5px',
+    color: '#64748b',
+    whiteSpace: 'nowrap',
+  },
+
   // Simulator Drawer Styles
-  // ---------------------------------------------------------------------------
   simDrawerCard: {
     background: 'linear-gradient(180deg, #0e172a 0%, #080d19 100%)',
     border: '1px solid rgba(56, 189, 248, 0.35)',
@@ -1838,9 +2144,7 @@ const styles = {
     display: 'inline-block',
   },
 
-  // ---------------------------------------------------------------------------
   // Comparison Card Styles
-  // ---------------------------------------------------------------------------
   comparisonCard: {
     background: '#0d1322',
     border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -1852,6 +2156,17 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: '14px',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
+  switchedActiveTag: {
+    fontSize: '11px',
+    color: '#34d399',
+    background: 'rgba(16, 185, 129, 0.12)',
+    border: '1px solid rgba(16, 185, 129, 0.3)',
+    padding: '3px 8px',
+    borderRadius: '4px',
+    fontWeight: 700,
   },
   benchmarkBadge: {
     fontSize: '11px',
@@ -1939,9 +2254,7 @@ const styles = {
     paddingTop: '8px',
   },
 
-  // ---------------------------------------------------------------------------
-  // Chart & Alerts Section Styles
-  // ---------------------------------------------------------------------------
+  // Chart & Timeline Player
   middleGrid: {
     display: 'grid',
     gridTemplateColumns: '1.6fr 1fr',
@@ -1973,21 +2286,67 @@ const styles = {
     color: '#94a3b8',
     marginTop: '2px',
   },
-  legendRow: {
-    display: 'flex',
-    gap: '14px',
-    fontSize: '11px',
-    color: '#94a3b8',
-    flexWrap: 'wrap',
-  },
-  legendItem: {
+  playerControls: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  playBtn: {
+    border: '1px solid',
+    color: '#ffffff',
+    borderRadius: '6px',
+    padding: '4px 10px',
+    fontSize: '11px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  stepBtn: {
+    background: '#1e293b',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    color: '#cbd5e1',
+    borderRadius: '6px',
+    padding: '4px 8px',
+    fontSize: '11px',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  speedGroup: {
+    display: 'flex',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '6px',
+    overflow: 'hidden',
+  },
+  speedBtn: {
+    border: 'none',
+    padding: '4px 8px',
+    fontSize: '10px',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  simDayBadge: {
+    background: 'rgba(56, 189, 248, 0.12)',
+    border: '1px solid rgba(56, 189, 248, 0.3)',
+    color: '#38bdf8',
+    padding: '3px 8px',
+    borderRadius: '6px',
+    fontSize: '10px',
+    fontWeight: 700,
   },
   barChartContainer: {
     width: '100%',
     marginTop: '10px',
+  },
+  floatingTooltipBox: {
+    background: 'rgba(15, 23, 42, 0.95)',
+    border: '1px solid rgba(56, 189, 248, 0.4)',
+    borderRadius: '8px',
+    padding: '8px 12px',
+    fontSize: '11px',
+    color: '#cbd5e1',
+    marginTop: '12px',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
   },
   chartFootnote: {
     fontSize: '11px',
@@ -1998,6 +2357,8 @@ const styles = {
     marginTop: '12px',
     border: '1px solid rgba(255, 255, 255, 0.05)',
   },
+
+  // Alerts Card
   alertsCard: {
     background: '#0d1322',
     border: '1px solid rgba(239, 68, 68, 0.25)',
@@ -2061,6 +2422,17 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: '8px',
+    flexWrap: 'wrap',
+    gap: '6px',
+  },
+  switchSupplierBtn: {
+    border: '1px solid',
+    borderRadius: '4px',
+    padding: '3px 8px',
+    fontSize: '10px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   alertImpact: {
     fontSize: '10px',
@@ -2072,15 +2444,13 @@ const styles = {
     border: '1px solid rgba(56, 189, 248, 0.3)',
     color: '#38bdf8',
     borderRadius: '4px',
-    padding: '2px 8px',
+    padding: '3px 8px',
     fontSize: '10px',
     fontWeight: 600,
     cursor: 'pointer',
   },
 
-  // ---------------------------------------------------------------------------
-  // Table & Health Section Styles
-  // ---------------------------------------------------------------------------
+  // Table & Category Filters
   bottomGrid: {
     display: 'grid',
     gridTemplateColumns: '1.8fr 1fr',
@@ -2092,18 +2462,38 @@ const styles = {
     borderRadius: '16px',
     padding: '20px',
   },
-  iconButton: {
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+  searchBoxWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+  },
+  tableSearchInput: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    color: '#f1f5f9',
     borderRadius: '6px',
-    padding: '4px 10px',
+    padding: '6px 12px',
     fontSize: '11px',
-    cursor: 'pointer',
+    width: '240px',
+  },
+  categoryFilterRow: {
+    display: 'flex',
+    gap: '8px',
+    margin: '12px 0 16px 0',
+    flexWrap: 'wrap',
+  },
+  catFilterChip: {
+    border: '1px solid',
+    borderRadius: '20px',
+    padding: '4px 12px',
+    fontSize: '10.5px',
     fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   },
   table: {
     width: '100%',
     borderCollapse: 'collapse',
-    marginTop: '8px',
+    marginTop: '4px',
   },
   thRow: {
     borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
@@ -2124,12 +2514,16 @@ const styles = {
     padding: '12px 8px',
     verticalAlign: 'middle',
   },
-  catBadge: {
-    fontSize: '10px',
-    color: '#94a3b8',
-    background: '#1e293b',
-    padding: '2px 6px',
+  miniSwitchBtn: {
+    background: 'transparent',
+    border: '1px solid',
     borderRadius: '4px',
+    padding: '1px 6px',
+    fontSize: '9.5px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    marginTop: '3px',
+    display: 'inline-block',
   },
   progressBarBg: {
     width: '60px',
@@ -2192,6 +2586,8 @@ const styles = {
     color: '#10b981',
     fontWeight: 900,
   },
+
+  // Health Card & Circular Gauge
   healthCard: {
     background: '#0d1322',
     border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -2202,16 +2598,25 @@ const styles = {
     justifyContent: 'space-between',
     gap: '14px',
   },
+  gaugeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+    borderRadius: '10px',
+    padding: '12px 14px',
+  },
   healthBars: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '14px',
-    margin: '10px 0',
+    gap: '12px',
+    margin: '12px 0',
   },
   healthItem: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
+    gap: '5px',
   },
   healthTop: {
     display: 'flex',
@@ -2272,9 +2677,7 @@ const styles = {
     gap: '12px',
   },
 
-  // ---------------------------------------------------------------------------
-  // XAI Modal Styles
-  // ---------------------------------------------------------------------------
+  // Modals & XAI
   modalOverlay: {
     position: 'fixed',
     top: 0,
@@ -2411,9 +2814,7 @@ const styles = {
     cursor: 'pointer',
   },
 
-  // ---------------------------------------------------------------------------
-  // PO Requisition Modal & Toast Styles
-  // ---------------------------------------------------------------------------
+  // PO Modal Styles
   poModalContent: {
     background: '#0c1424',
     border: '1px solid rgba(59, 130, 246, 0.4)',
