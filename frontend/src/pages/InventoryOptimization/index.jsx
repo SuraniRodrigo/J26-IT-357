@@ -3,6 +3,29 @@ import { optimizeInventory } from '../../services/inventoryService';
 
 export default function InventoryOptimizationView() {
   // ---------------------------------------------------------------------------
+  // 0. Theme & Workspace Tab Navigation State
+  // ---------------------------------------------------------------------------
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('optichain_theme') || 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState('operations'); // 'operations', 'simulator', 'trajectory'
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('optichain_theme', theme);
+    } catch (e) {
+      // ignore
+    }
+  }, [theme]);
+
+  const isDark = theme === 'dark';
+  const styles = useMemo(() => getStyles(isDark), [isDark]);
+
+  // ---------------------------------------------------------------------------
   // 1. Simulation Controls & Dynamic State
   // ---------------------------------------------------------------------------
   const [isSimOpen, setIsSimOpen] = useState(true);
@@ -566,17 +589,34 @@ export default function InventoryOptimizationView() {
           
           <div style={styles.topActionGroup}>
             <button
-              onClick={() => setIsSimOpen(!isSimOpen)}
+              onClick={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
+              style={{
+                ...styles.themeToggleBtn,
+                background: isDark ? 'rgba(30, 41, 59, 0.85)' : '#ffffff',
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : '#cbd5e1',
+                color: isDark ? '#f1f5f9' : '#0f172a',
+              }}
+              title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
+            >
+              <span style={{ fontSize: '13px' }}>{isDark ? '☀️' : '🌙'}</span>
+              <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveWorkspaceTab('simulator')}
               style={{
                 ...styles.simToggleBtn,
-                background: isSimOpen ? 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' : '#1e293b',
-                boxShadow: isSimOpen ? '0 0 15px rgba(59, 130, 246, 0.4)' : 'none',
+                background: activeWorkspaceTab === 'simulator'
+                  ? (isDark ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#059669')
+                  : (isDark ? '#1e293b' : '#ffffff'),
+                color: activeWorkspaceTab === 'simulator' ? '#ffffff' : (isDark ? '#94a3b8' : '#334155'),
+                borderColor: activeWorkspaceTab === 'simulator' ? '#10b981' : (isDark ? 'rgba(255, 255, 255, 0.12)' : '#cbd5e1'),
               }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginRight: '6px' }}>
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
               </svg>
-              <span>{isSimOpen ? 'What-If Simulation Active' : 'Open What-If Simulator'}</span>
+              <span>FastAPI Lab</span>
               <span style={styles.simPillBadge}>{activePreset.toUpperCase().replace('_', ' ')}</span>
             </button>
           </div>
@@ -635,7 +675,86 @@ export default function InventoryOptimizationView() {
         </div>
       </div>
 
+            {/* ---------------------------------------------------------------------
+          TOP SEGMENTED WORKSPACE NAVIGATION (3 DEDICATED TABS)
+      ---------------------------------------------------------------------- */}
+      <div style={styles.workspaceTabBar}>
+        <button
+          onClick={() => setActiveWorkspaceTab('operations')}
+          style={{
+            ...styles.workspaceTabBtn,
+            background: activeWorkspaceTab === 'operations'
+              ? (isDark ? 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)')
+              : (isDark ? '#0d1527' : '#ffffff'),
+            color: activeWorkspaceTab === 'operations' ? '#ffffff' : (isDark ? '#94a3b8' : '#475569'),
+            borderColor: activeWorkspaceTab === 'operations' ? '#3b82f6' : (isDark ? 'rgba(255, 255, 255, 0.08)' : '#cbd5e1'),
+            boxShadow: activeWorkspaceTab === 'operations' ? '0 4px 15px rgba(37, 99, 235, 0.35)' : 'none',
+          }}
+        >
+          <span style={{ fontSize: '15px' }}>📊</span>
+          <span style={{ fontWeight: 700 }}>Operations & Inventory Cockpit</span>
+          <span style={{
+            ...styles.workspaceTabBadge,
+            background: activeWorkspaceTab === 'operations' ? 'rgba(255,255,255,0.2)' : (isDark ? 'rgba(59, 130, 246, 0.2)' : '#e0e7ff'),
+            color: activeWorkspaceTab === 'operations' ? '#ffffff' : (isDark ? '#93c5fd' : '#1d4ed8'),
+          }}>
+            Live Monitored
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveWorkspaceTab('simulator')}
+          style={{
+            ...styles.workspaceTabBtn,
+            background: activeWorkspaceTab === 'simulator'
+              ? (isDark ? 'linear-gradient(135deg, #065f46 0%, #059669 100%)' : 'linear-gradient(135deg, #059669 0%, #047857 100%)')
+              : (isDark ? '#0d1527' : '#ffffff'),
+            color: activeWorkspaceTab === 'simulator' ? '#ffffff' : (isDark ? '#94a3b8' : '#475569'),
+            borderColor: activeWorkspaceTab === 'simulator' ? '#10b981' : (isDark ? 'rgba(255, 255, 255, 0.08)' : '#cbd5e1'),
+            boxShadow: activeWorkspaceTab === 'simulator' ? '0 4px 15px rgba(16, 185, 129, 0.35)' : 'none',
+          }}
+        >
+          <span style={{ fontSize: '15px' }}>⚡</span>
+          <span style={{ fontWeight: 700 }}>What-If Simulation & FastAPI Lab</span>
+          <span style={{
+            ...styles.workspaceTabBadge,
+            background: activeWorkspaceTab === 'simulator' ? 'rgba(255,255,255,0.2)' : (isDark ? 'rgba(16, 185, 129, 0.2)' : '#d1fae5'),
+            color: activeWorkspaceTab === 'simulator' ? '#ffffff' : (isDark ? '#34d399' : '#047857'),
+          }}>
+            FastAPI :8000
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveWorkspaceTab('trajectory')}
+          style={{
+            ...styles.workspaceTabBtn,
+            background: activeWorkspaceTab === 'trajectory'
+              ? (isDark ? 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%)' : 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)')
+              : (isDark ? '#0d1527' : '#ffffff'),
+            color: activeWorkspaceTab === 'trajectory' ? '#ffffff' : (isDark ? '#94a3b8' : '#475569'),
+            borderColor: activeWorkspaceTab === 'trajectory' ? '#8b5cf6' : (isDark ? 'rgba(255, 255, 255, 0.08)' : '#cbd5e1'),
+            boxShadow: activeWorkspaceTab === 'trajectory' ? '0 4px 15px rgba(139, 92, 246, 0.35)' : 'none',
+          }}
+        >
+          <span style={{ fontSize: '15px' }}>📈</span>
+          <span style={{ fontWeight: 700 }}>14-Day Trajectory & Research Benchmark</span>
+          <span style={{
+            ...styles.workspaceTabBadge,
+            background: activeWorkspaceTab === 'trajectory' ? 'rgba(255,255,255,0.2)' : (isDark ? 'rgba(139, 92, 246, 0.2)' : '#ede9fe'),
+            color: activeWorkspaceTab === 'trajectory' ? '#ffffff' : (isDark ? '#c084fc' : '#6d28d9'),
+          }}>
+            Academic Proof
+          </span>
+        </button>
+      </div>
+
       {/* ---------------------------------------------------------------------
+          WORKSPACE TAB 1: OPERATIONS & INVENTORY COCKPIT
+      ---------------------------------------------------------------------- */}
+      {activeWorkspaceTab === 'operations' && (
+        <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* ---------------------------------------------------------------------
           LIVE TELEMETRY STREAM TICKER (DYNAMIC)
       ---------------------------------------------------------------------- */}
       <div style={styles.telemetryStreamBar}>
@@ -649,7 +768,491 @@ export default function InventoryOptimizationView() {
         </div>
       </div>
 
+          {/* ================================================================
+              MODULE I/O FLOW PANEL — Inputs → Engine → Outputs
+          ================================================================ */}
+          <div style={{
+            background: isDark ? 'linear-gradient(135deg, #0a0f1e 0%, #0d1527 100%)' : '#ffffff',
+            border: isDark ? '1px solid rgba(56,189,248,0.2)' : '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '20px',
+            boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.45)' : '0 4px 20px rgba(0,0,0,0.08)',
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px' }}>🔄</div>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: isDark ? '#f1f5f9' : '#0f172a' }}>Module Data Flow — Inputs, Engine &amp; Outputs</div>
+                  <div style={{ fontSize: '11px', color: isDark ? '#64748b' : '#94a3b8', marginTop: '1px' }}>
+                    Upstream inputs (simulated) → Adaptive Optimization Engine → Procurement Outputs
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', padding: '4px 10px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} className="pulse-dot" />
+                <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#34d399' }}>LIVE — Auto-updates with every parameter change</span>
+              </div>
+            </div>
+
+            {/* 3-Column Flow */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr 40px 1fr', gap: '12px', alignItems: 'start' }}>
+
+              {/* ── COLUMN 1: INPUTS ── */}
+              <div style={{ background: isDark ? '#090e1a' : '#f8fafc', border: isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.1em', color: '#64748b', marginBottom: '4px' }}>📥 INPUTS (SIMULATED)</div>
+
+                {/* From Module 1 */}
+                <div style={{ background: isDark ? 'rgba(59,130,246,0.07)' : '#eff6ff', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                  <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#3b82f6', letterSpacing: '0.06em', marginBottom: '6px' }}>
+                    📊 MODULE 1 — DEMAND FORECASTING
+                    <span style={{ marginLeft: '6px', background: 'rgba(59,130,246,0.2)', color: '#93c5fd', fontSize: '8.5px', padding: '1px 5px', borderRadius: '4px' }}>MOCKED</span>
+                  </div>
+                  {[
+                    { label: 'Forecasted Demand (D)', value: `${simulatedData.targetItem.adjForecast.toLocaleString()} ${simulatedData.targetItem.unit}`, color: '#60a5fa' },
+                    { label: 'Demand Uncertainty (σ_D)', value: `${Math.round(simulatedData.targetItem.baseUncertainty * 100)}% of D`, color: '#60a5fa' },
+                    { label: 'Demand Surge Factor (ΔD)', value: `${demandSurge >= 0 ? '+' : ''}${demandSurge}%`, color: demandSurge > 0 ? '#34d399' : '#f87171' },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #dbeafe', paddingTop: '5px', marginTop: '5px' }}>
+                      <span style={{ fontSize: '10.5px', color: isDark ? '#94a3b8' : '#475569' }}>{label}</span>
+                      <strong style={{ fontSize: '11px', color }}>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                {/* From Module 2 */}
+                <div style={{ background: isDark ? 'rgba(239,68,68,0.07)' : '#fff1f1', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                  <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#ef4444', letterSpacing: '0.06em', marginBottom: '6px' }}>
+                    ⚡ MODULE 2 — SUPPLY DISRUPTION
+                    <span style={{ marginLeft: '6px', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', fontSize: '8.5px', padding: '1px 5px', borderRadius: '4px' }}>MOCKED</span>
+                  </div>
+                  {[
+                    { label: 'Disruption Probability P(risk)', value: `${(simulatedData.targetItem.curDisrupt * 100).toFixed(0)}%`, color: simulatedData.targetItem.curDisrupt > 0.6 ? '#f87171' : '#fbbf24' },
+                    { label: 'Lead Time Variability (σ_L)', value: `±${leadTimeVar.toFixed(1)} days`, color: '#f87171' },
+                    { label: 'Active Supplier', value: simulatedData.targetItem.isSwitched ? 'LOCAL DEPOT' : 'PRIMARY', color: simulatedData.targetItem.isSwitched ? '#34d399' : '#94a3b8' },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #fecaca', paddingTop: '5px', marginTop: '5px' }}>
+                      <span style={{ fontSize: '10.5px', color: isDark ? '#94a3b8' : '#475569' }}>{label}</span>
+                      <strong style={{ fontSize: '11px', color }}>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Warehouse / Policy */}
+                <div style={{ background: isDark ? 'rgba(16,185,129,0.07)' : '#f0fdf9', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px', padding: '10px 12px' }}>
+                  <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#10b981', letterSpacing: '0.06em', marginBottom: '6px' }}>🏭 WAREHOUSE / MANAGEMENT POLICY</div>
+                  {[
+                    { label: 'Current On-Hand Stock', value: simulatedData.targetItem.currFormatted, color: '#34d399' },
+                    { label: 'Supplier Lead Time (L)', value: `${simulatedData.targetItem.activeLeadTime} days`, color: '#34d399' },
+                    { label: 'Target Service Level', value: `${serviceLevel}`, color: '#a3e635' },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #bbf7d0', paddingTop: '5px', marginTop: '5px' }}>
+                      <span style={{ fontSize: '10.5px', color: isDark ? '#94a3b8' : '#475569' }}>{label}</span>
+                      <strong style={{ fontSize: '11px', color }}>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── ARROW 1 ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', paddingTop: '80px' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2.5">
+                  <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+                </svg>
+                <span style={{ fontSize: '8px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.06em' }}>FEEDS</span>
+              </div>
+
+              {/* ── COLUMN 2: ENGINE ── */}
+              <div style={{ background: 'linear-gradient(160deg, rgba(56,189,248,0.08) 0%, rgba(139,92,246,0.08) 100%)', border: '1px solid rgba(56,189,248,0.35)', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+                <div style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.1em', color: '#38bdf8' }}>⚙️ ADAPTIVE ENGINE</div>
+
+                {[
+                  { title: 'SAFETY STOCK FORMULA', formula: 'SS = z · √(L·σ_D² + D²·σ_L²)\n× (1 + α · P(disrupt))', color: '#38bdf8' },
+                  { title: 'REORDER POINT', formula: 'ROP = D · L + SS', color: '#a78bfa' },
+                  { title: 'ORDER QUANTITY', formula: 'ROQ = max(ROP − I₀ + SS,\n0.6 · D)', color: '#f472b6' },
+                ].map(({ title, formula, color }) => (
+                  <div key={title} style={{ background: isDark ? '#060b14' : '#f0f9ff', border: `1px solid ${color}40`, borderRadius: '8px', padding: '10px 12px', textAlign: 'center', width: '100%' }}>
+                    <div style={{ fontSize: '9px', color: '#64748b', marginBottom: '6px', fontWeight: 700, letterSpacing: '0.05em' }}>{title}</div>
+                    <div style={{ fontSize: '10.5px', fontFamily: 'monospace', color, lineHeight: 1.8, whiteSpace: 'pre-line' }}>{formula}</div>
+                  </div>
+                ))}
+
+                <div style={{ width: '100%', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '6px', padding: '8px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 700 }}>API ENDPOINT</div>
+                  <div style={{ fontSize: '10px', fontFamily: 'monospace', color: '#38bdf8', marginTop: '3px' }}>POST /api/inventory/optimize</div>
+                  <div style={{ fontSize: '9px', color: isDark ? '#64748b' : '#94a3b8', marginTop: '2px' }}>FastAPI :8000 — uvicorn</div>
+                </div>
+              </div>
+
+              {/* ── ARROW 2 ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', paddingTop: '80px' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
+                  <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+                </svg>
+                <span style={{ fontSize: '8px', fontWeight: 700, color: '#10b981', letterSpacing: '0.06em' }}>PRODUCES</span>
+              </div>
+
+              {/* ── COLUMN 3: OUTPUTS ── */}
+              <div style={{ background: isDark ? '#090e1a' : '#f8fafc', border: isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.1em', color: '#64748b', marginBottom: '4px' }}>📤 OUTPUTS — MODULE 3 DELIVERABLES</div>
+
+                {[
+                  {
+                    num: '01', label: 'Reorder Point (ROP)',
+                    value: `${simulatedData.targetItem.dynamicROP.toLocaleString()} ${simulatedData.targetItem.unit}`,
+                    desc: 'Trigger threshold for procurement action',
+                    color: '#38bdf8', bg: 'rgba(56,189,248,0.08)', bd: 'rgba(56,189,248,0.2)',
+                  },
+                  {
+                    num: '02', label: 'Reorder Quantity (ROQ)',
+                    value: simulatedData.targetItem.recomFormatted,
+                    desc: 'Adaptive batch size to dispatch',
+                    color: '#a78bfa', bg: 'rgba(139,92,246,0.08)', bd: 'rgba(139,92,246,0.2)',
+                  },
+                  {
+                    num: '03', label: 'Safety Stock (SS)',
+                    value: `${simulatedData.targetItem.dynamicSafetyStock.toLocaleString()} ${simulatedData.targetItem.unit}`,
+                    desc: 'Disruption-scaled buffer reserve',
+                    color: '#c084fc', bg: 'rgba(192,132,252,0.08)', bd: 'rgba(192,132,252,0.2)',
+                  },
+                  {
+                    num: '04', label: 'Material Availability',
+                    value: simulatedData.targetItem.materialAvailability ? '✓ TRUE — CAN PRODUCE' : '⚠ FALSE — SHORTAGE',
+                    desc: 'Gate signal for production line',
+                    color: simulatedData.targetItem.materialAvailability ? '#34d399' : '#f87171',
+                    bg: simulatedData.targetItem.materialAvailability ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+                    bd: simulatedData.targetItem.materialAvailability ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)',
+                  },
+                  {
+                    num: '05', label: 'Risk Score',
+                    value: `${simulatedData.targetItem.riskScore} / 1.0`,
+                    desc: `${simulatedData.targetItem.riskLevel} — composite supply risk`,
+                    color: simulatedData.targetItem.riskTone,
+                    bg: isDark ? '#0a0f1e' : '#fefce8',
+                    bd: 'rgba(245,158,11,0.25)',
+                  },
+                  {
+                    num: '06', label: 'Procurement Action (PO)',
+                    value: dispatchedPOs[simulatedData.targetItem.sku]
+                      ? `✓ PO ${dispatchedPOs[simulatedData.targetItem.sku].poNumber} Dispatched`
+                      : simulatedData.targetItem.recommendedROQ > 0 ? '⚡ ORDER REQUIRED' : '— Stock Sufficient',
+                    desc: 'ERP purchase requisition signal',
+                    color: dispatchedPOs[simulatedData.targetItem.sku] ? '#34d399' : simulatedData.targetItem.recommendedROQ > 0 ? '#fbbf24' : '#94a3b8',
+                    bg: 'rgba(245,158,11,0.08)', bd: 'rgba(245,158,11,0.2)',
+                  },
+                  {
+                    num: '07', label: 'Downstream Handoff',
+                    value: '→ Module 4: Line Optimizer',
+                    desc: `Shortage: ${simulatedData.targetItem.materialShortage.toLocaleString()} ${simulatedData.targetItem.unit} | Flag: ${simulatedData.targetItem.materialAvailability}`,
+                    color: '#38bdf8', bg: 'rgba(56,189,248,0.06)', bd: 'rgba(56,189,248,0.18)',
+                  },
+                ].map(({ num, label, value, desc, color, bg, bd }) => (
+                  <div key={num} style={{ background: bg, border: `1px solid ${bd}`, borderRadius: '8px', padding: '9px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                        <span style={{ fontSize: '9px', fontWeight: 800, color, background: isDark ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.06)', borderRadius: '4px', padding: '1px 5px', fontFamily: 'monospace' }}>{num}</span>
+                        <span style={{ fontSize: '10.5px', fontWeight: 700, color: isDark ? '#e2e8f0' : '#0f172a' }}>{label}</span>
+                      </div>
+                      <strong style={{ fontSize: '11px', color, textAlign: 'right' }}>{value}</strong>
+                    </div>
+                    <div style={{ fontSize: '9.5px', color: isDark ? '#64748b' : '#94a3b8', marginTop: '3px', paddingLeft: '32px' }}>{desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer note */}
+            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+              <span style={{ fontSize: '10.5px', color: isDark ? '#64748b' : '#94a3b8' }}>
+                🔗 <strong style={{ color: isDark ? '#94a3b8' : '#475569' }}>Integration Note:</strong> Module 1 &amp; 2 inputs are simulated via representative garment industry data. Integration points are defined and ready to receive live upstream feeds.
+              </span>
+              <span style={{ fontSize: '10px', color: isDark ? '#64748b' : '#94a3b8', fontStyle: 'italic' }}>
+                Observing: <strong style={{ color: '#38bdf8' }}>{simulatedData.targetItem.sku}</strong> — {simulatedData.targetItem.name}
+              </span>
+            </div>
+          </div>
+
+          {/* ---------------------------------------------------------------------
+          Bottom Grid: Reorder Plan Table + Inventory Health + XAI Trigger
+      ---------------------------------------------------------------------- */}
+      <div style={styles.bottomGrid}>
+        {/* Reorder Plan Table with Category Chips & Search */}
+        <div style={styles.tableCard}>
+          <div style={styles.cardHeader}>
+            <div>
+              <div style={styles.cardTitle}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '8px' }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+                High-Priority Adaptive Reorder Plan
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                Filter materials or click any row to inspect live mathematical formula breakdown.
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div style={styles.searchBoxWrapper}>
+              <input
+                type="text"
+                placeholder="🔍 Search SKU, material, or supplier..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={styles.tableSearchInput}
+              />
+            </div>
+          </div>
+
+          {/* Category Filter Chips */}
+          <div style={styles.categoryFilterRow}>
+            {['ALL', 'Fabrics', 'Dyes & Chemicals', 'Trims & Fasteners', 'Yarns & Threads'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                style={{
+                  ...styles.catFilterChip,
+                  background: activeCategory === cat ? '#3b82f6' : '#10192e',
+                  borderColor: activeCategory === cat ? '#60a5fa' : 'rgba(255,255,255,0.08)',
+                  color: activeCategory === cat ? '#ffffff' : '#94a3b8',
+                }}
+              >
+                {cat === 'ALL' ? 'All Materials (4)' : cat}
+              </button>
+            ))}
+          </div>
+
+          <table style={styles.table}>
+            <thead>
+              <tr style={styles.thRow}>
+                <th style={styles.th}>MATERIAL / SKU</th>
+                <th style={styles.th}>SUPPLIER / MITIGATION</th>
+                <th style={styles.th}>STOCK LEVEL</th>
+                <th style={styles.th}>AI RISK LEVEL</th>
+                <th style={styles.th}>DYNAMIC SAFETY STOCK</th>
+                <th style={styles.th}>AI REORDER (ROQ)</th>
+                <th style={styles.th}>PO ACTION</th>
+                <th style={styles.th}>EXPLAIN</th>
+              </tr>
+            </thead>
+            <tbody>
+              {simulatedData.filteredReorderPlan.map((item) => (
+                <tr
+                  key={item.sku}
+                  style={{
+                    ...styles.tr,
+                    backgroundColor: selectedSku === item.sku ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setSelectedSku(item.sku)}
+                >
+                  <td style={styles.td}>
+                    <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '13px' }}>{item.sku}</div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>{item.name}</div>
+                  </td>
+                  <td style={styles.td}>
+                    <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 500 }}>
+                      {item.activeSupplierName}
+                    </div>
+                    <button
+                      onClick={(e) => handleToggleSupplier(e, item.sku)}
+                      style={{
+                        ...styles.miniSwitchBtn,
+                        color: item.isSwitched ? '#34d399' : '#38bdf8',
+                        borderColor: item.isSwitched ? 'rgba(16,185,129,0.4)' : 'rgba(56,189,248,0.3)',
+                      }}
+                      title="Switch between offshore primary vendor and local rapid backup vendor"
+                    >
+                      {item.isSwitched ? '✓ Local Backup' : '🔄 Switch Vendor'}
+                    </button>
+                  </td>
+                  <td style={styles.td}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', color: '#94a3b8', width: '32px' }}>{item.pct}%</span>
+                      <div style={styles.progressBarBg}>
+                        <div style={{ ...styles.progressBarFill, width: `${item.pct}%`, backgroundColor: item.riskTone }} />
+                      </div>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>{item.currFormatted}</span>
+                    </div>
+                  </td>
+                  <td style={styles.td}>
+                    <span style={{ ...styles.riskBadge, borderColor: item.riskTone, color: item.riskTone, background: `${item.riskTone}18` }}>
+                      {item.riskLevel} ({item.riskScore})
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>
+                      {item.dynamicSafetyStock.toLocaleString()} {item.unit}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8' }}>{item.recomFormatted}</span>
+                  </td>
+                  <td style={styles.td}>
+                    {dispatchedPOs[item.sku] ? (
+                      <span
+                        onClick={(e) => handleOpenPoModal(e, item)}
+                        style={{ ...styles.poIssuedBadge, cursor: 'pointer' }}
+                        title="Click to view issued ERP Purchase Order requisition details"
+                      >
+                        <span style={styles.poCheckDot}>✓</span> PO #{dispatchedPOs[item.sku].poNumber} Dispatched ↗
+                      </span>
+                    ) : (
+                      <button
+                        onClick={(e) => handleOpenPoModal(e, item)}
+                        style={styles.approvePoBtn}
+                        title="Generate ERP Purchase Requisition with AI buffer quantity"
+                      >
+                        <span style={{ marginRight: '4px' }}>🛒</span> Approve PO
+                      </button>
+                    )}
+                  </td>
+                  <td style={styles.td}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setInspectedSku(item);
+                      }}
+                      style={styles.tableInspectBtn}
+                    >
+                      Formula ↗
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Inventory Health & Animated Circular Resilience Gauge */}
+        <div style={styles.healthCard}>
+          <div>
+            <div style={styles.cardHeader}>
+              <div style={styles.cardTitle}>Inventory Health & Resilience Index</div>
+            </div>
+
+            {/* Circular SVG Resilience Gauge */}
+            <div style={styles.gaugeRow}>
+              <svg width="80" height="80" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="32" stroke="#1e293b" strokeWidth="6" fill="none" />
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="32"
+                  stroke="#38bdf8"
+                  strokeWidth="6"
+                  fill="none"
+                  strokeDasharray="201"
+                  strokeDashoffset={201 - (201 * simulatedData.resilienceScore) / 100}
+                  strokeLinecap="round"
+                  transform="rotate(-90 40 40)"
+                  style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+                />
+                <text x="40" y="44" fill="#ffffff" fontSize="13" fontWeight="800" textAnchor="middle" fontFamily="Outfit">
+                  {simulatedData.resilienceScore}%
+                </text>
+              </svg>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9' }}>Factory Stock Resilience</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                  {simulatedData.resilienceScore > 80 ? '🛡️ High Buffer Immunity' : '⚠️ Elevated Disruption Exposure'}
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.healthBars}>
+              <div style={styles.healthItem}>
+                <div style={styles.healthTop}>
+                  <span>OPTIMAL STATUS</span>
+                  <strong style={{ color: '#10b981' }}>{simulatedData.healthDist.optimal}%</strong>
+                </div>
+                <div style={styles.healthBarBg}>
+                  <div style={{ ...styles.healthBarFill, width: `${simulatedData.healthDist.optimal}%`, background: '#10b981' }} />
+                </div>
+              </div>
+
+              <div style={styles.healthItem}>
+                <div style={styles.healthTop}>
+                  <span>REVIEW NEEDED</span>
+                  <strong style={{ color: '#f59e0b' }}>{simulatedData.healthDist.review}%</strong>
+                </div>
+                <div style={styles.healthBarBg}>
+                  <div style={{ ...styles.healthBarFill, width: `${simulatedData.healthDist.review}%`, background: '#f59e0b' }} />
+                </div>
+              </div>
+
+              <div style={styles.healthItem}>
+                <div style={styles.healthTop}>
+                  <span>CRITICAL RISK</span>
+                  <strong style={{ color: '#ef4444' }}>{simulatedData.healthDist.critical}%</strong>
+                </div>
+                <div style={styles.healthBarBg}>
+                  <div style={{ ...styles.healthBarFill, width: `${simulatedData.healthDist.critical}%`, background: '#ef4444' }} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Downstream Contract Telemetry */}
+          <div style={styles.contractBox}>
+            <div style={styles.contractTitle}>
+              <span style={styles.pulseGreenDot} />
+              DOWNSTREAM INTEGRATION CONTRACT (TO LINE OPTIMIZER)
+            </div>
+            <div style={styles.contractGrid}>
+              <div>
+                <span style={styles.contractLabel}>Req:</span>
+                <span style={styles.contractVal}>{simulatedData.targetItem.materialRequirement.toLocaleString()} {simulatedData.targetItem.unit}</span>
+              </div>
+              <div>
+                <span style={styles.contractLabel}>Shortage:</span>
+                <span style={{
+                  ...styles.contractVal,
+                  color: dispatchedPOs[simulatedData.targetItem.sku] ? '#34d399' : simulatedData.targetItem.materialShortage > 0 ? '#f87171' : '#34d399'
+                }}>
+                  {dispatchedPOs[simulatedData.targetItem.sku]
+                    ? '0 (IN-TRANSIT)'
+                    : `${simulatedData.targetItem.materialShortage.toLocaleString()} ${simulatedData.targetItem.unit}`}
+                </span>
+              </div>
+              <div>
+                <span style={styles.contractLabel}>Avail Flag:</span>
+                <span style={{
+                  ...styles.contractVal,
+                  color: dispatchedPOs[simulatedData.targetItem.sku] || simulatedData.targetItem.materialAvailability ? '#34d399' : '#f87171'
+                }}>
+                  {dispatchedPOs[simulatedData.targetItem.sku]
+                    ? 'TRUE (PO ISSUED)'
+                    : simulatedData.targetItem.materialAvailability
+                    ? 'TRUE (READY)'
+                    : 'FALSE (HALT)'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.aiAdvisorBox}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 16v-4M12 8h.01"></path>
+            </svg>
+            <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
+              AI engine dynamically balances safety buffering with dead stock prevention using live Bayesian risk signals.
+            </div>
+          </div>
+        </div>
+      </div>
+        </div>
+      )}
+
       {/* ---------------------------------------------------------------------
+          WORKSPACE TAB 2: WHAT-IF SIMULATOR & LIVE FASTAPI LAB
+      ---------------------------------------------------------------------- */}
+      {activeWorkspaceTab === 'simulator' && (
+        <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* ---------------------------------------------------------------------
           WHAT-IF SIMULATION DRAWER & CONTROLS (EXPANDABLE)
       ---------------------------------------------------------------------- */}
       {isSimOpen && (
@@ -1255,86 +1858,15 @@ export default function InventoryOptimizationView() {
           </div>
         </div>
       )}
+        </div>
+      )}
 
       {/* ---------------------------------------------------------------------
-          RESEARCH COMPARISON: STATIC POLICY VS DISRUPTION-AWARE ADAPTIVE POLICY
+          WORKSPACE TAB 3: 14-DAY TRAJECTORY & RESEARCH BENCHMARK
       ---------------------------------------------------------------------- */}
-      <div style={styles.comparisonCard}>
-        <div style={styles.compHeader}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '16px' }}>⚖️</span>
-            <span style={styles.cardTitle}>Research Policy Benchmark: Static Policy vs. Disruption-Aware Adaptive Policy</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {simulatedData.targetItem.isSwitched && (
-              <span style={styles.switchedActiveTag}>
-                ✓ Local Supplier Mitigation Active
-              </span>
-            )}
-            <span style={styles.benchmarkBadge}>Target SKU: {simulatedData.targetItem.sku}</span>
-          </div>
-        </div>
-
-        <div style={styles.compGrid}>
-          {/* Static Policy (Traditional ERP) */}
-          <div style={styles.staticBox}>
-            <div style={styles.compBoxTitleRow}>
-              <span style={styles.staticTag}>TRADITIONAL STATIC POLICY (s, S)</span>
-              <span style={styles.staticAlertTag}>High Vulnerability</span>
-            </div>
-            <div style={styles.compMetricRow}>
-              <div>
-                <div style={styles.compMetricLabel}>FIXED SAFETY BUFFER</div>
-                <div style={styles.compMetricVal}>{simulatedData.staticSS.toLocaleString()} {simulatedData.targetItem.unit}</div>
-              </div>
-              <div>
-                <div style={styles.compMetricLabel}>EXPECTED STOCKOUT RISK</div>
-                <div style={{ ...styles.compMetricVal, color: '#f87171' }}>{simulatedData.stockoutRiskStatic}%</div>
-              </div>
-              <div>
-                <div style={styles.compMetricLabel}>LINE IMPACT</div>
-                <div style={{ ...styles.compMetricVal, color: '#f87171', fontSize: '13px' }}>Stop on Day 6 (48h Idle)</div>
-              </div>
-            </div>
-            <div style={styles.compExpl}>
-              Static model ignores port congestion & upstream lead-time variance (+{leadTimeVar.toFixed(1)}d), causing catastrophic production shutdown on {simulatedData.targetItem.downstreamLine}.
-            </div>
-          </div>
-
-          {/* Adaptive Policy (OPTICHAIN) */}
-          <div style={styles.adaptiveBox}>
-            <div style={styles.compBoxTitleRow}>
-              <span style={styles.adaptiveTag}>OPTICHAIN ADAPTIVE OPTIMIZATION</span>
-              <span style={styles.adaptiveSafeTag}>Disruption Protected</span>
-            </div>
-            <div style={styles.compMetricRow}>
-              <div>
-                <div style={styles.compMetricLabel}>DYNAMIC SAFETY BUFFER (SS)</div>
-                <div style={{ ...styles.compMetricVal, color: '#38bdf8' }}>
-                  {simulatedData.adaptiveSS.toLocaleString()} {simulatedData.targetItem.unit}
-                </div>
-              </div>
-              <div>
-                <div style={styles.compMetricLabel}>RESILIENT STOCKOUT RISK</div>
-                <div style={{ ...styles.compMetricVal, color: '#34d399' }}>
-                  {simulatedData.stockoutRiskAdaptive}%
-                </div>
-              </div>
-              <div>
-                <div style={styles.compMetricLabel}>PRODUCTION CONTINUITY</div>
-                <div style={{ ...styles.compMetricVal, color: '#34d399', fontSize: '13px' }}>
-                  100% On-Track
-                </div>
-              </div>
-            </div>
-            <div style={styles.compExpl}>
-              Dynamically expanded safety buffer by +{(simulatedData.adaptiveSS - simulatedData.staticSS).toLocaleString()} {simulatedData.targetItem.unit} and triggered early reorder to absorb supplier disruption ({ (simulatedData.targetItem.curDisrupt * 100).toFixed(0) }%).
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ---------------------------------------------------------------------
+      {activeWorkspaceTab === 'trajectory' && (
+        <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* ---------------------------------------------------------------------
           Middle Grid: Projected Stock Trajectory + Timeline Scrubber vs Alerts
       ---------------------------------------------------------------------- */}
       <div style={styles.middleGrid}>
@@ -1602,281 +2134,87 @@ export default function InventoryOptimizationView() {
           </div>
         </div>
       </div>
-
-      {/* ---------------------------------------------------------------------
-          Bottom Grid: Reorder Plan Table + Inventory Health + XAI Trigger
+          {/* ---------------------------------------------------------------------
+          RESEARCH COMPARISON: STATIC POLICY VS DISRUPTION-AWARE ADAPTIVE POLICY
       ---------------------------------------------------------------------- */}
-      <div style={styles.bottomGrid}>
-        {/* Reorder Plan Table with Category Chips & Search */}
-        <div style={styles.tableCard}>
-          <div style={styles.cardHeader}>
-            <div>
-              <div style={styles.cardTitle}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '8px' }}>
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="16" y1="13" x2="8" y2="13"></line>
-                  <line x1="16" y1="17" x2="8" y2="17"></line>
-                </svg>
-                High-Priority Adaptive Reorder Plan
-              </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                Filter materials or click any row to inspect live mathematical formula breakdown.
-              </div>
-            </div>
-
-            {/* Search Input */}
-            <div style={styles.searchBoxWrapper}>
-              <input
-                type="text"
-                placeholder="🔍 Search SKU, material, or supplier..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={styles.tableSearchInput}
-              />
-            </div>
+      <div style={styles.comparisonCard}>
+        <div style={styles.compHeader}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '16px' }}>⚖️</span>
+            <span style={styles.cardTitle}>Research Policy Benchmark: Static Policy vs. Disruption-Aware Adaptive Policy</span>
           </div>
-
-          {/* Category Filter Chips */}
-          <div style={styles.categoryFilterRow}>
-            {['ALL', 'Fabrics', 'Dyes & Chemicals', 'Trims & Fasteners', 'Yarns & Threads'].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                style={{
-                  ...styles.catFilterChip,
-                  background: activeCategory === cat ? '#3b82f6' : '#10192e',
-                  borderColor: activeCategory === cat ? '#60a5fa' : 'rgba(255,255,255,0.08)',
-                  color: activeCategory === cat ? '#ffffff' : '#94a3b8',
-                }}
-              >
-                {cat === 'ALL' ? 'All Materials (4)' : cat}
-              </button>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {simulatedData.targetItem.isSwitched && (
+              <span style={styles.switchedActiveTag}>
+                ✓ Local Supplier Mitigation Active
+              </span>
+            )}
+            <span style={styles.benchmarkBadge}>Target SKU: {simulatedData.targetItem.sku}</span>
           </div>
-
-          <table style={styles.table}>
-            <thead>
-              <tr style={styles.thRow}>
-                <th style={styles.th}>MATERIAL / SKU</th>
-                <th style={styles.th}>SUPPLIER / MITIGATION</th>
-                <th style={styles.th}>STOCK LEVEL</th>
-                <th style={styles.th}>AI RISK LEVEL</th>
-                <th style={styles.th}>DYNAMIC SAFETY STOCK</th>
-                <th style={styles.th}>AI REORDER (ROQ)</th>
-                <th style={styles.th}>PO ACTION</th>
-                <th style={styles.th}>EXPLAIN</th>
-              </tr>
-            </thead>
-            <tbody>
-              {simulatedData.filteredReorderPlan.map((item) => (
-                <tr
-                  key={item.sku}
-                  style={{
-                    ...styles.tr,
-                    backgroundColor: selectedSku === item.sku ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setSelectedSku(item.sku)}
-                >
-                  <td style={styles.td}>
-                    <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '13px' }}>{item.sku}</div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>{item.name}</div>
-                  </td>
-                  <td style={styles.td}>
-                    <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 500 }}>
-                      {item.activeSupplierName}
-                    </div>
-                    <button
-                      onClick={(e) => handleToggleSupplier(e, item.sku)}
-                      style={{
-                        ...styles.miniSwitchBtn,
-                        color: item.isSwitched ? '#34d399' : '#38bdf8',
-                        borderColor: item.isSwitched ? 'rgba(16,185,129,0.4)' : 'rgba(56,189,248,0.3)',
-                      }}
-                      title="Switch between offshore primary vendor and local rapid backup vendor"
-                    >
-                      {item.isSwitched ? '✓ Local Backup' : '🔄 Switch Vendor'}
-                    </button>
-                  </td>
-                  <td style={styles.td}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: '#94a3b8', width: '32px' }}>{item.pct}%</span>
-                      <div style={styles.progressBarBg}>
-                        <div style={{ ...styles.progressBarFill, width: `${item.pct}%`, backgroundColor: item.riskTone }} />
-                      </div>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>{item.currFormatted}</span>
-                    </div>
-                  </td>
-                  <td style={styles.td}>
-                    <span style={{ ...styles.riskBadge, borderColor: item.riskTone, color: item.riskTone, background: `${item.riskTone}18` }}>
-                      {item.riskLevel} ({item.riskScore})
-                    </span>
-                  </td>
-                  <td style={styles.td}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>
-                      {item.dynamicSafetyStock.toLocaleString()} {item.unit}
-                    </span>
-                  </td>
-                  <td style={styles.td}>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8' }}>{item.recomFormatted}</span>
-                  </td>
-                  <td style={styles.td}>
-                    {dispatchedPOs[item.sku] ? (
-                      <span
-                        onClick={(e) => handleOpenPoModal(e, item)}
-                        style={{ ...styles.poIssuedBadge, cursor: 'pointer' }}
-                        title="Click to view issued ERP Purchase Order requisition details"
-                      >
-                        <span style={styles.poCheckDot}>✓</span> PO #{dispatchedPOs[item.sku].poNumber} Dispatched ↗
-                      </span>
-                    ) : (
-                      <button
-                        onClick={(e) => handleOpenPoModal(e, item)}
-                        style={styles.approvePoBtn}
-                        title="Generate ERP Purchase Requisition with AI buffer quantity"
-                      >
-                        <span style={{ marginRight: '4px' }}>🛒</span> Approve PO
-                      </button>
-                    )}
-                  </td>
-                  <td style={styles.td}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setInspectedSku(item);
-                      }}
-                      style={styles.tableInspectBtn}
-                    >
-                      Formula ↗
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
 
-        {/* Inventory Health & Animated Circular Resilience Gauge */}
-        <div style={styles.healthCard}>
-          <div>
-            <div style={styles.cardHeader}>
-              <div style={styles.cardTitle}>Inventory Health & Resilience Index</div>
+        <div style={styles.compGrid}>
+          {/* Static Policy (Traditional ERP) */}
+          <div style={styles.staticBox}>
+            <div style={styles.compBoxTitleRow}>
+              <span style={styles.staticTag}>TRADITIONAL STATIC POLICY (s, S)</span>
+              <span style={styles.staticAlertTag}>High Vulnerability</span>
             </div>
-
-            {/* Circular SVG Resilience Gauge */}
-            <div style={styles.gaugeRow}>
-              <svg width="80" height="80" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="32" stroke="#1e293b" strokeWidth="6" fill="none" />
-                <circle
-                  cx="40"
-                  cy="40"
-                  r="32"
-                  stroke="#38bdf8"
-                  strokeWidth="6"
-                  fill="none"
-                  strokeDasharray="201"
-                  strokeDashoffset={201 - (201 * simulatedData.resilienceScore) / 100}
-                  strokeLinecap="round"
-                  transform="rotate(-90 40 40)"
-                  style={{ transition: 'stroke-dashoffset 0.6s ease' }}
-                />
-                <text x="40" y="44" fill="#ffffff" fontSize="13" fontWeight="800" textAnchor="middle" fontFamily="Outfit">
-                  {simulatedData.resilienceScore}%
-                </text>
-              </svg>
+            <div style={styles.compMetricRow}>
               <div>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9' }}>Factory Stock Resilience</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                  {simulatedData.resilienceScore > 80 ? '🛡️ High Buffer Immunity' : '⚠️ Elevated Disruption Exposure'}
-                </div>
+                <div style={styles.compMetricLabel}>FIXED SAFETY BUFFER</div>
+                <div style={styles.compMetricVal}>{simulatedData.staticSS.toLocaleString()} {simulatedData.targetItem.unit}</div>
+              </div>
+              <div>
+                <div style={styles.compMetricLabel}>EXPECTED STOCKOUT RISK</div>
+                <div style={{ ...styles.compMetricVal, color: '#f87171' }}>{simulatedData.stockoutRiskStatic}%</div>
+              </div>
+              <div>
+                <div style={styles.compMetricLabel}>LINE IMPACT</div>
+                <div style={{ ...styles.compMetricVal, color: '#f87171', fontSize: '13px' }}>Stop on Day 6 (48h Idle)</div>
               </div>
             </div>
-
-            <div style={styles.healthBars}>
-              <div style={styles.healthItem}>
-                <div style={styles.healthTop}>
-                  <span>OPTIMAL STATUS</span>
-                  <strong style={{ color: '#10b981' }}>{simulatedData.healthDist.optimal}%</strong>
-                </div>
-                <div style={styles.healthBarBg}>
-                  <div style={{ ...styles.healthBarFill, width: `${simulatedData.healthDist.optimal}%`, background: '#10b981' }} />
-                </div>
-              </div>
-
-              <div style={styles.healthItem}>
-                <div style={styles.healthTop}>
-                  <span>REVIEW NEEDED</span>
-                  <strong style={{ color: '#f59e0b' }}>{simulatedData.healthDist.review}%</strong>
-                </div>
-                <div style={styles.healthBarBg}>
-                  <div style={{ ...styles.healthBarFill, width: `${simulatedData.healthDist.review}%`, background: '#f59e0b' }} />
-                </div>
-              </div>
-
-              <div style={styles.healthItem}>
-                <div style={styles.healthTop}>
-                  <span>CRITICAL RISK</span>
-                  <strong style={{ color: '#ef4444' }}>{simulatedData.healthDist.critical}%</strong>
-                </div>
-                <div style={styles.healthBarBg}>
-                  <div style={{ ...styles.healthBarFill, width: `${simulatedData.healthDist.critical}%`, background: '#ef4444' }} />
-                </div>
-              </div>
+            <div style={styles.compExpl}>
+              Static model ignores port congestion & upstream lead-time variance (+{leadTimeVar.toFixed(1)}d), causing catastrophic production shutdown on {simulatedData.targetItem.downstreamLine}.
             </div>
           </div>
 
-          {/* Downstream Contract Telemetry */}
-          <div style={styles.contractBox}>
-            <div style={styles.contractTitle}>
-              <span style={styles.pulseGreenDot} />
-              DOWNSTREAM INTEGRATION CONTRACT (TO LINE OPTIMIZER)
+          {/* Adaptive Policy (OPTICHAIN) */}
+          <div style={styles.adaptiveBox}>
+            <div style={styles.compBoxTitleRow}>
+              <span style={styles.adaptiveTag}>OPTICHAIN ADAPTIVE OPTIMIZATION</span>
+              <span style={styles.adaptiveSafeTag}>Disruption Protected</span>
             </div>
-            <div style={styles.contractGrid}>
+            <div style={styles.compMetricRow}>
               <div>
-                <span style={styles.contractLabel}>Req:</span>
-                <span style={styles.contractVal}>{simulatedData.targetItem.materialRequirement.toLocaleString()} {simulatedData.targetItem.unit}</span>
+                <div style={styles.compMetricLabel}>DYNAMIC SAFETY BUFFER (SS)</div>
+                <div style={{ ...styles.compMetricVal, color: '#38bdf8' }}>
+                  {simulatedData.adaptiveSS.toLocaleString()} {simulatedData.targetItem.unit}
+                </div>
               </div>
               <div>
-                <span style={styles.contractLabel}>Shortage:</span>
-                <span style={{
-                  ...styles.contractVal,
-                  color: dispatchedPOs[simulatedData.targetItem.sku] ? '#34d399' : simulatedData.targetItem.materialShortage > 0 ? '#f87171' : '#34d399'
-                }}>
-                  {dispatchedPOs[simulatedData.targetItem.sku]
-                    ? '0 (IN-TRANSIT)'
-                    : `${simulatedData.targetItem.materialShortage.toLocaleString()} ${simulatedData.targetItem.unit}`}
-                </span>
+                <div style={styles.compMetricLabel}>RESILIENT STOCKOUT RISK</div>
+                <div style={{ ...styles.compMetricVal, color: '#34d399' }}>
+                  {simulatedData.stockoutRiskAdaptive}%
+                </div>
               </div>
               <div>
-                <span style={styles.contractLabel}>Avail Flag:</span>
-                <span style={{
-                  ...styles.contractVal,
-                  color: dispatchedPOs[simulatedData.targetItem.sku] || simulatedData.targetItem.materialAvailability ? '#34d399' : '#f87171'
-                }}>
-                  {dispatchedPOs[simulatedData.targetItem.sku]
-                    ? 'TRUE (PO ISSUED)'
-                    : simulatedData.targetItem.materialAvailability
-                    ? 'TRUE (READY)'
-                    : 'FALSE (HALT)'}
-                </span>
+                <div style={styles.compMetricLabel}>PRODUCTION CONTINUITY</div>
+                <div style={{ ...styles.compMetricVal, color: '#34d399', fontSize: '13px' }}>
+                  100% On-Track
+                </div>
               </div>
             </div>
-          </div>
-
-          <div style={styles.aiAdvisorBox}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" style={{ flexShrink: 0 }}>
-              <circle cx="12" cy="12" r="10"></circle>
-              <path d="M12 16v-4M12 8h.01"></path>
-            </svg>
-            <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
-              AI engine dynamically balances safety buffering with dead stock prevention using live Bayesian risk signals.
+            <div style={styles.compExpl}>
+              Dynamically expanded safety buffer by +{(simulatedData.adaptiveSS - simulatedData.staticSS).toLocaleString()} {simulatedData.targetItem.unit} and triggered early reorder to absorb supplier disruption ({ (simulatedData.targetItem.curDisrupt * 100).toFixed(0) }%).
             </div>
           </div>
         </div>
       </div>
+        </div>
+      )}
 
-      {/* ---------------------------------------------------------------------
+{/* ---------------------------------------------------------------------
           EXPLAINABLE AI (XAI) FORMULA INSPECTOR MODAL
       ---------------------------------------------------------------------- */}
       {inspectedSku && (
@@ -2234,9 +2572,68 @@ export default function InventoryOptimizationView() {
 }
 
 // -----------------------------------------------------------------------------
-// STYLES
+// STYLES  (theme-aware factory — call getStyles(isDark) inside the component)
 // -----------------------------------------------------------------------------
-const styles = {
+const getStyles = (isDark) => {
+
+  // ── Theme Tokens ──────────────────────────────────────────────────────────
+  const c = {
+    bg:       isDark ? '#060b14'                                    : '#f1f5f9',
+    card:     isDark ? '#0d1322'                                    : '#ffffff',
+    cardAlt:  isDark ? '#090e1a'                                    : '#f8fafc',
+    border:   isDark ? 'rgba(255, 255, 255, 0.08)'                  : '#e2e8f0',
+    text:     isDark ? '#f1f5f9'                                    : '#0f172a',
+    textSub:  isDark ? '#94a3b8'                                    : '#475569',
+    textMute: isDark ? '#64748b'                                    : '#94a3b8',
+    input:    isDark ? '#131c31'                                    : '#ffffff',
+    inputBd:  isDark ? 'rgba(255, 255, 255, 0.12)'                  : '#cbd5e1',
+    heroCard: isDark ? 'linear-gradient(180deg, #10192e 0%, #0c1220 100%)' : 'linear-gradient(180deg, #e0f2fe 0%, #f0f9ff 100%)',
+  };
+
+  return {
+
+  // ── Workspace Tab Navigation ───────────────────────────────────────────────
+  workspaceTabBar: {
+    display: 'flex',
+    gap: '10px',
+    padding: '0',
+    flexWrap: 'wrap',
+  },
+  workspaceTabBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    border: '1px solid',
+    borderRadius: '10px',
+    padding: '10px 18px',
+    fontSize: '12.5px',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    flex: 1,
+    justifyContent: 'center',
+    minWidth: '200px',
+  },
+  workspaceTabBadge: {
+    fontSize: '9.5px',
+    fontWeight: 700,
+    padding: '2px 7px',
+    borderRadius: '10px',
+    marginLeft: '4px',
+  },
+  themeToggleBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    border: '1px solid',
+    borderRadius: '8px',
+    padding: '7px 12px',
+    fontSize: '11.5px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    whiteSpace: 'nowrap',
+  },
+
   container: {
     padding: '24px',
     display: 'flex',
@@ -2244,10 +2641,12 @@ const styles = {
     gap: '20px',
     maxWidth: '1600px',
     margin: '0 auto',
+    background: c.bg,
+    minHeight: '100%',
   },
   heroCard: {
-    background: 'linear-gradient(180deg, #10192e 0%, #0c1220 100%)',
-    border: '1px solid rgba(59, 130, 246, 0.25)',
+    background: c.heroCard,
+    border: isDark ? '1px solid rgba(59, 130, 246, 0.25)' : '1px solid rgba(37, 99, 235, 0.25)',
     borderRadius: '16px',
     padding: '24px',
     boxShadow: '0 8px 30px rgba(0, 0, 0, 0.4)',
@@ -2308,11 +2707,11 @@ const styles = {
     fontSize: '24px',
     fontWeight: 700,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: c.text,
   },
   heroSubtitle: {
     fontSize: '12px',
-    color: '#94a3b8',
+    color: c.textSub,
     marginTop: '6px',
     maxWidth: '960px',
     lineHeight: 1.6,
@@ -2324,8 +2723,8 @@ const styles = {
     marginTop: '20px',
   },
   kpiItem: {
-    background: '#090e1a',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
+    background: c.cardAlt,
+    border: `1px solid ${c.border}`,
     borderRadius: '10px',
     padding: '14px 16px',
     display: 'flex',
@@ -2336,7 +2735,7 @@ const styles = {
     fontSize: '10px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#64748b',
+    color: c.textMute,
   },
   kpiValRow: {
     display: 'flex',
@@ -2348,11 +2747,11 @@ const styles = {
     fontSize: '24px',
     fontWeight: 800,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: c.text,
   },
   kpiSub: {
     fontSize: '10px',
-    color: '#64748b',
+    color: c.textMute,
     marginTop: '6px',
   },
   kpiTagGreen: {
@@ -2383,7 +2782,7 @@ const styles = {
 
   // Telemetry Bar
   telemetryStreamBar: {
-    background: 'rgba(15, 23, 42, 0.75)',
+    background: isDark ? 'rgba(15, 23, 42, 0.75)' : 'rgba(241, 245, 249, 0.95)',
     border: '1px solid rgba(56, 189, 248, 0.25)',
     borderRadius: '10px',
     padding: '10px 16px',
@@ -2425,7 +2824,7 @@ const styles = {
 
   // Simulator Drawer Styles
   simDrawerCard: {
-    background: 'linear-gradient(180deg, #0e172a 0%, #080d19 100%)',
+    background: isDark ? 'linear-gradient(180deg, #0e172a 0%, #080d19 100%)' : 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
     border: '1px solid rgba(56, 189, 248, 0.35)',
     borderRadius: '16px',
     padding: '20px',
@@ -2512,8 +2911,8 @@ const styles = {
     marginTop: '18px',
   },
   sliderCard: {
-    background: '#090e1a',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
+    background: c.cardAlt,
+    border: `1px solid ${c.border}`,
     borderRadius: '10px',
     padding: '14px',
     display: 'flex',
@@ -2530,7 +2929,7 @@ const styles = {
     fontSize: '10px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#94a3b8',
+    color: c.textSub,
   },
   sliderValueBadge: {
     fontSize: '12px',
@@ -2571,9 +2970,9 @@ const styles = {
     marginTop: '10px',
   },
   skuSelect: {
-    background: '#131c31',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    color: '#f1f5f9',
+    background: c.input,
+    border: `1px solid ${c.inputBd}`,
+    color: c.text,
     borderRadius: '4px',
     padding: '4px 8px',
     fontSize: '11px',
@@ -2634,7 +3033,7 @@ const styles = {
     gap: '16px',
   },
   directContextBanner: {
-    background: 'rgba(15, 23, 42, 0.7)',
+    background: isDark ? 'rgba(15, 23, 42, 0.7)' : 'rgba(241, 245, 249, 0.9)',
     border: '1px solid rgba(56, 189, 248, 0.2)',
     borderRadius: '10px',
     padding: '10px 14px',
@@ -2659,8 +3058,8 @@ const styles = {
     gap: '14px',
   },
   inputFieldCard: {
-    background: '#090e1a',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: c.cardAlt,
+    border: `1px solid ${c.border}`,
     borderRadius: '10px',
     padding: '12px 14px',
     display: 'flex',
@@ -2694,10 +3093,10 @@ const styles = {
   },
   fieldInput: {
     width: '100%',
-    background: '#131c31',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: c.input,
+    border: `1px solid ${c.inputBd}`,
     borderRadius: '6px',
-    color: '#f8fafc',
+    color: c.text,
     padding: '7px 48px 7px 10px',
     fontSize: '13px',
     fontWeight: 600,
@@ -2714,10 +3113,10 @@ const styles = {
   },
   fieldSelect: {
     width: '100%',
-    background: '#131c31',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    background: c.input,
+    border: `1px solid ${c.inputBd}`,
     borderRadius: '6px',
-    color: '#f8fafc',
+    color: c.text,
     padding: '7px 10px',
     fontSize: '11.5px',
     fontWeight: 500,
@@ -2783,7 +3182,7 @@ const styles = {
 
   // Live API Response Card
   apiResponseCard: {
-    background: 'linear-gradient(180deg, #0b1528 0%, #060b14 100%)',
+    background: isDark ? 'linear-gradient(180deg, #0b1528 0%, #060b14 100%)' : '#f8fafc',
     border: '1px solid rgba(16, 185, 129, 0.4)',
     borderRadius: '12px',
     padding: '16px 18px',
@@ -2832,8 +3231,8 @@ const styles = {
     gap: '12px',
   },
   apiMetricBox: {
-    background: '#090e1a',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
+    background: c.cardAlt,
+    border: `1px solid ${c.border}`,
     borderRadius: '8px',
     padding: '12px 14px',
   },
@@ -2889,8 +3288,8 @@ const styles = {
 
   // Comparison Card Styles
   comparisonCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: c.card,
+    border: `1px solid ${c.border}`,
     borderRadius: '16px',
     padding: '20px',
   },
@@ -3004,7 +3403,7 @@ const styles = {
     gap: '20px',
   },
   chartCard: {
-    background: '#0d1322',
+    background: c.card,
     border: '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: '16px',
     padding: '20px',
@@ -3200,7 +3599,7 @@ const styles = {
     gap: '20px',
   },
   tableCard: {
-    background: '#0d1322',
+    background: c.card,
     border: '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: '16px',
     padding: '20px',
@@ -3332,7 +3731,7 @@ const styles = {
 
   // Health Card & Circular Gauge
   healthCard: {
-    background: '#0d1322',
+    background: c.card,
     border: '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: '16px',
     padding: '20px',
@@ -3795,7 +4194,7 @@ const styles = {
     maxWidth: '460px',
   },
   toastCard: {
-    background: '#0d172a',
+    background: isDark ? '#0d172a' : '#ffffff',
     border: '1px solid #10b981',
     borderRadius: '12px',
     padding: '14px 16px',
@@ -3845,4 +4244,5 @@ const styles = {
     cursor: 'pointer',
     padding: '0 4px',
   },
+  };
 };
