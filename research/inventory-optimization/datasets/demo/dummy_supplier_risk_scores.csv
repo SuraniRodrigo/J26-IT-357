@@ -1,0 +1,9 @@
+product_id,demo_supplier_id,demo_supplier_name,supplier_origin_country,average_lead_time_days,lead_time_std_dev_days,disruption_probability,supplier_trust_score,risk_level,disruption_scenario,data_source
+FAB-001,DEMO-SUP-101,Vardhman Textiles Port Hub,India (Nhava Sheva),7.0,3.2,0.85,42.0,CRITICAL,Red Sea Chokepoint & Port Congestion,MOCK UPSTREAM DATA (DEMO)
+DYE-008,DEMO-SUP-204,Archroma Chem Logistics,Switzerland / Singapore,12.0,4.5,0.70,58.0,HIGH,Raw Chemical Export Clearance Delay,MOCK UPSTREAM DATA (DEMO)
+TRM-015,DEMO-SUP-309,Prym Fasteners Global,China (Ningbo),5.0,1.2,0.30,78.0,MEDIUM,Regional Feeder Vessel Schedule Shift,MOCK UPSTREAM DATA (DEMO)
+YRN-042,DEMO-SUP-412,Coats Thread Sri Lanka Depot,Sri Lanka (Local Biyagama),4.0,0.8,0.15,92.0,LOW,Nominal Operating Buffer,MOCK UPSTREAM DATA (DEMO)
+FAB-002,DEMO-SUP-108,Sintra Mills Export,Vietnam (Hai Phong),9.0,3.8,0.65,60.0,HIGH,Monsoon Port Berthing Delays,MOCK UPSTREAM DATA (DEMO)
+TRM-022,DEMO-SUP-315,YKK Lanka Fasteners,Sri Lanka (Local Seethawaka),3.0,0.5,0.10,95.0,LOW,Direct Factory Dispatch,MOCK UPSTREAM DATA (DEMO)
+CHM-005,DEMO-SUP-218,Dystar Speciality Dyes,India (Chennai),6.0,2.1,0.45,70.0,MEDIUM,Customs Hazardous Cargo Inspection,MOCK UPSTREAM DATA (DEMO)
+YRN-018,DEMO-SUP-425,Nahar Spinning Mills,India (Mundra),8.0,2.8,0.55,66.0,MEDIUM,Freight Container Repositioning,MOCK UPSTREAM DATA (DEMO)

@@ -27,3 +27,8 @@ Thumbs.db
 
 # Database
 *.sqlite3
+
+# Large Raw Research Datasets (Kept locally on PC, excluded from GitHub 100MB limit)
+research/**/datasets/raw/
+research/datasets/**/raw/
+

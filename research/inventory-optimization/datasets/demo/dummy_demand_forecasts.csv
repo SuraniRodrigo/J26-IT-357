@@ -1,0 +1,9 @@
+product_id,product_name,category,unit,forecast_date,forecast_horizon_days,forecasted_demand,demand_std_dev,demand_uncertainty_pct,historical_daily_mean,historical_daily_std,data_source
+FAB-001,Organic Cotton Premium 30s,Fabrics,kg,2026-10-08,14,15200.0,2280.0,0.15,380.0,57.0,MOCK UPSTREAM DATA (DEMO)
+DYE-008,Indigo Reactive Dye Base,Dyes & Chemicals,L,2026-10-08,14,3500.0,630.0,0.18,95.0,17.1,MOCK UPSTREAM DATA (DEMO)
+TRM-015,Alloy Snap Fasteners 15mm,Trims & Fasteners,pcs,2026-10-08,14,22000.0,2640.0,0.12,550.0,66.0,MOCK UPSTREAM DATA (DEMO)
+YRN-042,Polyester Spun Thread 40/2,Yarns & Threads,cones,2026-10-08,14,24000.0,2400.0,0.10,600.0,60.0,MOCK UPSTREAM DATA (DEMO)
+FAB-002,Lycra Stretch Twill Fabric,Fabrics,meters,2026-10-08,14,18500.0,3700.0,0.20,460.0,92.0,MOCK UPSTREAM DATA (DEMO)
+TRM-022,Brass YKK Compatible Zippers,Trims & Fasteners,pcs,2026-10-08,14,12000.0,1440.0,0.12,300.0,36.0,MOCK UPSTREAM DATA (DEMO)
+CHM-005,Textile Pre-Treatment Enzyme,Dyes & Chemicals,kg,2026-10-08,14,4200.0,840.0,0.20,110.0,22.0,MOCK UPSTREAM DATA (DEMO)
+YRN-018,Combed Cotton Ring Yarn 40s,Yarns & Threads,kg,2026-10-08,14,8800.0,1056.0,0.12,220.0,26.4,MOCK UPSTREAM DATA (DEMO)

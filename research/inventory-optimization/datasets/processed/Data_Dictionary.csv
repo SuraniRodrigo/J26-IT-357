@@ -1,0 +1,23 @@
+Column,Definition,Type
+Product Card Id,Product identifier from DataCo,Source
+Product Name,Product name associated with product identifier,Source
+Order_Date,Simulation date,Source
+Daily_Demand,Observed daily demand used in simulation,Source
+Forecasted_Demand,Demand forecast from upstream demand forecasting output,Source
+Disruption_Probability,Upstream disruption probability when available; otherwise missing,Source
+Supplier_Trust_Score,Upstream trust signal when available; not a supplier ID,Source
+Risk_Available,Whether upstream risk signal was available for this row,Source
+Policy_Type,Selected inventory policy used by simulation,Source
+Selected_Lead_Time,Lead-time parameter selected by policy,Source
+Selected_Reorder_Point,Reorder point selected by policy,Source
+Selected_Reorder_Quantity,Reorder quantity selected by policy,Source
+Inventory_Before_Demand,Inventory before serving daily demand,Source
+Fulfilled_Demand,Demand fulfilled,Source
+Stockout_Units,Unfulfilled demand units,Source
+Ending_Inventory,Inventory remaining after demand/replenishment simulation,Source
+Inventory_Position,Post-replenishment inventory position in current simulator,Source
+Reorder_Placed,Whether a replenishment was placed,Source
+Material_Requirement,"Forecasted demand when available, otherwise daily demand; derived for scheduling handoff",Derived
+Available_After_Demand,Ending inventory used as availability proxy; derived alias,Derived
+Material_Shortage,"max(Material_Requirement - Available_After_Demand, 0); derived",Derived
+Material_Availability_Flag,"Available if derived shortage is zero, otherwise Shortage",Derived
