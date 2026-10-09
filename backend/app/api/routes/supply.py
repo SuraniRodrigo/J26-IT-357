@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 
-from app.schemas.supply import SupplyRiskRequest, SupplyRiskSchema
-from app.services.supply_service import predict_supply_risk
+from app.schemas.supply import SupplyPredictionRequest, SupplyPredictionResponse
+from app.services.supply.supply_service import predict_supply_risk
 
 router = APIRouter(tags=["supply"])
 
 
-@router.post("/supply/predict", response_model=list[SupplyRiskSchema])
-def supply_predict(request: SupplyRiskRequest) -> list[SupplyRiskSchema]:
+@router.post("/supply/predict")
+def supply_predict(request: SupplyPredictionRequest) -> SupplyPredictionResponse:
     try:
         return predict_supply_risk(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
