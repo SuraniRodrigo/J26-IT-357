@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   optimizeInventoryDetailed,
   getInventorySummary,
@@ -8,356 +8,323 @@ import {
   getResearchResults,
 } from '../../services/inventoryService';
 
+// ─── tiny SVG bar-chart used in Research tab ───────────────────────────────
+function PolicyBarChart({ isDark }) {
+  const policies = [
+    { label: 'Static (s,S)', stockout: 4.36,    color: '#64748B', service: 99.99 },
+    { label: 'Std Adaptive', stockout: 1994.05,  color: '#F59E0B', service: 99.46 },
+    { label: 'OPTICHAIN',   stockout: 160.45,   color: '#10B981', service: 99.96 },
+  ];
+  const maxVal = 1994.05;
+  const W = 480, H = 160, pad = 40, barW = 80, gap = 40;
+  const textC = isDark ? '#94A3B8' : '#475569';
+  const lineC = isDark ? '#1E293B' : '#E2E8F0';
+  return (
+    <svg viewBox={`0 0 ${W} ${H + 40}`} style={{ width: '100%', maxWidth: W, height: 'auto' }}>
+      {/* grid lines */}
+      {[0, 0.25, 0.5, 0.75, 1].map((t) => {
+        const y = pad + (1 - t) * H;
+        return (
+          <g key={t}>
+            <line x1={pad} y1={y} x2={W - 10} y2={y} stroke={lineC} strokeDasharray="4 3" strokeWidth="1" />
+            <text x={pad - 6} y={y + 4} fontSize="9" fill={textC} textAnchor="end">
+              {Math.round(t * maxVal)}
+            </text>
+          </g>
+        );
+      })}
+      {/* bars */}
+      {policies.map((p, i) => {
+        const x = pad + i * (barW + gap) + 10;
+        const barH = (p.stockout / maxVal) * H;
+        const y = pad + H - barH;
+        return (
+          <g key={p.label}>
+            <rect x={x} y={y} width={barW} height={barH} rx="6" fill={p.color} opacity="0.85" />
+            <text x={x + barW / 2} y={y - 6} fontSize="10" fontWeight="700" fill={p.color} textAnchor="middle">
+              {p.stockout.toLocaleString()}
+            </text>
+            <text x={x + barW / 2} y={pad + H + 16} fontSize="10" fill={textC} textAnchor="middle" fontWeight="600">
+              {p.label}
+            </text>
+            <text x={x + barW / 2} y={pad + H + 28} fontSize="9" fill={textC} textAnchor="middle">
+              SL {p.service}%
+            </text>
+          </g>
+        );
+      })}
+      {/* axis */}
+      <line x1={pad} y1={pad} x2={pad} y2={pad + H} stroke={textC} strokeWidth="1.5" />
+      <line x1={pad} y1={pad + H} x2={W - 10} y2={pad + H} stroke={textC} strokeWidth="1.5" />
+      <text x={10} y={pad + H / 2} fontSize="9" fill={textC} transform={`rotate(-90,10,${pad + H / 2})`} textAnchor="middle">
+        Stockout Units
+      </text>
+    </svg>
+  );
+}
+
+// ─── Circular gauge ─────────────────────────────────────────────────────────
+function StockGauge({ pct, label, color }) {
+  const r = 36, cx = 44, cy = 44, stroke = 8;
+  const circ = 2 * Math.PI * r;
+  const dash = Math.max(0, Math.min(1, pct)) * circ;
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <svg width="88" height="88" viewBox="0 0 88 88">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
+        <circle
+          cx={cx} cy={cy} r={r} fill="none"
+          stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${dash} ${circ}`}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${cx} ${cy})`}
+          style={{ transition: 'stroke-dasharray 0.6s ease' }}
+        />
+        <text x={cx} y={cy - 4} textAnchor="middle" fontSize="12" fontWeight="800" fill={color}>
+          {Math.round(pct * 100)}%
+        </text>
+        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="8" fill="#94A3B8">
+          {label}
+        </text>
+      </svg>
+    </div>
+  );
+}
+
 export default function InventoryOptimizationView() {
-  // ── Theme State ───────────────────────────────────────────────────────────
+  // ── Theme ─────────────────────────────────────────────────────────────────
   const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem('optichain_inventory_theme') || 'dark';
-    } catch {
-      return 'dark';
-    }
+    try { return localStorage.getItem('optichain_inventory_theme') || 'dark'; } catch { return 'dark'; }
   });
   const isDark = theme === 'dark';
   const c = useMemo(() => getThemeColors(isDark), [isDark]);
   const styles = useMemo(() => getStyles(c), [c]);
 
-  // ── Navigation & View State ───────────────────────────────────────────────
+  // ── Navigation ────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('operations');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // ── Data State from APIs ──────────────────────────────────────────────────
+  // ── API Data ──────────────────────────────────────────────────────────────
+  const [loading, setLoading] = useState(true);
   const [summaryData, setSummaryData] = useState(null);
   const [productsList, setProductsList] = useState([]);
   const [selectedSku, setSelectedSku] = useState('FAB-001');
   const [productionInterfaceData, setProductionInterfaceData] = useState([]);
-  const [researchData, setResearchData] = useState(null);
   const [scenarioData, setScenarioData] = useState(null);
 
-  // ── Interactive Simulation Controls State ─────────────────────────────────
-  const [activePreset, setActivePreset] = useState('baseline');
+  // ── Simulator Controls ────────────────────────────────────────────────────
+  const [activePreset, setActivePreset] = useState('port_crisis');
   const [disruptionProb, setDisruptionProb] = useState(0.85);
   const [leadTimeVar, setLeadTimeVar] = useState(3.2);
   const [demandSurge, setDemandSurge] = useState(0);
   const [serviceLevel, setServiceLevel] = useState(0.95);
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [baselineSnap, setBaselineSnap] = useState(null);
+  const [showPolicyOverlay, setShowPolicyOverlay] = useState(false);
 
-  // ── UI Filter & Search State ──────────────────────────────────────────────
+  // ── Table Controls ────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [sortCol, setSortCol] = useState('disruption_probability');
+  const [sortDir, setSortDir] = useState('desc');
 
-  // ── Modals & Notifications State ──────────────────────────────────────────
+  // ── Modals & PO ───────────────────────────────────────────────────────────
   const [xaiModalSku, setXaiModalSku] = useState(null);
   const [poModalItem, setPoModalItem] = useState(null);
   const [freightMode, setFreightMode] = useState('sea');
   const [dispatchedPOs, setDispatchedPOs] = useState({});
-  const [toastMessage, setToastMessage] = useState(null);
+  const [showPoHistory, setShowPoHistory] = useState(false);
+  const [toasts, setToasts] = useState([]);
 
-  // ── Direct API Tester State (Option A) ────────────────────────────────────
+  // ── Direct API Tester ─────────────────────────────────────────────────────
   const [directParams, setDirectParams] = useState({
-    product_id: 'FAB-001',
-    current_inventory: 3400,
-    forecasted_demand: 15200,
-    demand_std_dev: 2280,
-    average_lead_time: 7.0,
-    lead_time_std_dev: 3.2,
-    disruption_probability: 0.85,
-    supplier_trust_score: 42.0,
-    service_level: 0.95,
-    replenishment_cycle_days: 7,
+    product_id: 'FAB-001', current_inventory: 3400, forecasted_demand: 15200,
+    demand_std_dev: 2280, average_lead_time: 7.0, lead_time_std_dev: 3.2,
+    disruption_probability: 0.85, supplier_trust_score: 42.0,
+    service_level: 0.95, replenishment_cycle_days: 7,
   });
   const [directApiResult, setDirectApiResult] = useState(null);
   const [isExecutingDirectApi, setIsExecutingDirectApi] = useState(false);
 
-  // ── 1. Initial Data Fetching from FastAPI Backend ─────────────────────────
-  const fetchAllInitialData = useCallback(async () => {
+  // ── Toast system ──────────────────────────────────────────────────────────
+  const showToast = useCallback((msg, type = 'success') => {
+    const id = Date.now();
+    setToasts(t => [...t, { id, msg, type }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000);
+  }, []);
+
+  // ── Fetch data ────────────────────────────────────────────────────────────
+  const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-
-      const [summaryRes, productsRes, prodInterfaceRes, researchRes] = await Promise.all([
+      const [sumRes, prodRes, piRes] = await Promise.all([
         getInventorySummary().catch(() => null),
         getInventoryProducts().catch(() => []),
         getProductionInterface().catch(() => []),
-        getResearchResults().catch(() => null),
       ]);
-
-      if (summaryRes) setSummaryData(summaryRes);
-      if (productsRes && productsRes.length > 0) {
-        setProductsList(productsRes);
-        setSelectedSku(productsRes[0].product_id);
-      }
-      if (prodInterfaceRes) setProductionInterfaceData(prodInterfaceRes);
-      if (researchRes) setResearchData(researchRes);
-    } catch (err) {
-      console.error('Error fetching inventory data:', err);
-      setError('Unable to load real-time inventory telemetry from FastAPI server.');
-    } finally {
-      setLoading(false);
-    }
+      if (sumRes) setSummaryData(sumRes);
+      if (prodRes?.length) { setProductsList(prodRes); setSelectedSku(prodRes[0].product_id); }
+      if (piRes) setProductionInterfaceData(piRes);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    fetchAllInitialData();
-  }, [fetchAllInitialData]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // ── 2. Run Scenario Analysis when SKU or parameters change ────────────────
-  const currentProduct = useMemo(() => {
-    return productsList.find((p) => p.product_id === selectedSku) || productsList[0] || {
-      product_id: 'FAB-001',
-      product_name: 'Organic Cotton Premium 30s',
-      category: 'Fabrics',
-      unit: 'kg',
-      current_inventory: 3400,
-      forecasted_demand: 15200,
-      demand_std_dev: 2280,
-      average_lead_time: 7.0,
-      lead_time_std_dev: 3.2,
-      disruption_probability: 0.85,
-      supplier_trust_score: 42.0,
-      risk_level: 'CRITICAL',
-    };
-  }, [productsList, selectedSku]);
+  // ── Current product ───────────────────────────────────────────────────────
+  const currentProduct = useMemo(() =>
+    productsList.find(p => p.product_id === selectedSku) || productsList[0] || {
+      product_id: 'FAB-001', product_name: 'Organic Cotton Premium 30s', category: 'Fabrics',
+      unit: 'kg', current_inventory: 3400, forecasted_demand: 15200, demand_std_dev: 2280,
+      average_lead_time: 7.0, lead_time_std_dev: 3.2, disruption_probability: 0.85, supplier_trust_score: 42.0,
+    }, [productsList, selectedSku]);
 
+  // ── Scenario fetch ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentProduct) return;
-
-    let isMounted = true;
+    let live = true;
     runScenarioAnalysis({
-      product_id: currentProduct.product_id,
-      current_inventory: currentProduct.current_inventory,
+      product_id: currentProduct.product_id, current_inventory: currentProduct.current_inventory,
       forecasted_demand: currentProduct.forecasted_demand * (1 + demandSurge / 100),
-      base_disruption_prob: disruptionProb,
-      average_lead_time: currentProduct.average_lead_time,
-      lead_time_std_dev: leadTimeVar,
-      demand_std_dev: currentProduct.demand_std_dev,
-      service_level: serviceLevel,
-    })
-      .then((res) => {
-        if (isMounted && res) setScenarioData(res);
-      })
-      .catch((err) => console.warn('Scenario analysis fetch error:', err));
-
-    return () => {
-      isMounted = false;
-    };
+      base_disruption_prob: disruptionProb, average_lead_time: currentProduct.average_lead_time,
+      lead_time_std_dev: leadTimeVar, demand_std_dev: currentProduct.demand_std_dev, service_level: serviceLevel,
+    }).then(r => { if (live && r) setScenarioData(r); }).catch(() => {});
+    return () => { live = false; };
   }, [currentProduct, disruptionProb, leadTimeVar, demandSurge, serviceLevel]);
 
-  // ── 3. Live Mathematical Optimization Engine (Client Reactive Cache) ──────
-  const activeOptimization = useMemo(() => {
-    const p = currentProduct;
-    const effectiveDemand = p.forecasted_demand * (1 + demandSurge / 100);
-    const effectiveLeadTime = p.average_lead_time * (1 + disruptionProb);
-    const z = serviceLevel >= 0.99 ? 2.33 : serviceLevel >= 0.95 ? 1.645 : 1.28;
+  // ── Live optimization ─────────────────────────────────────────────────────
+  const calc = useCallback((p, dp, ltv, ds, sl) => {
+    const demand = p.forecasted_demand * (1 + ds / 100);
+    const leadAdj = p.average_lead_time * (1 + dp);
+    const z = sl >= 0.99 ? 2.33 : sl >= 0.95 ? 1.645 : 1.28;
+    const variance = leadAdj * Math.pow(p.demand_std_dev, 2) + Math.pow(demand, 2) * Math.pow(ltv, 2);
+    const ss = Math.round(z * Math.sqrt(Math.max(0, variance)));
+    const ssLo = Math.round((z - 0.2) * Math.sqrt(Math.max(0, variance)));
+    const ssHi = Math.round((z + 0.2) * Math.sqrt(Math.max(0, variance)));
+    const rop = Math.round(demand * leadAdj) + ss;
+    const roq = Math.round(demand * 7 * (1 + dp));
+    const shortage = Math.max(0, Math.round(demand - p.current_inventory));
+    const avail = shortage === 0;
+    let risk = 'LOW';
+    if (shortage > 0 || (p.current_inventory < ss && dp >= 0.7)) risk = 'CRITICAL';
+    else if (dp >= 0.6 || p.current_inventory < ss) risk = 'HIGH';
+    else if (dp >= 0.25) risk = 'MEDIUM';
+    return { demand, leadAdj: parseFloat(leadAdj.toFixed(1)), z, ss, ssLo, ssHi, rop, roq, shortage, avail, risk };
+  }, []);
 
-    const variance =
-      effectiveLeadTime * Math.pow(p.demand_std_dev, 2) +
-      Math.pow(effectiveDemand, 2) * Math.pow(leadTimeVar, 2);
-    const safetyStock = Math.round(z * Math.sqrt(Math.max(0, variance)));
-    const leadTimeDemand = Math.round(effectiveDemand * effectiveLeadTime);
-    const reorderPoint = leadTimeDemand + safetyStock;
-    const reorderQuantity = Math.round(effectiveDemand * 7 * (1 + disruptionProb));
+  const activeOpt = useMemo(() => calc(currentProduct, disruptionProb, leadTimeVar, demandSurge, serviceLevel),
+    [currentProduct, disruptionProb, leadTimeVar, demandSurge, serviceLevel, calc]);
 
-    const materialShortage = Math.max(0, Math.round(effectiveDemand - p.current_inventory));
-    const materialAvailability = materialShortage === 0;
-
-    let riskLevel = 'LOW';
-    if (materialShortage > 0 || (p.current_inventory < safetyStock && disruptionProb >= 0.7)) {
-      riskLevel = 'CRITICAL';
-    } else if (disruptionProb >= 0.6 || p.current_inventory < safetyStock) {
-      riskLevel = 'HIGH';
-    } else if (disruptionProb >= 0.25) {
-      riskLevel = 'MEDIUM';
-    }
-
-    return {
-      product_id: p.product_id,
-      product_name: p.product_name,
-      category: p.category,
-      unit: p.unit,
-      current_inventory: p.current_inventory,
-      forecasted_demand: effectiveDemand,
-      risk_adjusted_lead_time: parseFloat(effectiveLeadTime.toFixed(1)),
-      lead_time_demand: leadTimeDemand,
-      safety_stock: safetyStock,
-      reorder_point: reorderPoint,
-      reorder_quantity: reorderQuantity,
-      material_requirement: effectiveDemand,
-      material_shortage: materialShortage,
-      material_availability_flag: materialAvailability,
-      disruption_probability: disruptionProb,
-      supplier_trust_score: p.supplier_trust_score,
-      risk_level: riskLevel,
-      z_value: z,
+  // ── Presets ───────────────────────────────────────────────────────────────
+  const applyPreset = (key) => {
+    setActivePreset(key);
+    const snap = { ss: activeOpt.ss, rop: activeOpt.rop, roq: activeOpt.roq, risk: activeOpt.risk };
+    const map = {
+      baseline:     [0.15, 1.0,  0,  0.95],
+      port_crisis:  [0.85, 3.8, 10,  0.95],
+      demand_spike: [0.35, 1.8, 45,  0.99],
+      force_majeure:[0.95, 5.0, 25,  0.99],
     };
-  }, [currentProduct, disruptionProb, leadTimeVar, demandSurge, serviceLevel]);
-
-  // ── 4. Preset Handler ─────────────────────────────────────────────────────
-  const applyPreset = (presetKey) => {
-    setActivePreset(presetKey);
-    if (presetKey === 'baseline') {
-      setDisruptionProb(0.15);
-      setLeadTimeVar(1.0);
-      setDemandSurge(0);
-      setServiceLevel(0.95);
-    } else if (presetKey === 'port_crisis') {
-      setDisruptionProb(0.85);
-      setLeadTimeVar(3.8);
-      setDemandSurge(10);
-      setServiceLevel(0.95);
-    } else if (presetKey === 'demand_spike') {
-      setDisruptionProb(0.35);
-      setLeadTimeVar(1.8);
-      setDemandSurge(45);
-      setServiceLevel(0.99);
-    } else if (presetKey === 'force_majeure') {
-      setDisruptionProb(0.95);
-      setLeadTimeVar(5.0);
-      setDemandSurge(25);
-      setServiceLevel(0.99);
-    }
+    const [dp, ltv, ds, sl] = map[key] || [0.15, 1.0, 0, 0.95];
+    setBaselineSnap(snap);
+    setDisruptionProb(dp); setLeadTimeVar(ltv); setDemandSurge(ds); setServiceLevel(sl);
   };
 
-  // ── 5. Direct API Execution (Option A) ────────────────────────────────────
-  const handleExecuteDirectApi = async () => {
-    try {
-      setIsExecutingDirectApi(true);
-      const res = await optimizeInventoryDetailed(directParams);
-      setDirectApiResult(res);
-      setToastMessage(`✓ Optimization recalculated successfully for ${directParams.product_id}`);
-    } catch (err) {
-      console.error('Direct API execution failed:', err);
-      setToastMessage(`API Execution failed: ${err.message || 'Error'}`);
-    } finally {
-      setIsExecutingDirectApi(false);
-    }
-  };
-
-  // ── 6. PO Dispatch Handler ────────────────────────────────────────────────
+  // ── PO dispatch ───────────────────────────────────────────────────────────
   const handleDispatchPO = () => {
     if (!poModalItem) return;
     const poNum = `PO-${Math.floor(100000 + Math.random() * 900000)}`;
     const costPerUnit = poModalItem.category === 'Fabrics' ? 8.5 : poModalItem.category === 'Dyes & Chemicals' ? 24.0 : 0.45;
-    const freightMult = freightMode === 'air' ? 2.4 : 1.0;
-    const totalCost = Math.round(poModalItem.reorder_quantity * costPerUnit * freightMult);
-
-    setDispatchedPOs((prev) => ({
+    const totalCost = Math.round(poModalItem.reorder_quantity * costPerUnit * (freightMode === 'air' ? 2.4 : 1.0));
+    setDispatchedPOs(prev => ({
       ...prev,
-      [poModalItem.product_id]: {
-        poNumber: poNum,
-        qty: poModalItem.reorder_quantity,
-        cost: totalCost,
-        mode: freightMode,
-        dispatchedAt: new Date().toLocaleTimeString(),
-      },
+      [poModalItem.product_id]: { poNum, qty: poModalItem.reorder_quantity, cost: totalCost, mode: freightMode, at: new Date().toLocaleTimeString(), sku: poModalItem.product_id, name: poModalItem.product_name },
     }));
-
-    setToastMessage(`✓ Purchase Order #${poNum} successfully dispatched to ERP.`);
+    showToast(`Purchase Order #${poNum} dispatched to ERP ✓`);
     setPoModalItem(null);
   };
 
-  // ── Filtered Materials ────────────────────────────────────────────────────
-  const filteredProducts = useMemo(() => {
-    return productsList.filter((item) => {
-      const matchesCategory = selectedCategory === 'ALL' || item.category === selectedCategory;
-      const matchesSearch =
-        item.product_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.product_name.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [productsList, selectedCategory, searchQuery]);
+  // ── Table sort + filter ───────────────────────────────────────────────────
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('desc'); }
+  };
 
+  const filteredProducts = useMemo(() => {
+    let list = productsList.filter(item => {
+      const catOk = selectedCategory === 'ALL' || item.category === selectedCategory;
+      const srchOk = item.product_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                     item.product_name.toLowerCase().includes(searchQuery.toLowerCase());
+      return catOk && srchOk;
+    });
+    list = [...list].sort((a, b) => {
+      let av, bv;
+      if (sortCol === 'disruption_probability') { av = a.disruption_probability; bv = b.disruption_probability; }
+      else if (sortCol === 'current_inventory')  { av = a.current_inventory; bv = b.current_inventory; }
+      else if (sortCol === 'safety_stock')  { av = a.forecasted_demand * 0.35; bv = b.forecasted_demand * 0.35; }
+      else if (sortCol === 'roq') { av = a.forecasted_demand * 7 * (1 + a.disruption_probability); bv = b.forecasted_demand * 7 * (1 + b.disruption_probability); }
+      else { av = a[sortCol] ?? 0; bv = b[sortCol] ?? 0; }
+      return sortDir === 'asc' ? av - bv : bv - av;
+    });
+    return list;
+  }, [productsList, selectedCategory, searchQuery, sortCol, sortDir]);
+
+  // ── Critical SKUs alert ───────────────────────────────────────────────────
+  const criticalSkus = useMemo(() =>
+    productsList.filter(p => p.disruption_probability >= 0.7 && p.current_inventory < p.forecasted_demand * 0.35),
+    [productsList]);
+
+  // ── Policy overlay values ─────────────────────────────────────────────────
+  const policyValues = useMemo(() => {
+    const p = currentProduct;
+    const p1ss = Math.round(1.645 * Math.sqrt(p.average_lead_time * Math.pow(p.demand_std_dev, 2) + Math.pow(p.forecasted_demand, 2) * Math.pow(1.0, 2)));
+    const p2ss = Math.round(1.645 * Math.sqrt(p.average_lead_time * 1.3 * Math.pow(p.demand_std_dev, 2) + Math.pow(p.forecasted_demand, 2) * Math.pow(p.lead_time_std_dev, 2)));
+    return [
+      { label: 'Static (s,S)',    ss: p1ss, color: '#64748B' },
+      { label: 'Std Adaptive',    ss: p2ss, color: '#F59E0B' },
+      { label: 'OPTICHAIN',       ss: activeOpt.ss, color: '#10B981' },
+    ];
+  }, [currentProduct, activeOpt]);
+
+  const CATS = ['ALL', 'Fabrics', 'Dyes & Chemicals', 'Trims & Fasteners', 'Yarns & Threads'];
+  const dispatchedList = Object.values(dispatchedPOs);
+
+  const SortIcon = ({ col }) => (
+    <span style={{ marginLeft: '4px', opacity: sortCol === col ? 1 : 0.3, fontSize: '10px' }}>
+      {sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+    </span>
+  );
+
+  // ═══════════════════════════════════════════════════════════════════════════
   return (
     <div style={styles.container}>
-
-      {/* ── Animated CSS injected globally ── */}
       <style>{`
-        @keyframes pulse-dot {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.6); }
-        }
-        @keyframes glow-pulse {
-          0%, 100% { box-shadow: 0 0 8px rgba(37,99,235,0.4); }
-          50% { box-shadow: 0 0 22px rgba(37,99,235,0.8), 0 0 40px rgba(37,99,235,0.3); }
-        }
-        @keyframes slide-in-up {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes shimmer {
-          0% { background-position: -200% center; }
-          100% { background-position: 200% center; }
-        }
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-4px); }
-        }
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .kpi-card-hover:hover {
-          transform: translateY(-4px) !important;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.25) !important;
-        }
-        .tab-btn-hover:hover {
-          transform: translateY(-2px);
-        }
-        .table-row-hover:hover {
-          background: ${isDark ? 'rgba(59,130,246,0.12)' : 'rgba(37,99,235,0.06)'} !important;
-        }
-        .input-field-glow:focus {
-          border-color: #3B82F6 !important;
-          box-shadow: 0 0 0 3px rgba(59,130,246,0.25) !important;
-          outline: none !important;
-        }
-        .slider-styled {
-          -webkit-appearance: none;
-          height: 6px;
-          border-radius: 4px;
-          background: ${isDark ? 'linear-gradient(to right, #2563EB, #7C3AED)' : 'linear-gradient(to right, #3B82F6, #8B5CF6)'};
-          outline: none;
-          width: 100%;
-          cursor: pointer;
-        }
-        .slider-styled::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: white;
-          border: 3px solid #2563EB;
-          box-shadow: 0 2px 8px rgba(37,99,235,0.4);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .slider-styled::-webkit-slider-thumb:hover {
-          transform: scale(1.2);
-          box-shadow: 0 2px 16px rgba(37,99,235,0.7);
-        }
-        .action-btn-hover:hover {
-          opacity: 0.88;
-          transform: translateY(-1px);
-          box-shadow: 0 6px 20px rgba(37,99,235,0.4);
-        }
-        .preset-btn-hover:hover {
-          transform: scale(1.04);
-        }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.6)} }
+        @keyframes slide-up  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes toast-shrink { from{width:100%} to{width:0%} }
+        @keyframes badge-pop { 0%{transform:scale(0.8)} 100%{transform:scale(1)} }
+        .row-hover:hover { background: ${isDark ? 'rgba(59,130,246,0.1)' : 'rgba(37,99,235,0.05)'} !important; }
+        .th-sort { cursor:pointer; user-select:none; }
+        .th-sort:hover { color: ${isDark ? '#F1F5F9' : '#0B1F3A'} !important; }
+        .kpi-hover:hover { transform:translateY(-3px); box-shadow: 0 16px 40px rgba(0,0,0,.25) !important; }
+        .btn-hover:hover { opacity:.88; transform:translateY(-1px); }
+        .chip-hover:hover { opacity:.85; cursor:pointer; }
+        .input-focus:focus { border-color:#3B82F6!important; box-shadow:0 0 0 3px rgba(59,130,246,.2)!important; outline:none!important; }
+        .slider-track { -webkit-appearance:none; height:6px; border-radius:4px; outline:none; width:100%; cursor:pointer;
+          background: linear-gradient(to right,#2563EB,#7C3AED); }
+        .slider-track::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+          background:#fff; border:3px solid #2563EB; box-shadow:0 2px 8px rgba(37,99,235,.4); cursor:pointer; transition:all .2s; }
+        .slider-track::-webkit-slider-thumb:hover { transform:scale(1.2); }
+        .tab-btn { transition:all .2s ease; }
+        .tab-btn:hover { transform:translateY(-2px); }
       `}</style>
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* HEADER — Gradient Hero Section                                      */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* ═══ HEADER HERO ════════════════════════════════════════════════════ */}
       <div style={styles.headerCard}>
-        {/* Decorative gradient orbs */}
-        <div style={styles.orbBlue} />
-        <div style={styles.orbPurple} />
+        <div style={styles.orbBlue} /><div style={styles.orbPurple} />
 
         <div style={styles.headerTopRow}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', position: 'relative' }}>
-            <div style={styles.headerIconBox}>
-              <span style={{ fontSize: '26px', animation: 'float 3s ease-in-out infinite' }}>🛡️</span>
-            </div>
+          {/* Left: identity */}
+          <div style={{ display:'flex', alignItems:'center', gap:'16px', flex:'1 1 540px', minWidth:'320px' }}>
+            <div style={styles.headerIconBox}><span style={{ fontSize:'26px' }}>🛡️</span></div>
             <div>
               <div style={styles.moduleBadge}>
                 <span style={styles.liveDot} />
@@ -365,204 +332,178 @@ export default function InventoryOptimizationView() {
               </div>
               <h1 style={styles.headerTitle}>Inventory Guardian</h1>
               <p style={styles.headerSubtitle}>
-                Dynamically optimizing safety stock buffers, reorder thresholds, and material allocations by coupling upstream demand variability with supplier disruption risk signals.
+                Dynamically optimizing safety stock buffers, reorder thresholds, and material allocations
+                by coupling upstream demand variability with supplier disruption risk signals.
               </p>
             </div>
           </div>
 
-          {/* Status Badges + Theme Toggle */}
-          <div style={styles.headerBadgesRow}>
-            <div style={styles.demoModeBadge}>
-              <span style={{ fontSize: '11px' }}>⚠️</span>
-              <span>DEMO MODE (Upstream: Simulated)</span>
-            </div>
-            <div style={styles.statusBadge}>
-              <span style={{ color: '#10B981', fontWeight: 800, fontSize: '9px', animation: 'pulse-dot 2s infinite' }}>●</span>
-              <span>Engine: inventory-policy-v1.0</span>
-            </div>
-            <div style={styles.statusBadge}>
-              <span style={{ color: '#818CF8', fontWeight: 800, fontSize: '9px', animation: 'pulse-dot 2.4s infinite' }}>●</span>
-              <span>ML: backorder-xgb-v1.0</span>
-            </div>
-            <button
-              onClick={() => {
-                const nextTheme = isDark ? 'light' : 'dark';
-                setTheme(nextTheme);
-                try { localStorage.setItem('optichain_inventory_theme', nextTheme); } catch(e){}
-              }}
-              style={styles.themeToggleBtn}
-              title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
-            >
-              <span>{isDark ? '☀️ Light Mode' : '🌙 Dark Mode'}</span>
+          {/* Right: badges + theme toggle neatly aligned */}
+          <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', justifyContent:'flex-end', flexShrink:0 }}>
+            <span style={styles.demoModeBadge}>⚠️ DEMO MODE (Upstream: Simulated)</span>
+            <span style={styles.statusBadge}><span style={{ color:'#10B981', animation:'pulse-dot 2s infinite', fontSize:'8px' }}>●</span> inventory-policy-v1.0</span>
+            <span style={styles.statusBadge}><span style={{ color:'#818CF8', animation:'pulse-dot 2.4s infinite', fontSize:'8px' }}>●</span> backorder-xgb-v1.0</span>
+            <button className="btn-hover" onClick={() => { const n = isDark?'light':'dark'; setTheme(n); try{localStorage.setItem('optichain_inventory_theme',n);}catch(e){} }} style={styles.themeToggleBtn}>
+              {isDark ? '☀️ Light Mode' : '🌙 Dark Mode'}
             </button>
           </div>
         </div>
 
-        {/* ── 4 Glowing KPI Cards ── */}
+        {/* KPI Cards */}
         <div style={styles.kpiGrid}>
-          {/* KPI 1 - Service Level */}
-          <div className="kpi-card-hover" style={{ ...styles.kpiCard, ...styles.kpiCardBlue }}>
-            <div style={styles.kpiIconRing}>📈</div>
-            <div style={styles.kpiLabel}>TARGET SERVICE LEVEL</div>
-            <div style={styles.kpiValRow}>
-              <span style={{ ...styles.kpiValue, color: '#60A5FA' }}>
-                {summaryData?.average_service_level || 99.95}%
-              </span>
+          {[
+            { label:'TARGET SERVICE LEVEL', val:`${summaryData?.average_service_level||99.95}%`, trend:'↑ +0.49pp vs baseline', icon:'📈', accent:'#3B82F6', bg: isDark?'rgba(59,130,246,0.1)':'#EFF6FF', bdr: isDark?'rgba(59,130,246,0.25)':'#BFDBFE' },
+            { label:'STOCKOUT MITIGATION',  val:`${summaryData?.stockout_mitigation_pct||91.95}%`, trend:'−91.95% stockout units', icon:'✅', accent:'#10B981', bg: isDark?'rgba(16,185,129,0.1)':'#F0FDF4', bdr: isDark?'rgba(16,185,129,0.25)':'#BBF7D0' },
+            { label:'MONITORED RAW MATERIALS', val:`${summaryData?.total_materials_monitored||productsList.length||8} SKUs`, trend:'Active supply portfolio', icon:'📦', accent:'#8B5CF6', bg: isDark?'rgba(139,92,246,0.1)':'#F5F3FF', bdr: isDark?'rgba(139,92,246,0.25)':'#DDD6FE' },
+            { label:'CRITICAL ALERTS & REORDERS', val:`${summaryData?.critical_shortages_count||7} Shortage`, trend:`${summaryData?.reorder_required_count||8} POs triggered`, icon:'🚨', accent:'#EF4444', bg: isDark?'rgba(239,68,68,0.1)':'#FFF5F5', bdr: isDark?'rgba(239,68,68,0.25)':'#FECACA' },
+          ].map((k,i) => (
+            <div key={i} className="kpi-hover" style={{ ...styles.kpiCard, background:k.bg, border:`1px solid ${k.bdr}`, transition:'all .25s ease' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px' }}>
+                <div style={{ fontSize:'11px', fontWeight:800, letterSpacing:'.07em', color:c.sub }}>{k.label}</div>
+                <span style={{ fontSize:'20px' }}>{k.icon}</span>
+              </div>
+              <div style={{ fontSize:'26px', fontWeight:900, color:k.accent, letterSpacing:'-0.02em', marginBottom:'6px' }}>{k.val}</div>
+              <div style={{ fontSize:'10.5px', color:c.sub, display:'flex', alignItems:'center', gap:'4px' }}>
+                <span style={{ color:k.accent, fontWeight:700 }}>{i===3?'⚠':'↑'}</span> {k.trend}
+              </div>
             </div>
-            <div style={styles.kpiTag}>🛡 Adaptive Policy</div>
-            <div style={styles.kpiSub}>vs 99.46% standard adaptive baseline</div>
-          </div>
-
-          {/* KPI 2 - Stockout Mitigation */}
-          <div className="kpi-card-hover" style={{ ...styles.kpiCard, ...styles.kpiCardGreen }}>
-            <div style={styles.kpiIconRing}>✅</div>
-            <div style={styles.kpiLabel}>STOCKOUT MITIGATION</div>
-            <div style={styles.kpiValRow}>
-              <span style={{ ...styles.kpiValue, color: '#34D399' }}>
-                {summaryData?.stockout_mitigation_pct || 91.95}%
-              </span>
-            </div>
-            <div style={{ ...styles.kpiTag, background: 'rgba(16,185,129,0.2)', color: '#34D399', borderColor: 'rgba(16,185,129,0.4)' }}>-91.95% Units</div>
-            <div style={styles.kpiSub}>Proven on 171,962 historical orders</div>
-          </div>
-
-          {/* KPI 3 - Monitored SKUs */}
-          <div className="kpi-card-hover" style={{ ...styles.kpiCard, ...styles.kpiCardPurple }}>
-            <div style={styles.kpiIconRing}>📦</div>
-            <div style={styles.kpiLabel}>MONITORED RAW MATERIALS</div>
-            <div style={styles.kpiValRow}>
-              <span style={{ ...styles.kpiValue, color: '#A78BFA' }}>
-                {summaryData?.total_materials_monitored || productsList.length || 8} SKUs
-              </span>
-            </div>
-            <div style={{ ...styles.kpiTag, background: 'rgba(139,92,246,0.2)', color: '#A78BFA', borderColor: 'rgba(139,92,246,0.4)' }}>Active Portfolio</div>
-            <div style={styles.kpiSub}>Sri Lankan Garment Supply Base</div>
-          </div>
-
-          {/* KPI 4 - Critical Alerts */}
-          <div className="kpi-card-hover" style={{ ...styles.kpiCard, ...styles.kpiCardRed }}>
-            <div style={{ ...styles.kpiIconRing, background: 'rgba(239,68,68,0.2)' }}>🚨</div>
-            <div style={styles.kpiLabel}>CRITICAL ALERTS & REORDERS</div>
-            <div style={styles.kpiValRow}>
-              <span style={{ ...styles.kpiValue, color: '#F87171' }}>
-                {summaryData?.critical_shortages_count || 1} Shortage
-              </span>
-            </div>
-            <div style={{ ...styles.kpiTag, background: 'rgba(239,68,68,0.2)', color: '#F87171', borderColor: 'rgba(239,68,68,0.4)' }}>Action Needed</div>
-            <div style={styles.kpiSub}>
-              {summaryData?.reorder_required_count || 3} purchase requisitions triggered
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* 4 WORKSPACE NAVIGATION TABS                                         */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      <div style={styles.tabNavContainer}>
-        {[
-          { id: 'operations', icon: '📊', label: 'Operations & Inventory Cockpit', desc: 'Live Monitoring & Decisions' },
-          { id: 'simulator', icon: '⚡', label: 'What-If Simulator & Stress Testing', desc: 'Disruption Scenarios & API Tester' },
-          { id: 'readiness', icon: '🏭', label: 'Production Material Readiness', desc: 'Handoff to Line Optimizer (Module 4)' },
-          { id: 'research', icon: '📈', label: 'Research Proof & ML Benchmarks', desc: '171K Dataset Benchmark & XGBoost ML' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            className="tab-btn-hover"
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              ...styles.tabNavBtn,
-              ...(activeTab === tab.id ? styles.tabNavBtnActive : {}),
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '16px' }}>{tab.icon}</span>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700, fontSize: '12.5px' }}>{tab.label}</div>
-                <div style={{ fontSize: '10.5px', opacity: 0.7, marginTop: '2px' }}>{tab.desc}</div>
+      {/* ═══ DISRUPTION ALERT BANNER ═════════════════════════════════════════ */}
+      {criticalSkus.length > 0 && (
+        <div style={styles.alertBanner}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+            <span style={{ fontSize:'20px', animation:'badge-pop .4s ease' }}>🚨</span>
+            <div>
+              <div style={{ fontWeight:800, fontSize:'13px', color:'#FCA5A5' }}>
+                Disruption Alert — {criticalSkus.length} SKU{criticalSkus.length>1?'s':''} at Critical Risk
+              </div>
+              <div style={{ fontSize:'11.5px', color:'#FCD4D4', marginTop:'2px' }}>
+                {criticalSkus.map(s=>`${s.product_id} (P=${Math.round(s.disruption_probability*100)}%, Stock below Safety Buffer)`).join(' · ')}
               </div>
             </div>
-            {activeTab === tab.id && <div style={styles.tabActiveBar} />}
+          </div>
+          <div style={{ fontSize:'10.5px', color:'#FCA5A5', fontWeight:700, background:'rgba(239,68,68,0.2)', padding:'4px 12px', borderRadius:'20px', border:'1px solid rgba(239,68,68,0.4)', whiteSpace:'nowrap' }}>
+            Proactive detection active
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TAB NAVIGATION ══════════════════════════════════════════════════ */}
+      <div style={styles.tabNavContainer}>
+        {[
+          { id:'operations', icon:'📊', label:'Operations & Cockpit',      desc:'Live monitoring & decisions' },
+          { id:'simulator',  icon:'⚡', label:'What-If Simulator',          desc:'Disruption stress testing' },
+          { id:'readiness',  icon:'🏭', label:'Production Readiness',        desc:'Module 4 handoff interface' },
+          { id:'research',   icon:'📈', label:'Research & ML Benchmarks',    desc:'171K dataset · XGBoost ML' },
+        ].map(tab => (
+          <button key={tab.id} className="tab-btn" onClick={() => setActiveTab(tab.id)} style={{ ...styles.tabNavBtn, ...(activeTab===tab.id ? styles.tabActive : {}) }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              <span style={{ fontSize:'17px' }}>{tab.icon}</span>
+              <div style={{ textAlign:'left' }}>
+                <div style={{ fontWeight:700, fontSize:'12.5px' }}>{tab.label}</div>
+                <div style={{ fontSize:'10.5px', opacity:.7, marginTop:'1px' }}>{tab.desc}</div>
+              </div>
+            </div>
+            {activeTab===tab.id && <div style={styles.tabActiveBar} />}
           </button>
         ))}
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* TAB 1: OPERATIONS & INVENTORY COCKPIT                               */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* ═══ TAB 1: OPERATIONS & INVENTORY COCKPIT ═══════════════════════════ */}
       {activeTab === 'operations' && (
-        <div style={styles.tabContentGrid}>
+        <div style={styles.tabContent}>
+
           {/* ── Data Flow Pipeline ── */}
-          <div style={styles.glassCard}>
-            <div style={styles.cardHeaderFlex}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={styles.cardIconBadge}>🔄</div>
                 <div>
-                  <h3 style={styles.sectionHeading}>Data Flow & Decision Pipeline</h3>
-                  <div style={styles.sectionSub}>
-                    Upstream signals (simulated) ➔ Adaptive Inventory Optimization Engine ➔ Procurement & Production Outputs
-                  </div>
+                  <div style={styles.cardTitle}>Data Flow & Decision Pipeline</div>
+                  <div style={styles.cardSub}>Upstream signals → Optimization Engine → Policy Deliverables</div>
                 </div>
               </div>
-              <div style={styles.activeSkuChip}>
-                Selected SKU: <strong>{activeOptimization.product_id}</strong> — {activeOptimization.product_name}
+              <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
+                {showPolicyOverlay && (
+                  <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                    {policyValues.map((pv,i)=>(
+                      <div key={i} style={{ fontSize:'10.5px', fontWeight:700, color:pv.color, background:pv.color+'18', border:`1px solid ${pv.color}44`, padding:'3px 10px', borderRadius:'20px' }}>
+                        {pv.label}: {pv.ss.toLocaleString()} kg
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button className="btn-hover" onClick={()=>setShowPolicyOverlay(v=>!v)} style={{ ...styles.pillBtn, background: showPolicyOverlay?'rgba(16,185,129,0.2)':'rgba(255,255,255,0.05)', borderColor: showPolicyOverlay?'#10B981':c.tagBorder, color: showPolicyOverlay?'#10B981':c.sub }}>
+                  {showPolicyOverlay?'✓ Policy Overlay ON':'⊕ Policy Comparison'}
+                </button>
+                <div style={styles.activeSkuChip}>
+                  SKU: <strong style={{ color:'#60A5FA' }}>{activeOpt.product_id||currentProduct.product_id}</strong> — {currentProduct.product_name}
+                </div>
               </div>
             </div>
 
-            <div style={styles.flowThreeColumns}>
-              {/* Column 1: Upstream Inputs */}
-              <div style={styles.flowColumnBox}>
-                <div style={styles.colHeaderBlue}>
-                  <span>📥</span> 1. UPSTREAM INPUTS (MOCKED)
-                </div>
-                {[
-                  { label: 'Forecast Demand (D)', value: `${activeOptimization.forecasted_demand.toLocaleString()} ${activeOptimization.unit}`, color: null },
-                  { label: 'Supplier Lead Time (L)', value: `${currentProduct.average_lead_time} days (±${leadTimeVar}d)`, color: null },
-                  { label: 'Disruption Risk P(risk)', value: `${(disruptionProb * 100).toFixed(0)}%`, color: disruptionProb >= 0.6 ? '#F87171' : '#FBBF24' },
-                  { label: 'Supplier Trust Score', value: `${currentProduct.supplier_trust_score}/100`, color: null },
-                  { label: 'On-Hand Warehouse Stock', value: `${activeOptimization.current_inventory.toLocaleString()} ${activeOptimization.unit}`, color: '#34D399' },
-                ].map((row, i) => (
-                  <div key={i} style={styles.itemRow}>
-                    <span style={{ color: c.sub, fontSize: '11.5px' }}>{row.label}</span>
-                    <strong style={{ color: row.color || c.title, fontSize: '12px' }}>{row.value}</strong>
-                  </div>
-                ))}
-              </div>
-
-              {/* Column 2: Engine */}
-              <div style={styles.flowColumnBoxEngine}>
-                <div style={styles.colHeaderNavy}>
-                  <span>⚙️</span> 2. ADAPTIVE OPTIMIZATION ENGINE
-                </div>
-                {[
-                  { label: 'SAFETY STOCK FORMULA', formula: 'SS = z · √(L·σ_D² + D²·σ_L²) · (1 + P_disrupt)' },
-                  { label: 'DYNAMIC REORDER POINT', formula: 'ROP = D · L_adj + Safety_Stock' },
-                  { label: 'REORDER QUANTITY', formula: 'ROQ = D · Cycle_Days · (1 + P_disrupt)' },
-                ].map((pill, i) => (
-                  <div key={i} style={styles.formulaPill}>
-                    <div style={{ fontSize: '9.5px', color: c.sub, letterSpacing: '0.06em', fontWeight: 700 }}>{pill.label}</div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#60A5FA', fontSize: '11.5px', marginTop: '4px' }}>
-                      {pill.formula}
+            <div style={styles.pipelineGrid}>
+              {/* Col 1 — Inputs */}
+              <div style={styles.pipelineCol}>
+                <div style={styles.pipelineColHead('#60A5FA')}>📥 1. UPSTREAM INPUTS (MOCKED)</div>
+                <div style={styles.pipelineRows}>
+                  {[
+                    ['Forecast Demand (D)',     `${activeOpt.demand.toLocaleString()} ${currentProduct.unit}`, null],
+                    ['Supplier Lead Time (L)',  `${currentProduct.average_lead_time}d (±${leadTimeVar}d)`, null],
+                    ['Disruption Risk P(risk)', `${(disruptionProb*100).toFixed(0)}%`, disruptionProb>=.6?'#F87171':'#FBBF24'],
+                    ['Supplier Trust Score',    `${currentProduct.supplier_trust_score}/100`, null],
+                    ['On-Hand Warehouse Stock', `${currentProduct.current_inventory?.toLocaleString()} ${currentProduct.unit}`, '#34D399'],
+                  ].map(([lbl,val,clr],i)=>(
+                    <div key={i} style={styles.pipelineRow}>
+                      <span style={{ color:c.sub, fontSize:'11.5px' }}>{lbl}</span>
+                      <strong style={{ color:clr||c.title, fontSize:'12px' }}>{val}</strong>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
-              {/* Column 3: Deliverables */}
-              <div style={styles.flowColumnBoxOutput}>
-                <div style={styles.colHeaderGreen}>
-                  <span>📤</span> 3. POLICY DELIVERABLES
+              {/* Col 2 — Engine */}
+              <div style={{ ...styles.pipelineCol, background: isDark?'linear-gradient(160deg,#0C1E3A,#091729)':'linear-gradient(160deg,#EFF6FF,#F0F9FF)', border:`1px solid ${isDark?'rgba(37,99,235,.3)':'#BAE6FD'}`, boxShadow: isDark?'0 0 20px rgba(37,99,235,.08)':'none' }}>
+                <div style={styles.pipelineColHead('#93C5FD')}>⚙️ 2. ADAPTIVE OPTIMIZATION ENGINE</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                  {[
+                    ['SAFETY STOCK FORMULA',  'SS = z · √(L·σ_D² + D²·σ_L²) · (1 + P_disrupt)'],
+                    ['DYNAMIC REORDER POINT', 'ROP = D · L_adj + Safety_Stock'],
+                    ['REORDER QUANTITY',       'ROQ = D · Cycle_Days · (1 + P_disrupt)'],
+                  ].map(([lbl,f],i)=>(
+                    <div key={i} style={styles.formulaPill}>
+                      <div style={{ fontSize:'9px', fontWeight:800, letterSpacing:'.07em', color:c.sub, marginBottom:'4px' }}>{lbl}</div>
+                      <div style={{ fontFamily:'monospace', fontSize:'11.5px', fontWeight:700, color:'#60A5FA', lineHeight:1.5 }}>{f}</div>
+                    </div>
+                  ))}
                 </div>
+              </div>
+
+              {/* Col 3 — Deliverables */}
+              <div style={{ ...styles.pipelineCol, background: isDark?'linear-gradient(160deg,#0A1F1A,#071812)':'linear-gradient(160deg,#F0FDF4,#ECFDF5)', border:`1px solid ${isDark?'rgba(16,185,129,.3)':'#BBF7D0'}`, boxShadow: isDark?'0 0 20px rgba(16,185,129,.08)':'none' }}>
+                <div style={styles.pipelineColHead('#6EE7B7')}>📤 3. POLICY DELIVERABLES</div>
+
+                {/* Gauge row */}
+                <div style={{ display:'flex', justifyContent:'space-around', marginBottom:'12px', paddingBottom:'12px', borderBottom:`1px solid ${c.tableBorder}` }}>
+                  <StockGauge pct={Math.min(1, currentProduct.current_inventory / Math.max(1, activeOpt.rop))} label="Stock/ROP" color="#60A5FA" />
+                  <StockGauge pct={Math.min(1, currentProduct.current_inventory / Math.max(1, activeOpt.ss))} label="Stock/SS" color={currentProduct.current_inventory < activeOpt.ss ? '#F87171' : '#34D399'} />
+                </div>
+
+                {/* Metric rows */}
                 {[
-                  { label: 'Risk-Adjusted Lead Time', value: `${activeOptimization.risk_adjusted_lead_time} days`, color: c.title, highlight: false },
-                  { label: 'Dynamic Safety Stock', value: `${activeOptimization.safety_stock.toLocaleString()} ${activeOptimization.unit}`, color: '#60A5FA', highlight: true },
-                  { label: 'Reorder Point (ROP)', value: `${activeOptimization.reorder_point.toLocaleString()} ${activeOptimization.unit}`, color: c.title, highlight: false },
-                  { label: 'Reorder Quantity (ROQ)', value: `${activeOptimization.reorder_quantity.toLocaleString()} ${activeOptimization.unit}`, color: '#34D399', highlight: true },
-                  { label: 'Material Availability', value: activeOptimization.material_availability_flag ? '✓ TRUE (Ready)' : '⚠ FALSE (Shortage)', color: activeOptimization.material_availability_flag ? '#34D399' : '#F87171', highlight: true },
-                ].map((row, i) => (
-                  <div key={i} style={{ ...styles.itemRow, ...(row.highlight ? styles.itemRowHighlight : {}) }}>
-                    <span style={{ color: c.sub, fontSize: '11.5px' }}>{row.label}</span>
-                    <strong style={{ color: row.color, fontSize: '12px' }}>{row.value}</strong>
+                  ['Risk-Adj. Lead Time', `${activeOpt.leadAdj} days`, c.title, false],
+                  ['Dynamic Safety Stock', `${activeOpt.ss.toLocaleString()} ${currentProduct.unit}`, '#60A5FA', true],
+                  ['SS Confidence ±σ', `${activeOpt.ssLo.toLocaleString()} – ${activeOpt.ssHi.toLocaleString()} ${currentProduct.unit}`, '#93C5FD', false],
+                  ['Reorder Point (ROP)', `${activeOpt.rop.toLocaleString()} ${currentProduct.unit}`, c.title, false],
+                  ['Reorder Quantity (ROQ)', `${activeOpt.roq.toLocaleString()} ${currentProduct.unit}`, '#34D399', true],
+                  ['Material Availability', activeOpt.avail ? '✓ TRUE — Ready' : '⚠ FALSE — Shortage', activeOpt.avail ? '#34D399' : '#F87171', true],
+                ].map(([lbl,val,clr,hi],i)=>(
+                  <div key={i} style={{ ...styles.pipelineRow, ...(hi?{ background: clr+'10', borderRadius:'6px', padding:'6px 8px', marginLeft:'-8px', marginRight:'-8px', border:'none', borderBottom:`1px solid ${c.tableBorder}` }:{}) }}>
+                    <span style={{ color:c.sub, fontSize:'11px' }}>{lbl}</span>
+                    <strong style={{ color:clr, fontSize:'12px' }}>{val}</strong>
                   </div>
                 ))}
               </div>
@@ -570,192 +511,140 @@ export default function InventoryOptimizationView() {
           </div>
 
           {/* ── Monitored Materials Table ── */}
-          <div style={styles.glassCard}>
-            <div style={styles.cardHeaderFlex}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={styles.cardIconBadge}>📋</div>
                 <div>
-                  <h3 style={styles.sectionHeading}>Monitored Garment Raw Materials</h3>
-                  <div style={styles.sectionSub}>
-                    Filter materials · Inspect safety stock buffers · Trigger purchase orders · View XAI math breakdown
-                  </div>
+                  <div style={styles.cardTitle}>Monitored Garment Raw Materials</div>
+                  <div style={styles.cardSub}>Click row to select SKU · Sort by column headers · Filter by category</div>
                 </div>
               </div>
-
-              {/* Search & Category Filter */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={styles.searchWrapper}>
-                  <span style={styles.searchIcon}>🔍</span>
-                  <input
-                    type="text"
-                    placeholder="Search SKU or Name..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="input-field-glow"
-                    style={styles.searchInput}
-                  />
+              <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
+                {/* Search */}
+                <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
+                  <span style={{ position:'absolute', left:'10px', fontSize:'12px', pointerEvents:'none' }}>🔍</span>
+                  <input type="text" placeholder="Search SKU or name..." value={searchQuery}
+                    onChange={e=>setSearchQuery(e.target.value)}
+                    className="input-focus"
+                    style={{ ...styles.searchInput, paddingLeft:'30px', transition:'width .3s', width: searchQuery ? '220px' : '180px' }} />
                 </div>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="input-field-glow"
-                  style={styles.selectFilter}
-                >
-                  <option value="ALL">All Categories</option>
-                  <option value="Fabrics">Fabrics</option>
-                  <option value="Dyes & Chemicals">Dyes & Chemicals</option>
-                  <option value="Trims & Fasteners">Trims & Fasteners</option>
-                  <option value="Yarns & Threads">Yarns & Threads</option>
-                </select>
+                {/* PO history badge */}
+                {dispatchedList.length > 0 && (
+                  <button className="btn-hover" onClick={()=>setShowPoHistory(v=>!v)} style={{ ...styles.pillBtn, background:'rgba(16,185,129,0.15)', borderColor:'rgba(16,185,129,0.4)', color:'#34D399' }}>
+                    📦 {dispatchedList.length} PO{dispatchedList.length>1?'s':''} Dispatched
+                  </button>
+                )}
               </div>
             </div>
 
+            {/* Category chips */}
+            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'16px' }}>
+              {CATS.map(cat=>(
+                <button key={cat} className="chip-hover btn-hover" onClick={()=>setSelectedCategory(cat)} style={{
+                  padding:'5px 14px', borderRadius:'20px', fontSize:'11.5px', fontWeight:700, border:'1px solid',
+                  background: selectedCategory===cat ? '#2563EB' : c.tagBg,
+                  color:       selectedCategory===cat ? '#FFFFFF'  : c.sub,
+                  borderColor: selectedCategory===cat ? '#2563EB'  : c.tagBorder,
+                  cursor:'pointer', transition:'all .15s',
+                  boxShadow:   selectedCategory===cat ? '0 2px 10px rgba(37,99,235,.35)' : 'none',
+                }}>{cat}</button>
+              ))}
+              <span style={{ marginLeft:'auto', fontSize:'11px', color:c.sub, alignSelf:'center' }}>
+                {filteredProducts.length} SKU{filteredProducts.length!==1?'s':''} shown · sorted by {sortCol} {sortDir==='asc'?'↑':'↓'}
+              </span>
+            </div>
+
+            {/* PO History Panel */}
+            {showPoHistory && dispatchedList.length > 0 && (
+              <div style={{ ...styles.subCard, marginBottom:'16px', border:`1px solid rgba(16,185,129,0.3)`, background: isDark?'rgba(16,185,129,0.05)':'#F0FDF4' }}>
+                <div style={{ fontWeight:800, fontSize:'12.5px', color:'#34D399', marginBottom:'10px' }}>📦 Dispatched Purchase Orders</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:'10px' }}>
+                  {dispatchedList.map((po,i)=>(
+                    <div key={i} style={{ background: isDark?'rgba(0,0,0,0.3)':'#FFFFFF', borderRadius:'10px', padding:'10px 14px', border:`1px solid ${c.tableBorder}` }}>
+                      <div style={{ fontWeight:700, color:'#34D399', fontSize:'12px' }}>{po.poNum}</div>
+                      <div style={{ fontSize:'11px', color:c.sub, marginTop:'3px' }}>{po.sku} — {po.name}</div>
+                      <div style={{ fontSize:'11px', color:c.title, marginTop:'4px' }}>Qty: <strong>{po.qty?.toLocaleString()}</strong> · {po.mode==='air'?'✈️ Air':'🚢 Sea'} · <strong>\${po.cost?.toLocaleString()}</strong></div>
+                      <div style={{ fontSize:'10px', color:c.sub, marginTop:'2px' }}>Dispatched at {po.at}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Table */}
             <div style={styles.tableWrapper}>
               <table style={styles.table}>
                 <thead>
                   <tr style={styles.theadRow}>
                     <th style={styles.th}>SKU & Name</th>
                     <th style={styles.th}>Category</th>
-                    <th style={styles.thRight}>Current Stock</th>
-                    <th style={styles.thRight}>14d Forecast (D)</th>
-                    <th style={styles.thCenter}>Disruption Risk</th>
-                    <th style={styles.thRight}>Safety Stock</th>
-                    <th style={styles.thRight}>Reorder Point</th>
-                    <th style={styles.thRight}>Recommended ROQ</th>
+                    <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('current_inventory')}>Current Stock <SortIcon col="current_inventory"/></th>
+                    <th style={styles.thRight}>14d Forecast</th>
+                    <th className="th-sort" style={styles.thCenter} onClick={()=>handleSort('disruption_probability')}>Risk <SortIcon col="disruption_probability"/></th>
+                    <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('safety_stock')}>Safety Stock <SortIcon col="safety_stock"/></th>
+                    <th style={styles.thRight}>ROP</th>
+                    <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('roq')}>ROQ <SortIcon col="roq"/></th>
                     <th style={styles.thCenter}>Availability</th>
-                    <th style={styles.thCenter}>Actions</th>
+                    <th style={{ ...styles.thCenter, position:'sticky', right:0, background: isDark?'#0A1626':'#F1F5F9', zIndex:2 }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredProducts.map((item, idx) => {
                     const isSelected = item.product_id === selectedSku;
                     const hasShortage = item.current_inventory < item.forecasted_demand;
-                    const isDispatched = dispatchedPOs[item.product_id];
-                    const riskPct = item.disruption_probability;
-
+                    const isDispatched = !!dispatchedPOs[item.product_id];
+                    const rp = item.disruption_probability;
+                    const skuSS = Math.round(item.forecasted_demand * 0.35);
+                    const healthPct = Math.min(1, item.current_inventory / Math.max(1, skuSS));
+                    const healthColor = healthPct < 0.5 ? '#EF4444' : healthPct < 0.8 ? '#F59E0B' : '#10B981';
+                    const rowBg = isSelected
+                      ? (isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF')
+                      : (isDark ? (idx%2===0?'#0F172A':'#0B1526') : (idx%2===0?'#FFFFFF':'#F8FAFC'));
                     return (
-                      <tr
-                        key={item.product_id}
-                        className="table-row-hover"
-                        style={{
-                          ...styles.tr,
-                          backgroundColor: isSelected
-                            ? (c.isDark ? 'rgba(59, 130, 246, 0.18)' : '#EFF6FF')
-                            : (c.isDark ? (idx % 2 === 0 ? '#0F172A' : '#0B1526') : (idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC')),
-                          borderLeft: isSelected ? '3px solid #3B82F6' : '3px solid transparent',
-                        }}
-                        onClick={() => setSelectedSku(item.product_id)}
-                      >
+                      <tr key={item.product_id} className="row-hover" onClick={()=>setSelectedSku(item.product_id)}
+                        style={{ ...styles.tr, backgroundColor:rowBg, borderLeft: isSelected?'3px solid #3B82F6':'3px solid transparent', cursor:'pointer' }}>
                         <td style={styles.td}>
-                          <div style={{ fontWeight: 700, color: c.title, fontSize: '12.5px' }}>{item.product_id}</div>
-                          <div style={{ fontSize: '11px', color: c.sub, marginTop: '2px' }}>{item.product_name}</div>
+                          <div style={{ fontWeight:700, color:c.title, fontSize:'12.5px' }}>{item.product_id}</div>
+                          <div style={{ fontSize:'10.5px', color:c.sub, marginTop:'2px' }}>{item.product_name}</div>
                         </td>
-                        <td style={styles.td}>
-                          <span style={styles.categoryChip}>{item.category}</span>
-                        </td>
+                        <td style={styles.td}><span style={styles.categoryChip}>{item.category}</span></td>
                         <td style={styles.tdRight}>
-                          <strong style={{ color: c.title }}>{item.current_inventory.toLocaleString()}</strong>
-                          <span style={{ color: c.sub, fontSize: '10px', marginLeft: '3px' }}>{item.unit}</span>
+                          <div style={{ fontWeight:700, color:c.title }}>{item.current_inventory.toLocaleString()} <span style={{ fontSize:'10px', color:c.sub }}>{item.unit}</span></div>
+                          {/* Stock health bar */}
+                          <div style={{ marginTop:'5px', height:'4px', background: isDark?'#1E293B':'#E2E8F0', borderRadius:'2px', overflow:'hidden', width:'80px', marginLeft:'auto' }}>
+                            <div style={{ height:'100%', width:`${Math.min(100,healthPct*100)}%`, background:healthColor, borderRadius:'2px', transition:'width .6s ease' }} />
+                          </div>
+                          <div style={{ fontSize:'9px', color:healthColor, textAlign:'right', marginTop:'2px', fontWeight:700 }}>{Math.round(healthPct*100)}% of SS</div>
                         </td>
-                        <td style={styles.tdRight}>
-                          <span style={{ color: c.sub }}>{item.forecasted_demand.toLocaleString()} {item.unit}</span>
-                        </td>
+                        <td style={styles.tdRight}><span style={{ color:c.sub }}>{item.forecasted_demand.toLocaleString()} {item.unit}</span></td>
                         <td style={styles.tdCenter}>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                            <span
-                              style={{
-                                ...styles.riskBadge,
-                                backgroundColor:
-                                  riskPct >= 0.7
-                                    ? (c.isDark ? 'rgba(239,68,68,0.2)' : '#FEE2E2')
-                                    : riskPct >= 0.35
-                                    ? (c.isDark ? 'rgba(245,158,11,0.2)' : '#FEF3C7')
-                                    : (c.isDark ? 'rgba(16,185,129,0.2)' : '#DCFCE7'),
-                                color:
-                                  riskPct >= 0.7
-                                    ? (c.isDark ? '#FCA5A5' : '#991B1B')
-                                    : riskPct >= 0.35
-                                    ? (c.isDark ? '#FDE047' : '#92400E')
-                                    : (c.isDark ? '#6EE7B7' : '#166534'),
-                                border:
-                                  riskPct >= 0.7
-                                    ? (c.isDark ? '1px solid rgba(239,68,68,0.5)' : '1px solid #FCA5A5')
-                                    : riskPct >= 0.35
-                                    ? (c.isDark ? '1px solid rgba(245,158,11,0.5)' : '1px solid #FCD34D')
-                                    : (c.isDark ? '1px solid rgba(16,185,129,0.5)' : '1px solid #86EFAC'),
-                              }}
-                            >
-                              {(riskPct * 100).toFixed(0)}% Risk
-                            </span>
-                            {/* Mini progress bar */}
-                            <div style={{ width: '52px', height: '3px', background: c.isDark ? '#1E293B' : '#E2E8F0', borderRadius: '2px', overflow: 'hidden' }}>
-                              <div style={{ width: `${riskPct * 100}%`, height: '100%', background: riskPct >= 0.7 ? '#EF4444' : riskPct >= 0.35 ? '#F59E0B' : '#10B981', borderRadius: '2px', transition: 'width 0.6s ease' }} />
-                            </div>
+                          <span style={{ ...styles.badge, background: rp>=.7?(isDark?'rgba(239,68,68,.2)':'#FEE2E2'):rp>=.35?(isDark?'rgba(245,158,11,.2)':'#FEF3C7'):(isDark?'rgba(16,185,129,.2)':'#DCFCE7'), color: rp>=.7?(isDark?'#FCA5A5':'#991B1B'):rp>=.35?(isDark?'#FDE047':'#92400E'):(isDark?'#6EE7B7':'#166534'), border:`1px solid ${rp>=.7?(isDark?'rgba(239,68,68,.4)':'#FCA5A5'):rp>=.35?(isDark?'rgba(245,158,11,.4)':'#FCD34D'):(isDark?'rgba(16,185,129,.4)':'#86EFAC')}` }}>
+                            {(rp*100).toFixed(0)}%
+                          </span>
+                          <div style={{ width:'50px', height:'3px', background: isDark?'#1E293B':'#E2E8F0', borderRadius:'2px', overflow:'hidden', margin:'4px auto 0' }}>
+                            <div style={{ height:'100%', width:`${rp*100}%`, background: rp>=.7?'#EF4444':rp>=.35?'#F59E0B':'#10B981', borderRadius:'2px' }} />
                           </div>
                         </td>
                         <td style={styles.tdRight}>
-                          <span style={{ color: c.isDark ? '#60A5FA' : '#2563EB', fontWeight: 700 }}>
-                            {Math.round(item.forecasted_demand * 0.35).toLocaleString()}
-                          </span>
-                          <span style={{ color: c.sub, fontSize: '10px', marginLeft: '3px' }}>{item.unit}</span>
+                          <span style={{ color: isDark?'#60A5FA':'#2563EB', fontWeight:700 }}>{skuSS.toLocaleString()}</span>
+                          <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
                         </td>
+                        <td style={styles.tdRight}><span style={{ color:c.title, fontWeight:600 }}>{Math.round(item.forecasted_demand*1.2).toLocaleString()}</span></td>
                         <td style={styles.tdRight}>
-                          <strong style={{ color: c.title }}>{Math.round(item.forecasted_demand * 1.2).toLocaleString()}</strong>
-                        </td>
-                        <td style={styles.tdRight}>
-                          <strong style={{ color: c.isDark ? '#6EE7B7' : '#059669', fontSize: '12.5px' }}>
-                            {Math.round(item.forecasted_demand * 7 * (1 + item.disruption_probability)).toLocaleString()}
-                          </strong>
-                          <span style={{ color: c.sub, fontSize: '10px', marginLeft: '3px' }}>{item.unit}</span>
+                          <span style={{ color: isDark?'#6EE7B7':'#059669', fontWeight:700 }}>{Math.round(item.forecasted_demand*7*(1+item.disruption_probability)).toLocaleString()}</span>
+                          <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
                         </td>
                         <td style={styles.tdCenter}>
-                          <span
-                            style={{
-                              ...styles.availBadge,
-                              backgroundColor: hasShortage
-                                ? (c.isDark ? 'rgba(239,68,68,0.2)' : '#FEE2E2')
-                                : (c.isDark ? 'rgba(16,185,129,0.2)' : '#DCFCE7'),
-                              color: hasShortage
-                                ? (c.isDark ? '#FCA5A5' : '#991B1B')
-                                : (c.isDark ? '#6EE7B7' : '#166534'),
-                              border: hasShortage
-                                ? (c.isDark ? '1px solid rgba(239,68,68,0.5)' : '1px solid #FCA5A5')
-                                : (c.isDark ? '1px solid rgba(16,185,129,0.5)' : '1px solid #86EFAC'),
-                            }}
-                          >
-                            {hasShortage ? '⚠ Shortage' : '✓ Available'}
+                          <span style={{ ...styles.badge, padding:'5px 10px', fontWeight:700, background: hasShortage?(isDark?'rgba(239,68,68,.2)':'#FEE2E2'):(isDark?'rgba(16,185,129,.2)':'#DCFCE7'), color: hasShortage?(isDark?'#FCA5A5':'#991B1B'):(isDark?'#6EE7B7':'#166534'), border:`1px solid ${hasShortage?(isDark?'rgba(239,68,68,.4)':'#FCA5A5'):(isDark?'rgba(16,185,129,.4)':'#86EFAC')}` }}>
+                            {hasShortage ? '⚠ Shortage' : '✓ Ready'}
                           </span>
                         </td>
-                        <td style={styles.tdCenter}>
-                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button
-                              className="action-btn-hover"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setXaiModalSku(item);
-                              }}
-                              style={styles.xaiBtn}
-                              title="Inspect Mathematical Formula"
-                            >
-                              📐 XAI
-                            </button>
-                            <button
-                              className="action-btn-hover"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPoModalItem({
-                                  ...item,
-                                  reorder_quantity: Math.round(
-                                    item.forecasted_demand * 7 * (1 + item.disruption_probability)
-                                  ),
-                                });
-                              }}
-                              style={{
-                                ...styles.poBtn,
-                                backgroundColor: isDispatched ? '#059669' : (c.isDark ? '#2563EB' : '#0B1F3A'),
-                              }}
-                            >
-                              {isDispatched ? '✓ Issued' : '⚡ PO'}
+                        <td style={{ ...styles.tdCenter, position:'sticky', right:0, background:rowBg, zIndex:1 }}>
+                          <div style={{ display:'flex', gap:'5px', justifyContent:'center' }}>
+                            <button className="btn-hover" onClick={e=>{e.stopPropagation();setXaiModalSku(item);}} style={styles.xaiBtn} title="XAI Formula">📐</button>
+                            <button className="btn-hover" onClick={e=>{e.stopPropagation();setPoModalItem({...item,reorder_quantity:Math.round(item.forecasted_demand*7*(1+item.disruption_probability))});}} style={{ ...styles.poBtn, background: isDispatched?'#059669':(isDark?'#2563EB':'#0B1F3A') }}>
+                              {isDispatched ? '✓' : '⚡ PO'}
                             </button>
                           </div>
                         </td>
@@ -769,215 +658,145 @@ export default function InventoryOptimizationView() {
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* TAB 2: WHAT-IF SIMULATOR & SCENARIO STRESS TESTING                  */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* ═══ TAB 2: WHAT-IF SIMULATOR ════════════════════════════════════════ */}
       {activeTab === 'simulator' && (
-        <div style={styles.tabContentGrid}>
-          {/* Input Controls Card — PRIMARY FOCUS */}
-          <div style={{ ...styles.glassCard, border: `1px solid ${c.isDark ? 'rgba(59,130,246,0.4)' : '#BFDBFE'}`, animation: 'glow-pulse 3s ease-in-out infinite' }}>
-            <div style={styles.cardHeaderFlex}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={styles.tabContent}>
+          {/* Input Controls */}
+          <div style={{ ...styles.card, border:`1px solid ${isDark?'rgba(59,130,246,.35)':'#BFDBFE'}`, boxShadow: isDark?'0 0 32px rgba(37,99,235,.12)':'none' }}>
+            <div style={styles.cardHeader}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={styles.cardIconBadge}>🎛️</div>
                 <div>
-                  <h3 style={styles.sectionHeading}>Disruption Stress Simulator — Live Input Controls</h3>
-                  <div style={styles.sectionSub}>
-                    Adjust parameters below to instantly recalculate safety stock, ROP, and ROQ.
-                  </div>
+                  <div style={styles.cardTitle}>Live Disruption Controls</div>
+                  <div style={styles.cardSub}>Drag sliders to instantly recalculate — before/after comparison shown below</div>
                 </div>
               </div>
-              {/* Preset Buttons */}
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
                 {[
-                  { id: 'baseline', label: '🟢 Baseline', color: '#10B981' },
-                  { id: 'port_crisis', label: '🔴 Port Crisis', color: '#EF4444' },
-                  { id: 'demand_spike', label: '⚡ Demand Surge', color: '#F59E0B' },
-                  { id: 'force_majeure', label: '🌪️ Force Majeure', color: '#8B5CF6' },
-                ].map((p) => (
-                  <button
-                    key={p.id}
-                    className="preset-btn-hover"
-                    onClick={() => applyPreset(p.id)}
-                    style={{
-                      ...styles.presetBtn,
-                      backgroundColor: activePreset === p.id ? p.color : (c.isDark ? '#1E293B' : '#F1F5F9'),
-                      color: activePreset === p.id ? '#FFFFFF' : c.sub,
-                      border: activePreset === p.id ? `1px solid ${p.color}` : `1px solid ${c.tagBorder}`,
-                      boxShadow: activePreset === p.id ? `0 0 12px ${p.color}55` : 'none',
-                    }}
-                  >
-                    {p.label}
-                  </button>
+                  { id:'baseline',      label:'🟢 Baseline',     color:'#10B981' },
+                  { id:'port_crisis',   label:'🔴 Port Crisis',   color:'#EF4444' },
+                  { id:'demand_spike',  label:'⚡ Demand Surge',  color:'#F59E0B' },
+                  { id:'force_majeure', label:'🌪️ Force Majeure', color:'#8B5CF6' },
+                ].map(p=>(
+                  <button key={p.id} className="btn-hover" onClick={()=>applyPreset(p.id)} style={{ ...styles.presetBtn, background: activePreset===p.id?p.color:(isDark?'#1E293B':'#F1F5F9'), color: activePreset===p.id?'#fff':c.sub, border:`1px solid ${activePreset===p.id?p.color:c.tagBorder}`, boxShadow: activePreset===p.id?`0 0 14px ${p.color}55`:'none' }}>{p.label}</button>
                 ))}
               </div>
             </div>
 
-            {/* SLIDERS — Large & Prominent */}
             <div style={styles.sliderGrid}>
               {[
-                {
-                  label: 'Disruption Probability', key: 'disruption', icon: '🔴',
-                  value: (disruptionProb * 100).toFixed(0) + '%',
-                  valueColor: disruptionProb >= 0.6 ? '#F87171' : disruptionProb >= 0.3 ? '#FBBF24' : '#34D399',
-                  min: 0, max: 1, step: 0.05, current: disruptionProb,
-                  onChange: (v) => setDisruptionProb(parseFloat(v)),
-                  desc: 'Probability of supplier disruption event',
-                },
-                {
-                  label: 'Lead Time Variability (σ_L)', key: 'leadtime', icon: '⏱️',
-                  value: `±${leadTimeVar.toFixed(1)} days`,
-                  valueColor: '#60A5FA',
-                  min: 0.5, max: 6.0, step: 0.1, current: leadTimeVar,
-                  onChange: (v) => setLeadTimeVar(parseFloat(v)),
-                  desc: 'Standard deviation of supplier lead time',
-                },
-                {
-                  label: 'Demand Surge Factor (ΔD)', key: 'demand', icon: '📈',
-                  value: `+${demandSurge}%`,
-                  valueColor: demandSurge > 0 ? '#34D399' : c.sub,
-                  min: 0, max: 100, step: 5, current: demandSurge,
-                  onChange: (v) => setDemandSurge(parseInt(v)),
-                  desc: 'Percentage increase in expected demand',
-                },
-                {
-                  label: 'Target Service Level', key: 'service', icon: '🎯',
-                  value: `${(serviceLevel * 100).toFixed(0)}% (z=${activeOptimization.z_value})`,
-                  valueColor: '#A78BFA',
-                  min: 0.85, max: 0.99, step: 0.01, current: serviceLevel,
-                  onChange: (v) => setServiceLevel(parseFloat(v)),
-                  desc: 'Order fulfillment confidence threshold',
-                },
-              ].map((slider) => (
-                <div key={slider.key} style={styles.sliderBox}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                { icon:'🔴', label:'Disruption Probability', desc:'P(supplier failure event)', val:(disruptionProb*100).toFixed(0)+'%', color: disruptionProb>=.6?'#F87171':disruptionProb>=.3?'#FBBF24':'#34D399', min:0, max:1, step:.05, cur:disruptionProb, set:v=>setDisruptionProb(parseFloat(v)) },
+                { icon:'⏱️', label:'Lead Time Variability (σ_L)', desc:'Standard deviation of lead time', val:`±${leadTimeVar.toFixed(1)}d`, color:'#60A5FA', min:.5, max:6, step:.1, cur:leadTimeVar, set:v=>setLeadTimeVar(parseFloat(v)) },
+                { icon:'📈', label:'Demand Surge Factor (ΔD)', desc:'% increase in forecasted demand', val:`+${demandSurge}%`, color: demandSurge>0?'#34D399':c.sub, min:0, max:100, step:5, cur:demandSurge, set:v=>setDemandSurge(parseInt(v)) },
+                { icon:'🎯', label:'Target Service Level', desc:`z = ${activeOpt.z}`, val:`${(serviceLevel*100).toFixed(0)}%`, color:'#A78BFA', min:.85, max:.99, step:.01, cur:serviceLevel, set:v=>setServiceLevel(parseFloat(v)) },
+              ].map((s,i)=>(
+                <div key={i} style={styles.sliderCard}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'14px' }}>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '16px' }}>{slider.icon}</span>
-                        <span style={{ fontWeight: 700, fontSize: '13px', color: c.title }}>{slider.label}</span>
+                      <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'3px' }}>
+                        <span style={{ fontSize:'16px' }}>{s.icon}</span>
+                        <span style={{ fontWeight:700, fontSize:'13px', color:c.title }}>{s.label}</span>
                       </div>
-                      <div style={{ fontSize: '11px', color: c.sub, marginTop: '2px', marginLeft: '22px' }}>{slider.desc}</div>
+                      <div style={{ fontSize:'11px', color:c.sub, marginLeft:'22px' }}>{s.desc}</div>
                     </div>
-                    <div style={{ ...styles.sliderValueBadge, color: slider.valueColor, borderColor: slider.valueColor + '44', background: slider.valueColor + '18' }}>
-                      {slider.value}
-                    </div>
+                    <div style={{ fontSize:'15px', fontWeight:800, color:s.color, background:s.color+'18', border:`1px solid ${s.color}44`, padding:'4px 12px', borderRadius:'20px', whiteSpace:'nowrap' }}>{s.val}</div>
                   </div>
-                  <input
-                    type="range"
-                    min={slider.min}
-                    max={slider.max}
-                    step={slider.step}
-                    value={slider.current}
-                    onChange={(e) => slider.onChange(e.target.value)}
-                    className="slider-styled"
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: c.sub, marginTop: '4px' }}>
-                    <span>{slider.min}</span><span>{slider.max}</span>
+                  <input type="range" min={s.min} max={s.max} step={s.step} value={s.cur} onChange={e=>s.set(e.target.value)} className="slider-track" />
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:'9.5px', color:c.sub, marginTop:'4px' }}>
+                    <span>{s.min}</span><span>{s.max}</span>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Live Output Summary */}
-            <div style={styles.liveOutputBar}>
-              <div style={styles.liveOutputItem}>
-                <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700, letterSpacing: '0.06em' }}>SAFETY STOCK</div>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#60A5FA' }}>{activeOptimization.safety_stock.toLocaleString()}</div>
-                <div style={{ fontSize: '10px', color: c.sub }}>{activeOptimization.unit}</div>
-              </div>
-              <div style={styles.liveOutputDivider} />
-              <div style={styles.liveOutputItem}>
-                <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700, letterSpacing: '0.06em' }}>REORDER POINT</div>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: c.title }}>{activeOptimization.reorder_point.toLocaleString()}</div>
-                <div style={{ fontSize: '10px', color: c.sub }}>{activeOptimization.unit}</div>
-              </div>
-              <div style={styles.liveOutputDivider} />
-              <div style={styles.liveOutputItem}>
-                <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700, letterSpacing: '0.06em' }}>REORDER QTY</div>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#34D399' }}>{activeOptimization.reorder_quantity.toLocaleString()}</div>
-                <div style={{ fontSize: '10px', color: c.sub }}>{activeOptimization.unit}</div>
-              </div>
-              <div style={styles.liveOutputDivider} />
-              <div style={styles.liveOutputItem}>
-                <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700, letterSpacing: '0.06em' }}>RISK LEVEL</div>
-                <div style={{ fontSize: '18px', fontWeight: 800, color: activeOptimization.risk_level === 'CRITICAL' ? '#F87171' : activeOptimization.risk_level === 'HIGH' ? '#FBBF24' : '#34D399' }}>
-                  {activeOptimization.risk_level}
+            {/* Before / After comparison */}
+            <div style={{ marginTop:'24px', display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:'16px', alignItems:'center' }}>
+              {/* Before */}
+              <div style={{ ...styles.subCard, opacity: baselineSnap?1:0.5 }}>
+                <div style={{ fontSize:'10px', fontWeight:800, color:c.sub, letterSpacing:'.07em', marginBottom:'10px' }}>
+                  BASELINE SNAPSHOT {!baselineSnap&&'(select a preset to compare)'}
                 </div>
-                <div style={{ fontSize: '10px', color: c.sub }}>Current</div>
+                {[
+                  ['Safety Stock', baselineSnap?.ss?.toLocaleString()??'—', '#60A5FA'],
+                  ['Reorder Point', baselineSnap?.rop?.toLocaleString()??'—', c.title],
+                  ['Reorder Qty', baselineSnap?.roq?.toLocaleString()??'—', '#34D399'],
+                  ['Risk Level', baselineSnap?.risk??'—', '#FBBF24'],
+                ].map(([l,v,col],i)=>(
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', color:c.sub, padding:'5px 0', borderBottom:`1px solid ${c.tableBorder}` }}>
+                    <span>{l}</span><strong style={{ color:col }}>{v}</strong>
+                  </div>
+                ))}
+              </div>
+
+              {/* Arrow */}
+              <div style={{ textAlign:'center', color:c.sub }}>
+                <div style={{ fontSize:'24px' }}>→</div>
+                <div style={{ fontSize:'10px', fontWeight:700, marginTop:'4px', color:'#60A5FA' }}>CURRENT</div>
+              </div>
+
+              {/* After */}
+              <div style={{ ...styles.subCard, border:`1px solid ${isDark?'rgba(59,130,246,.3)':'#BFDBFE'}`, background: isDark?'rgba(59,130,246,.06)':'rgba(37,99,235,.03)' }}>
+                <div style={{ fontSize:'10px', fontWeight:800, color:'#60A5FA', letterSpacing:'.07em', marginBottom:'10px' }}>LIVE OUTPUT</div>
+                {[
+                  ['Safety Stock', activeOpt.ss.toLocaleString()+` ${currentProduct.unit}`, '#60A5FA'],
+                  ['Reorder Point', activeOpt.rop.toLocaleString()+` ${currentProduct.unit}`, c.title],
+                  ['Reorder Qty', activeOpt.roq.toLocaleString()+` ${currentProduct.unit}`, '#34D399'],
+                  ['Risk Level', activeOpt.risk, activeOpt.risk==='CRITICAL'?'#F87171':activeOpt.risk==='HIGH'?'#FBBF24':'#34D399'],
+                ].map(([l,v,col],i)=>{
+                  const snapVals = [baselineSnap?.ss, baselineSnap?.rop, baselineSnap?.roq, null];
+                  const currVals = [activeOpt.ss, activeOpt.rop, activeOpt.roq, null];
+                  const hasSnap = typeof snapVals[i] === 'number' && typeof currVals[i] === 'number';
+                  const delta = hasSnap ? currVals[i] - snapVals[i] : null;
+                  return (
+                    <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'12px', color:c.sub, padding:'5px 0', borderBottom:`1px solid ${c.tableBorder}` }}>
+                      <span>{l}</span>
+                      <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                        {delta!==null && delta!==0 && <span style={{ fontSize:'10px', fontWeight:700, color: delta>0?'#F87171':'#34D399' }}>{delta>0?'+':''}{delta.toLocaleString()}</span>}
+                        <strong style={{ color:col }}>{v}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
 
-          {/* Scenario Cards */}
-          <div style={styles.glassCard}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+          {/* Scenario cards */}
+          <div style={styles.card}>
+            <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'16px' }}>
               <div style={styles.cardIconBadge}>📊</div>
               <div>
-                <h3 style={styles.sectionHeading}>Multi-Scenario Disruption Stress Matrix</h3>
-                <div style={styles.sectionSub}>
-                  Stress testing <strong>{currentProduct.product_id}</strong> across standardized research multipliers.
-                </div>
+                <div style={styles.cardTitle}>Multi-Scenario Disruption Stress Matrix</div>
+                <div style={styles.cardSub}>Stress testing <strong>{currentProduct.product_id}</strong> across NORMAL / MODERATE / SEVERE</div>
               </div>
             </div>
-
-            <div style={styles.scenarioGrid}>
-              {['NORMAL', 'MODERATE', 'SEVERE'].map((scName) => {
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'16px' }}>
+              {['NORMAL','MODERATE','SEVERE'].map(scName => {
                 const sc = scenarioData?.scenarios?.[scName] || {
-                  scenario: scName,
-                  multiplier: scName === 'NORMAL' ? 1.0 : scName === 'MODERATE' ? 1.5 : 2.0,
-                  disruption_probability: scName === 'NORMAL' ? disruptionProb : Math.min(1.0, disruptionProb * 1.5),
-                  risk_adjusted_lead_time: (currentProduct.average_lead_time * (scName === 'NORMAL' ? 1.0 : scName === 'MODERATE' ? 1.5 : 2.0)).toFixed(1),
-                  safety_stock: Math.round(activeOptimization.safety_stock * (scName === 'NORMAL' ? 1.0 : scName === 'MODERATE' ? 1.5 : 2.0)),
-                  reorder_point: Math.round(activeOptimization.reorder_point * (scName === 'NORMAL' ? 1.0 : scName === 'MODERATE' ? 1.4 : 1.9)),
-                  reorder_quantity: Math.round(activeOptimization.reorder_quantity * (scName === 'NORMAL' ? 1.0 : scName === 'MODERATE' ? 1.5 : 2.0)),
-                  material_availability_flag: scName !== 'SEVERE',
-                  risk_level: scName === 'NORMAL' ? 'LOW' : scName === 'MODERATE' ? 'MEDIUM' : 'CRITICAL',
-                  reorder_recommendation: scName === 'SEVERE' ? 'EXPEDITE: Extreme risk detected. Dual-source allocation advised.' : 'Nominal buffer sufficient.',
+                  multiplier: scName==='NORMAL'?1.0:scName==='MODERATE'?1.5:2.0,
+                  disruption_probability: Math.min(1, disruptionProb*(scName==='NORMAL'?1:scName==='MODERATE'?1.5:2)),
+                  risk_adjusted_lead_time: (currentProduct.average_lead_time*(scName==='NORMAL'?1:scName==='MODERATE'?1.5:2)).toFixed(1),
+                  safety_stock: Math.round(activeOpt.ss*(scName==='NORMAL'?1:scName==='MODERATE'?1.5:2)),
+                  reorder_point: Math.round(activeOpt.rop*(scName==='NORMAL'?1:scName==='MODERATE'?1.4:1.9)),
+                  reorder_quantity: Math.round(activeOpt.roq*(scName==='NORMAL'?1:scName==='MODERATE'?1.5:2)),
+                  risk_level: scName==='NORMAL'?'LOW':scName==='MODERATE'?'MEDIUM':'CRITICAL',
+                  reorder_recommendation: scName==='SEVERE'?'EXPEDITE: Extreme risk. Dual-source allocation advised.':'Nominal buffer sufficient.',
                 };
-
-                const accentColor = scName === 'SEVERE' ? '#EF4444' : scName === 'MODERATE' ? '#F59E0B' : '#10B981';
-
+                const ac = scName==='SEVERE'?'#EF4444':scName==='MODERATE'?'#F59E0B':'#10B981';
                 return (
-                  <div
-                    key={scName}
-                    style={{
-                      ...styles.scenarioCard,
-                      borderColor: accentColor,
-                      boxShadow: `0 0 20px ${accentColor}20`,
-                    }}
-                  >
-                    {/* Header */}
-                    <div style={{ ...styles.scCardHeader, borderBottomColor: accentColor + '33' }}>
+                  <div key={scName} style={{ ...styles.subCard, border:`1px solid ${ac}44`, boxShadow:`0 0 18px ${ac}14` }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px', paddingBottom:'10px', borderBottom:`1px solid ${ac}33` }}>
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: '13px', color: c.title }}>
-                          {scName} DISRUPTION
-                        </div>
-                        <div style={{ fontSize: '11px', color: c.sub, marginTop: '2px' }}>
-                          {sc.multiplier}x multiplier · P(risk): {(sc.disruption_probability * 100).toFixed(0)}%
-                        </div>
+                        <div style={{ fontWeight:800, fontSize:'13px', color:c.title }}>{scName} ({sc.multiplier}x)</div>
+                        <div style={{ fontSize:'11px', color:c.sub, marginTop:'2px' }}>P(risk): {(sc.disruption_probability*100).toFixed(0)}%</div>
                       </div>
-                      <span style={{ ...styles.riskBadge, backgroundColor: accentColor + '22', color: accentColor, border: `1px solid ${accentColor}55`, fontSize: '11px', padding: '4px 10px' }}>
-                        {sc.risk_level}
-                      </span>
+                      <span style={{ ...styles.badge, background:ac+'22', color:ac, border:`1px solid ${ac}55`, fontSize:'11px', padding:'4px 10px' }}>{sc.risk_level}</span>
                     </div>
-
-                    {/* Metrics */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-                      {[
-                        { label: 'Risk-Adj. Lead Time', val: `${sc.risk_adjusted_lead_time} days`, color: c.title },
-                        { label: 'Safety Buffer', val: `${sc.safety_stock.toLocaleString()} ${currentProduct.unit}`, color: '#60A5FA' },
-                        { label: 'Trigger ROP', val: `${sc.reorder_point.toLocaleString()} ${currentProduct.unit}`, color: c.title },
-                        { label: 'Recommended ROQ', val: `${sc.reorder_quantity.toLocaleString()} ${currentProduct.unit}`, color: '#34D399' },
-                      ].map((m, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: c.sub, padding: '5px 0', borderBottom: `1px solid ${c.tableBorder}` }}>
-                          <span>{m.label}</span>
-                          <strong style={{ color: m.color }}>{m.val}</strong>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ marginTop: '12px', padding: '8px 10px', background: accentColor + '12', borderRadius: '8px', border: `1px dashed ${accentColor}44` }}>
-                      <div style={{ fontSize: '9.5px', fontWeight: 800, color: accentColor, letterSpacing: '0.06em', marginBottom: '3px' }}>ACTION DIRECTIVE</div>
-                      <div style={{ fontSize: '11.5px', color: c.title }}>{sc.reorder_recommendation}</div>
+                    {[['Lead Time',sc.risk_adjusted_lead_time+' days',c.title],['Safety Buffer',sc.safety_stock.toLocaleString()+` ${currentProduct.unit}`,'#60A5FA'],['Trigger ROP',sc.reorder_point.toLocaleString()+` ${currentProduct.unit}`,c.title],['Rec. ROQ',sc.reorder_quantity.toLocaleString()+` ${currentProduct.unit}`,'#34D399']].map(([l,v,col],i)=>(
+                      <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', color:c.sub, padding:'5px 0', borderBottom:`1px solid ${c.tableBorder}` }}><span>{l}</span><strong style={{ color:col }}>{v}</strong></div>
+                    ))}
+                    <div style={{ marginTop:'10px', padding:'8px 10px', background:ac+'12', borderRadius:'8px', border:`1px dashed ${ac}44`, fontSize:'11.5px', color:c.title }}>
+                      <span style={{ color:ac, fontWeight:800, fontSize:'9.5px', letterSpacing:'.06em' }}>DIRECTIVE — </span>{sc.reorder_recommendation}
                     </div>
                   </div>
                 );
@@ -985,85 +804,55 @@ export default function InventoryOptimizationView() {
             </div>
           </div>
 
-          {/* ── Direct FastAPI Tester ── */}
-          <div style={styles.glassCard}>
-            <div style={styles.cardHeaderFlex}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Direct API Tester */}
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={styles.cardIconBadge}>🔌</div>
                 <div>
-                  <h3 style={styles.sectionHeading}>Live FastAPI Optimization Tester</h3>
-                  <div style={styles.sectionSub}>
-                    POST /api/inventory/optimize/detailed — Pass custom raw values to execute the 10-step Python engine directly.
-                  </div>
+                  <div style={styles.cardTitle}>Live FastAPI Optimization Tester</div>
+                  <div style={styles.cardSub}>POST /api/inventory/optimize/detailed — 10-step Python engine · Fields marked * are primary inputs</div>
                 </div>
               </div>
-              <button
-                className="action-btn-hover"
-                onClick={handleExecuteDirectApi}
-                disabled={isExecutingDirectApi}
-                style={styles.apiExecuteBtn}
-              >
-                {isExecutingDirectApi ? (
-                  <><span style={{ display: 'inline-block', animation: 'spin-slow 1s linear infinite' }}>⟳</span> Executing...</>
-                ) : '⚡ Run POST /optimize'}
+              <button className="btn-hover" onClick={async()=>{ setIsExecutingDirectApi(true); try{ const r=await optimizeInventoryDetailed(directParams); setDirectApiResult(r); showToast(`✓ Optimization for ${directParams.product_id} complete`); }catch(e){ showToast(`API error: ${e.message||'Unknown'}`, 'error'); } finally{ setIsExecutingDirectApi(false); } }} disabled={isExecutingDirectApi} style={styles.execBtn}>
+                {isExecutingDirectApi ? '⟳ Executing...' : '⚡ Run POST /optimize'}
               </button>
             </div>
-
-            {/* Input Fields — Large & Prominent */}
-            <div style={styles.directInputGrid}>
+            <div style={styles.inputGrid}>
               {[
-                { key: 'current_inventory', label: 'Current Inventory', icon: '📦', unit: 'units', important: true },
-                { key: 'forecasted_demand', label: 'Forecasted Demand (D)', icon: '📈', unit: 'units', important: true },
-                { key: 'demand_std_dev', label: 'Demand Std Dev (σ_D)', icon: '📊', unit: 'units', important: false },
-                { key: 'average_lead_time', label: 'Average Lead Time (L)', icon: '⏱️', unit: 'days', important: true },
-                { key: 'lead_time_std_dev', label: 'Lead Time Std Dev (σ_L)', icon: '📉', unit: 'days', important: false },
-                { key: 'disruption_probability', label: 'Disruption Probability', icon: '⚠️', unit: '0.0–1.0', important: true },
-              ].map((f) => (
-                <div key={f.key} style={{ ...styles.inputField, ...(f.important ? styles.inputFieldHighlight : {}) }}>
-                  <label style={styles.inputLabel}>
-                    <span style={{ marginRight: '6px' }}>{f.icon}</span>
-                    {f.label}
-                    {f.important && <span style={{ color: '#F87171', marginLeft: '3px' }}>*</span>}
-                    <span style={{ color: c.sub, fontWeight: 400, marginLeft: '4px' }}>({f.unit})</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={directParams[f.key]}
-                    onChange={(e) =>
-                      setDirectParams((prev) => ({
-                        ...prev,
-                        [f.key]: parseFloat(e.target.value) || 0,
-                      }))
-                    }
-                    className="input-field-glow"
-                    style={{ ...styles.textInput, ...(f.important ? styles.textInputHighlight : {}) }}
-                  />
+                { k:'current_inventory',    l:'Current Inventory *',    icon:'📦', u:'units', hi:true },
+                { k:'forecasted_demand',    l:'Forecasted Demand (D) *',icon:'📈', u:'units', hi:true },
+                { k:'demand_std_dev',       l:'Demand Std Dev (σ_D)',   icon:'📊', u:'units', hi:false },
+                { k:'average_lead_time',    l:'Lead Time (L) *',        icon:'⏱️', u:'days',  hi:true },
+                { k:'lead_time_std_dev',    l:'Lead Time Std Dev (σ_L)',icon:'📉', u:'days',  hi:false },
+                { k:'disruption_probability',l:'Disruption Prob. *',   icon:'⚠️', u:'0–1',   hi:true },
+              ].map(f=>(
+                <div key={f.k} style={{ ...styles.inputField, ...(f.hi?{ padding:'12px', background: isDark?'rgba(59,130,246,.06)':'rgba(37,99,235,.03)', borderRadius:'12px', border:`1px solid ${isDark?'rgba(59,130,246,.2)':'rgba(37,99,235,.1)'}` }:{}) }}>
+                  <label style={styles.inputLabel}><span>{f.icon}</span> {f.l} <span style={{ color:c.sub, fontWeight:400 }}>({f.u})</span></label>
+                  <input type="number" value={directParams[f.k]} onChange={e=>setDirectParams(p=>({...p,[f.k]:parseFloat(e.target.value)||0}))} className="input-focus" style={{ ...styles.textInput, ...(f.hi?{ border:`2px solid ${isDark?'rgba(59,130,246,.5)':'#BFDBFE'}` }:{}) }} />
                 </div>
               ))}
             </div>
-
             {directApiResult && (
-              <div style={styles.apiResultBox}>
-                <div style={{ fontWeight: 800, color: '#34D399', marginBottom: '12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>✓</span> FastAPI 200 OK — Response Payload:
-                </div>
-                <div style={styles.apiResultGrid}>
+              <div style={{ marginTop:'20px', background: isDark?'rgba(16,185,129,.07)':'#F0FDF4', border:`1px solid ${isDark?'rgba(16,185,129,.25)':'#BBF7D0'}`, borderRadius:'14px', padding:'18px' }}>
+                <div style={{ fontWeight:800, color:'#34D399', marginBottom:'14px', fontSize:'13px' }}>✓ FastAPI 200 OK — Response Payload</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:'10px' }}>
                   {[
-                    { label: 'Safety Stock', value: `${directApiResult.safety_stock} units`, color: '#60A5FA' },
-                    { label: 'Reorder Point', value: `${directApiResult.reorder_point} units`, color: c.title },
-                    { label: 'Reorder Quantity', value: `${directApiResult.reorder_quantity} units`, color: '#34D399' },
-                    { label: 'Backorder Risk', value: `${(directApiResult.backorder_risk * 100).toFixed(1)}%`, color: '#F87171' },
-                    { label: 'Shortage', value: `${directApiResult.material_shortage} units`, color: directApiResult.material_shortage > 0 ? '#F87171' : '#34D399' },
-                    { label: 'Availability', value: directApiResult.material_availability_flag ? '✓ TRUE' : '✗ FALSE', color: directApiResult.material_availability_flag ? '#34D399' : '#F87171' },
-                  ].map((item, i) => (
-                    <div key={i} style={styles.apiResultItem}>
-                      <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700, letterSpacing: '0.05em' }}>{item.label}</div>
-                      <div style={{ fontSize: '16px', fontWeight: 800, color: item.color, marginTop: '4px' }}>{item.value}</div>
+                    ['Safety Stock',  directApiResult.safety_stock+' units', '#60A5FA'],
+                    ['Reorder Point', directApiResult.reorder_point+' units', c.title],
+                    ['Reorder Qty',   directApiResult.reorder_quantity+' units', '#34D399'],
+                    ['Backorder Risk',(directApiResult.backorder_risk*100).toFixed(1)+'%', '#F87171'],
+                    ['Shortage',      directApiResult.material_shortage+' units', directApiResult.material_shortage>0?'#F87171':'#34D399'],
+                    ['Availability',  directApiResult.material_availability_flag?'TRUE':'FALSE', directApiResult.material_availability_flag?'#34D399':'#F87171'],
+                  ].map(([l,v,col],i)=>(
+                    <div key={i} style={{ background: isDark?'rgba(0,0,0,.3)':'#FFFFFF', borderRadius:'10px', padding:'12px', border:`1px solid ${c.tableBorder}`, textAlign:'center' }}>
+                      <div style={{ fontSize:'9.5px', fontWeight:800, color:c.sub, letterSpacing:'.06em' }}>{l}</div>
+                      <div style={{ fontSize:'18px', fontWeight:800, color:col, marginTop:'5px' }}>{v}</div>
                     </div>
                   ))}
                 </div>
-                <div style={{ marginTop: '12px', fontSize: '11.5px', color: c.sub, padding: '8px 10px', background: c.subCard, borderRadius: '8px' }}>
-                  <strong style={{ color: c.title }}>Directive:</strong> {directApiResult.reorder_recommendation}
+                <div style={{ marginTop:'12px', fontSize:'11.5px', color:c.sub, background: isDark?'rgba(0,0,0,.2)':'#F1F5F9', padding:'8px 12px', borderRadius:'8px' }}>
+                  <strong style={{ color:c.title }}>Directive:</strong> {directApiResult.reorder_recommendation}
                 </div>
               </div>
             )}
@@ -1071,1329 +860,358 @@ export default function InventoryOptimizationView() {
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* TAB 3: PRODUCTION MATERIAL READINESS (Section 39)                   */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* ═══ TAB 3: PRODUCTION READINESS ════════════════════════════════════ */}
       {activeTab === 'readiness' && (
-        <div style={styles.tabContentGrid}>
-          <div style={styles.glassCard}>
-            <div style={styles.cardHeaderFlex}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={styles.tabContent}>
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={styles.cardIconBadge}>🏭</div>
                 <div>
-                  <h3 style={styles.sectionHeading}>Production Material Readiness & Handoff (Module 4)</h3>
-                  <div style={styles.sectionSub}>
-                    Integration contract interface serving live readiness flags to the <strong>Line Optimizer</strong>.
-                  </div>
+                  <div style={styles.cardTitle}>Production Material Readiness & Module 4 Handoff</div>
+                  <div style={styles.cardSub}>Integration contract serving live readiness flags to the Line Optimizer</div>
                 </div>
               </div>
-              <div style={styles.contractBadge}>
-                📄 Contract: Inventory_to_Production_Scheduling.csv
+              <div style={{ ...styles.pillBtn, cursor:'default', background:'rgba(59,130,246,.12)', borderColor:'rgba(59,130,246,.3)', color: isDark?'#93C5FD':'#1E40AF' }}>
+                📄 Inventory_to_Production_Scheduling.csv
               </div>
             </div>
 
-            <div style={styles.tableWrapper}>
-              <table style={styles.table}>
-                <thead>
-                  <tr style={styles.theadRow}>
-                    <th style={styles.th}>Product SKU</th>
-                    <th style={styles.th}>Material Name</th>
-                    <th style={styles.thRight}>Required</th>
-                    <th style={styles.thRight}>Available On-Hand</th>
-                    <th style={styles.thRight}>Shortage</th>
-                    <th style={styles.thCenter}>Readiness Flag</th>
-                    <th style={styles.th}>Recommended Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {productionInterfaceData.map((item, idx) => (
-                    <tr key={item.product_id} className="table-row-hover" style={{ ...styles.tr, backgroundColor: c.isDark ? (idx % 2 === 0 ? '#0F172A' : '#0B1526') : (idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC') }}>
-                      <td style={styles.td}>
-                        <strong style={{ color: c.title, fontSize: '12.5px' }}>{item.product_id}</strong>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={{ color: c.sub, fontSize: '12px' }}>{item.product_name}</span>
-                      </td>
-                      <td style={styles.tdRight}>
-                        <span style={{ color: c.title, fontWeight: 600 }}>{item.material_requirement.toLocaleString()}</span>
-                      </td>
-                      <td style={styles.tdRight}>
-                        <strong style={{ color: '#34D399' }}>{item.available_inventory.toLocaleString()}</strong>
-                      </td>
-                      <td style={styles.tdRight}>
-                        <strong style={{ color: item.material_shortage > 0 ? '#F87171' : c.sub }}>
-                          {item.material_shortage.toLocaleString()}
-                        </strong>
-                      </td>
-                      <td style={styles.tdCenter}>
-                        <span
-                          style={{
-                            ...styles.availBadge,
-                            padding: '5px 12px',
-                            backgroundColor: item.material_availability_flag
-                              ? (c.isDark ? 'rgba(16,185,129,0.2)' : '#DCFCE7')
-                              : (c.isDark ? 'rgba(239,68,68,0.2)' : '#FEE2E2'),
-                            color: item.material_availability_flag
-                              ? (c.isDark ? '#6EE7B7' : '#166534')
-                              : (c.isDark ? '#FCA5A5' : '#991B1B'),
-                            border: item.material_availability_flag
-                              ? (c.isDark ? '1px solid rgba(16,185,129,0.5)' : '1px solid #86EFAC')
-                              : (c.isDark ? '1px solid rgba(239,68,68,0.5)' : '1px solid #FCA5A5'),
-                            fontWeight: 700,
-                          }}
-                        >
-                          {item.material_availability_flag ? '✓ PRODUCTION READY' : '⚠ SHORTAGE / GATE'}
-                        </span>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={{ fontSize: '11.5px', color: item.material_availability_flag ? (c.isDark ? '#6EE7B7' : '#059669') : (c.isDark ? '#FCA5A5' : '#DC2626') }}>
-                          {item.material_availability_flag
-                            ? '✓ Ready for line allocation (Shift A)'
-                            : '⚡ Reschedule Line / Trigger expedited dispatch'}
-                        </span>
-                      </td>
+            {productionInterfaceData.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'60px 20px' }}>
+                <div style={{ fontSize:'40px', marginBottom:'12px' }}>📭</div>
+                <div style={{ fontWeight:700, fontSize:'15px', color:c.title, marginBottom:'6px' }}>No Production Interface Data</div>
+                <div style={{ fontSize:'12px', color:c.sub, marginBottom:'20px' }}>The backend hasn't returned readiness data yet. Check the FastAPI server at :8000</div>
+                <button className="btn-hover" onClick={fetchAll} style={styles.execBtn}>↺ Retry Fetch</button>
+              </div>
+            ) : (
+              <div style={styles.tableWrapper}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr style={styles.theadRow}>
+                      {['Product SKU','Material Name','Required','Available On-Hand','Shortage','Readiness Flag','Recommended Action'].map(h=>(
+                        <th key={h} style={h==='Required'||h==='Available On-Hand'||h==='Shortage'?styles.thRight:h==='Readiness Flag'?styles.thCenter:styles.th}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {productionInterfaceData.map((item,idx)=>(
+                      <tr key={item.product_id} className="row-hover" style={{ ...styles.tr, backgroundColor: isDark?(idx%2===0?'#0F172A':'#0B1526'):(idx%2===0?'#FFFFFF':'#F8FAFC') }}>
+                        <td style={styles.td}><strong style={{ color:c.title }}>{item.product_id}</strong></td>
+                        <td style={styles.td}><span style={{ color:c.sub }}>{item.product_name}</span></td>
+                        <td style={styles.tdRight}><span style={{ color:c.title, fontWeight:600 }}>{item.material_requirement?.toLocaleString()}</span></td>
+                        <td style={styles.tdRight}><strong style={{ color:'#34D399' }}>{item.available_inventory?.toLocaleString()}</strong></td>
+                        <td style={styles.tdRight}><strong style={{ color:item.material_shortage>0?'#F87171':c.sub }}>{item.material_shortage?.toLocaleString()}</strong></td>
+                        <td style={styles.tdCenter}>
+                          <span style={{ ...styles.badge, padding:'5px 12px', fontWeight:700, background:item.material_availability_flag?(isDark?'rgba(16,185,129,.2)':'#DCFCE7'):(isDark?'rgba(239,68,68,.2)':'#FEE2E2'), color:item.material_availability_flag?(isDark?'#6EE7B7':'#166534'):(isDark?'#FCA5A5':'#991B1B'), border:`1px solid ${item.material_availability_flag?(isDark?'rgba(16,185,129,.5)':'#86EFAC'):(isDark?'rgba(239,68,68,.5)':'#FCA5A5')}` }}>
+                            {item.material_availability_flag ? '✓ PRODUCTION READY' : '⚠ SHORTAGE / GATE'}
+                          </span>
+                        </td>
+                        <td style={styles.td}><span style={{ fontSize:'11.5px', color:item.material_availability_flag?(isDark?'#6EE7B7':'#059669'):(isDark?'#FCA5A5':'#DC2626') }}>{item.material_availability_flag?'✓ Ready for line allocation (Shift A)':'⚡ Reschedule / Trigger expedited dispatch'}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* TAB 4: RESEARCH PROOF & ML BENCHMARKS                               */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* ═══ TAB 4: RESEARCH & ML BENCHMARKS ════════════════════════════════ */}
       {activeTab === 'research' && (
-        <div style={styles.tabContentGrid}>
+        <div style={styles.tabContent}>
           {/* 3-Policy Benchmark */}
-          <div style={styles.glassCard}>
-            <div style={styles.cardHeaderFlex}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={styles.cardIconBadge}>🔬</div>
                 <div>
-                  <h3 style={styles.sectionHeading}>Experimental Research Evidence: 3-Policy Benchmark</h3>
-                  <div style={styles.sectionSub}>
-                    Evaluated on 171,962 historical orders from the DataCo Smart Supply Chain Dataset.
-                  </div>
+                  <div style={styles.cardTitle}>Experimental Research Evidence: 3-Policy Benchmark</div>
+                  <div style={styles.cardSub}>171,962 historical orders · DataCo Smart Supply Chain Dataset</div>
                 </div>
               </div>
-              <span style={{ ...styles.kpiTag, background: 'rgba(16,185,129,0.2)', color: '#34D399', borderColor: 'rgba(16,185,129,0.4)', padding: '5px 12px', border: '1px solid' }}>✓ Research Proved</span>
+              <span style={{ ...styles.badge, padding:'5px 14px', background:'rgba(16,185,129,.15)', color:'#34D399', border:'1px solid rgba(16,185,129,.4)', fontSize:'11.5px', fontWeight:700 }}>✓ Research Proved</span>
             </div>
 
-            <div style={styles.benchmarkGrid}>
-              {/* Policy 1 */}
-              <div style={styles.benchmarkCard}>
-                <div style={styles.bmHeader}>
-                  <span style={{ background: c.isDark ? '#1E293B' : '#F1F5F9', padding: '2px 8px', borderRadius: '6px', marginRight: '8px', fontSize: '11px' }}>01</span>
-                  STATIC (s,S) BASELINE
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'24px', alignItems:'start' }}>
+              {/* SVG Chart */}
+              <div style={{ ...styles.subCard, padding:'20px' }}>
+                <div style={{ fontWeight:800, fontSize:'12px', color:c.sub, letterSpacing:'.07em', marginBottom:'14px' }}>STOCKOUT UNITS COMPARISON</div>
+                <PolicyBarChart isDark={isDark} />
+                <div style={{ display:'flex', gap:'14px', justifyContent:'center', marginTop:'10px' }}>
+                  {[['Static (s,S)','#64748B'],['Std Adaptive','#F59E0B'],['OPTICHAIN','#10B981']].map(([l,col])=>(
+                    <div key={l} style={{ display:'flex', alignItems:'center', gap:'5px', fontSize:'10.5px', color:c.sub }}>
+                      <div style={{ width:'10px', height:'10px', borderRadius:'2px', background:col }} />
+                      {l}
+                    </div>
+                  ))}
                 </div>
-                {[
-                  { label: 'Service Level', val: '99.99%', color: '#34D399' },
-                  { label: 'Stockout Units', val: '4.36 units', color: '#34D399' },
-                  { label: 'Average Inventory', val: '62.70 units', color: c.title },
-                  { label: 'Replenishment Orders', val: '2,916 orders', color: c.title },
-                ].map((m, i) => (
-                  <div key={i} style={styles.bmMetric}>
-                    <span>{m.label}</span>
-                    <strong style={{ color: m.color }}>{m.val}</strong>
-                  </div>
-                ))}
-                <div style={styles.bmDesc}>Static policy maintains rigid high inventory without reacting to disruption.</div>
               </div>
 
-              {/* Policy 2 */}
-              <div style={styles.benchmarkCard}>
-                <div style={styles.bmHeader}>
-                  <span style={{ background: c.isDark ? '#1E293B' : '#F1F5F9', padding: '2px 8px', borderRadius: '6px', marginRight: '8px', fontSize: '11px' }}>02</span>
-                  STANDARD ADAPTIVE
-                </div>
+              {/* Metrics grid */}
+              <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
                 {[
-                  { label: 'Service Level', val: '99.46%', color: '#FBBF24' },
-                  { label: 'Stockout Units', val: '1,994.05 units', color: '#F87171' },
-                  { label: 'Average Inventory', val: '45.43 units', color: c.title },
-                  { label: 'Replenishment Orders', val: '6,415 orders', color: c.title },
-                ].map((m, i) => (
-                  <div key={i} style={styles.bmMetric}>
-                    <span>{m.label}</span>
-                    <strong style={{ color: m.color }}>{m.val}</strong>
+                  { label:'1. STATIC (s,S) BASELINE', border:'#64748B', metrics:[['Service Level','99.99%','#34D399'],['Stockout Units','4.36 units','#34D399'],['Avg Inventory','62.70 units',c.title],['Orders','2,916',c.title]], desc:'Static — maintains rigid high inventory without reacting to disruption.', winner:false },
+                  { label:'2. STANDARD ADAPTIVE',      border:'#F59E0B', metrics:[['Service Level','99.46%','#FBBF24'],['Stockout Units','1,994.05 units','#F87171'],['Avg Inventory','45.43 units',c.title],['Orders','6,415',c.title]], desc:'Reduces inventory but suffers stockouts when lead time spikes.', winner:false },
+                  { label:'3. OPTICHAIN DISRUPTION-AWARE ⭐', border:'#10B981', metrics:[['Service Level','99.96% (+0.49pp)','#34D399'],['Stockout Units','160.45 (−91.95%)','#34D399'],['Avg Inventory','77.70 units',c.title],['Orders','6,478',c.title]], desc:'Proactively expands buffers before disruption arrival to protect production.', winner:true },
+                ].map((policy,i)=>(
+                  <div key={i} style={{ ...styles.subCard, border:`${policy.winner?'2':'1'}px solid ${policy.border}${policy.winner?'':'44'}`, background: policy.winner?(isDark?'rgba(16,185,129,.07)':'rgba(16,185,129,.04)'):'', boxShadow: policy.winner?`0 0 20px ${policy.border}18`:'' }}>
+                    <div style={{ fontWeight:800, fontSize:'12px', color: policy.winner?(isDark?'#6EE7B7':'#059669'):c.title, marginBottom:'10px', paddingBottom:'8px', borderBottom:`1px solid ${c.tableBorder}` }}>{policy.label}</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px' }}>
+                      {policy.metrics.map(([l,v,col])=>(
+                        <div key={l} style={{ display:'flex', justifyContent:'space-between', fontSize:'11.5px', color:c.sub }}>
+                          <span>{l}:</span><strong style={{ color:col }}>{v}</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:'11px', color:c.sub, marginTop:'8px', lineHeight:1.4, fontStyle:'italic' }}>{policy.desc}</div>
                   </div>
                 ))}
-                <div style={styles.bmDesc}>Reduces inventory holding, but suffers stockouts when lead time spikes.</div>
-              </div>
-
-              {/* Policy 3 — OPTICHAIN (WINNER) */}
-              <div style={{ ...styles.benchmarkCard, border: `2px solid ${c.isDark ? '#10B981' : '#059669'}`, background: c.isDark ? 'linear-gradient(135deg, #0F1D36 0%, #0A1F2E 100%)' : 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)', boxShadow: `0 0 24px ${c.isDark ? 'rgba(16,185,129,0.2)' : 'rgba(5,150,105,0.1)'}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <span style={{ background: '#10B981', color: '#fff', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800 }}>03</span>
-                  <span style={{ fontWeight: 800, fontSize: '13px', color: c.isDark ? '#6EE7B7' : '#166534' }}>OPTICHAIN DISRUPTION-AWARE ⭐</span>
-                </div>
-                {[
-                  { label: 'Service Level', val: '99.96% (+0.49 pp)', color: c.isDark ? '#6EE7B7' : '#059669' },
-                  { label: 'Stockout Units', val: '160.45 units (−91.95%)', color: c.isDark ? '#6EE7B7' : '#059669' },
-                  { label: 'Average Inventory', val: '77.70 units', color: c.title },
-                  { label: 'Replenishment Orders', val: '6,478 orders', color: c.title },
-                ].map((m, i) => (
-                  <div key={i} style={styles.bmMetric}>
-                    <span>{m.label}</span>
-                    <strong style={{ color: m.color }}>{m.val}</strong>
-                  </div>
-                ))}
-                <div style={{ ...styles.bmDesc, color: c.isDark ? '#6EE7B7' : '#166534', fontWeight: 600 }}>Proactively expands buffers before disruption arrival to protect production.</div>
               </div>
             </div>
           </div>
 
           {/* XGBoost ML Metrics */}
-          <div style={styles.glassCard}>
-            <div style={styles.cardHeaderFlex}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={styles.cardIconBadge}>🤖</div>
                 <div>
-                  <h3 style={styles.sectionHeading}>Auxiliary XGBoost Backorder Classifier Performance</h3>
-                  <div style={styles.sectionSub}>
-                    Model: OptiChain_Backorder_XGBoost_Model.joblib · Trained on 1,687,860 records
-                  </div>
+                  <div style={styles.cardTitle}>Auxiliary XGBoost Backorder Classifier</div>
+                  <div style={styles.cardSub}>OptiChain_Backorder_XGBoost_Model.joblib · 1,687,860 training records</div>
                 </div>
               </div>
-              <div style={styles.mlBadge}>Auxiliary ML Risk Signal</div>
+              <div style={{ ...styles.badge, padding:'5px 12px', background:'rgba(139,92,246,.15)', color: isDark?'#A78BFA':'#7C3AED', border:`1px solid ${isDark?'rgba(139,92,246,.3)':'#DDD6FE'}`, fontSize:'11px', fontWeight:700 }}>Auxiliary ML Risk Signal</div>
             </div>
-
-            <div style={styles.mlMetricsRow}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:'14px' }}>
               {[
-                { label: 'ROC-AUC SCORE', value: '0.9059', color: c.title, sub: 'Outstanding discrimination', icon: '🎯' },
-                { label: 'PR-AUC SCORE', value: '0.1797', color: '#60A5FA', sub: 'High under extreme class imbalance', icon: '📊' },
-                { label: 'F1-SCORE', value: '0.2269', color: '#34D399', sub: 'At decision threshold 0.90', icon: '⚖️' },
-                { label: 'TEST ACCURACY', value: '98.66%', color: '#A78BFA', sub: '242,076 test records', icon: '✅' },
-              ].map((m, i) => (
-                <div key={i} style={styles.mlMetricBox}>
-                  <div style={{ fontSize: '22px', marginBottom: '8px' }}>{m.icon}</div>
-                  <div style={styles.mlLabel}>{m.label}</div>
-                  <div style={{ ...styles.mlValue, color: m.color }}>{m.value}</div>
-                  <div style={styles.mlSub}>{m.sub}</div>
+                { label:'ROC-AUC SCORE', val:'0.9059', color:c.title,    sub:'Outstanding discrimination', icon:'🎯' },
+                { label:'PR-AUC SCORE',  val:'0.1797', color:'#60A5FA',  sub:'High under extreme class imbalance', icon:'📊' },
+                { label:'F1-SCORE',      val:'0.2269', color:'#34D399',  sub:'At decision threshold 0.90', icon:'⚖️' },
+                { label:'TEST ACCURACY', val:'98.66%', color:'#A78BFA',  sub:'242,076 test records', icon:'✅' },
+              ].map((m,i)=>(
+                <div key={i} style={{ ...styles.subCard, textAlign:'center', padding:'20px 16px' }}>
+                  <div style={{ fontSize:'22px', marginBottom:'8px' }}>{m.icon}</div>
+                  <div style={{ fontSize:'10px', fontWeight:800, color:c.sub, letterSpacing:'.07em', marginBottom:'8px' }}>{m.label}</div>
+                  <div style={{ fontSize:'28px', fontWeight:900, color:m.color, letterSpacing:'-0.02em', margin:'4px 0' }}>{m.val}</div>
+                  <div style={{ fontSize:'10.5px', color:c.sub }}>{m.sub}</div>
                 </div>
               ))}
             </div>
-
-            <div style={styles.researchNoteBox}>
-              <strong style={{ color: c.title }}>Research Integrity Statement (Section 19 & 62):</strong> The XGBoost backorder model was trained on the public industrial backorder benchmark (1,687,860 clean records). Because of extreme class imbalance (only ~1.1% positive backorders), ROC-AUC and PR-AUC are used as primary evaluation metrics rather than raw classification accuracy.
+            <div style={{ marginTop:'16px', background: isDark?'rgba(255,255,255,.02)':'#F8FAFC', border:`1px solid ${c.subCardBorder}`, borderRadius:'10px', padding:'14px', fontSize:'11.5px', color:c.sub, lineHeight:1.6 }}>
+              <strong style={{ color:c.title }}>Research Integrity (Section 19 & 62):</strong> The XGBoost backorder model was trained on the public industrial backorder benchmark (1,687,860 clean records). Extreme class imbalance (~1.1% positive backorders) means ROC-AUC and PR-AUC are the primary evaluation metrics — not raw accuracy.
             </div>
           </div>
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* XAI MATHEMATICAL FORMULA INSPECTOR MODAL                            */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* ═══ XAI MODAL ═══════════════════════════════════════════════════════ */}
       {xaiModalSku && (
-        <div style={styles.modalOverlay} onClick={() => setXaiModalSku(null)}>
-          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: c.title, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>📐</span> Explainable AI (XAI) Formula Inspector — <span style={{ color: '#60A5FA' }}>{xaiModalSku.product_id}</span>
+        <div style={styles.modalOverlay} onClick={()=>setXaiModalSku(null)}>
+          <div style={styles.modalBox} onClick={e=>e.stopPropagation()}>
+            <div style={styles.modalHead}>
+              <h3 style={{ fontSize:'15px', fontWeight:800, color:c.title, display:'flex', alignItems:'center', gap:'8px' }}>
+                📐 XAI Formula Inspector — <span style={{ color:'#60A5FA' }}>{xaiModalSku.product_id}</span>
               </h3>
-              <button onClick={() => setXaiModalSku(null)} style={styles.modalCloseBtn}>✕</button>
+              <button onClick={()=>setXaiModalSku(null)} style={styles.closeBtn}>✕</button>
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
-              {[
-                {
-                  step: '01', title: 'Risk-Adjusted Lead Time Calculation',
-                  formula: `L_adj = L · (1 + P_disrupt) = ${xaiModalSku.average_lead_time} · (1 + ${xaiModalSku.disruption_probability}) = ${(xaiModalSku.average_lead_time * (1 + xaiModalSku.disruption_probability)).toFixed(1)} days`,
-                  highlight: `${(xaiModalSku.average_lead_time * (1 + xaiModalSku.disruption_probability)).toFixed(1)} days`,
-                },
-                {
-                  step: '02', title: 'Dynamic Safety Stock Buffer',
-                  formula: `SS = z · √(L_adj · σ_D² + D² · σ_L²) = 1.645 · √(...) = ${Math.round(xaiModalSku.forecasted_demand * 0.35).toLocaleString()} ${xaiModalSku.unit}`,
-                  highlight: `${Math.round(xaiModalSku.forecasted_demand * 0.35).toLocaleString()} ${xaiModalSku.unit}`,
-                },
-                {
-                  step: '03', title: 'Dynamic Reorder Threshold (ROP)',
-                  formula: `ROP = D · L_adj + SS = ${Math.round(xaiModalSku.forecasted_demand * 1.2).toLocaleString()} ${xaiModalSku.unit}`,
-                  highlight: `${Math.round(xaiModalSku.forecasted_demand * 1.2).toLocaleString()} ${xaiModalSku.unit}`,
-                },
-              ].map((step) => (
-                <div key={step.step} style={styles.xaiStepBox}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                    <span style={{ background: 'rgba(59,130,246,0.2)', color: '#60A5FA', borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: 800 }}>STEP {step.step}</span>
-                    <div style={styles.xaiStepTitle}>{step.title}</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:'12px', marginTop:'16px' }}>
+              {(() => {
+                const p = xaiModalSku;
+                const dp = p.disruption_probability;
+                const L = p.average_lead_time;
+                const D = p.forecasted_demand;
+                const sD = p.demand_std_dev;
+                const sL = p.lead_time_std_dev;
+                const z = 1.645;
+                const Ladj = parseFloat((L*(1+dp)).toFixed(2));
+                const variance = Ladj * Math.pow(sD,2) + Math.pow(D,2) * Math.pow(sL,2);
+                const ss = Math.round(z * Math.sqrt(Math.max(0,variance)));
+                const rop = Math.round(D * Ladj) + ss;
+                return [
+                  { step:'01', title:'Risk-Adjusted Lead Time', formula:`L_adj = L × (1 + P_disrupt)\n= ${L} × (1 + ${dp}) = ${Ladj} days` },
+                  { step:'02', title:'Dynamic Safety Stock', formula:`SS = z × √(L_adj × σ_D² + D² × σ_L²) × (1 + P_disrupt)\n= ${z} × √(${Ladj} × ${sD}² + ${D}² × ${sL}²)\n= ${ss.toLocaleString()} ${p.unit}` },
+                  { step:'03', title:'Dynamic Reorder Point (ROP)', formula:`ROP = D × L_adj + SS\n= ${D.toLocaleString()} × ${Ladj} + ${ss.toLocaleString()}\n= ${rop.toLocaleString()} ${p.unit}` },
+                ].map(step=>(
+                  <div key={step.step} style={{ background:c.subCard, border:`1px solid ${c.subCardBorder}`, borderRadius:'12px', padding:'14px' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
+                      <span style={{ background:'rgba(59,130,246,.2)', color:'#60A5FA', borderRadius:'6px', padding:'2px 8px', fontSize:'10px', fontWeight:800 }}>STEP {step.step}</span>
+                      <span style={{ fontWeight:700, fontSize:'12px', color:c.title }}>{step.title}</span>
+                    </div>
+                    <pre style={{ fontFamily:"'Fira Code','Cascadia Code',monospace", fontSize:'12px', color:isDark?'#93C5FD':'#1E40AF', background: isDark?'rgba(59,130,246,.08)':'rgba(37,99,235,.05)', padding:'10px 12px', borderRadius:'8px', margin:0, whiteSpace:'pre-wrap', lineHeight:1.6 }}>{step.formula}</pre>
                   </div>
-                  <div style={styles.xaiFormulaText}>{step.formula}</div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button className="action-btn-hover" onClick={() => setXaiModalSku(null)} style={styles.primaryBtn}>
-                Close Inspector
-              </button>
+            <div style={{ display:'flex', justifyContent:'flex-end', marginTop:'20px' }}>
+              <button className="btn-hover" onClick={()=>setXaiModalSku(null)} style={styles.primaryBtn}>Close Inspector</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* ERP PURCHASE REQUISITION MODAL                                      */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* ═══ PO MODAL ════════════════════════════════════════════════════════ */}
       {poModalItem && (
-        <div style={styles.modalOverlay} onClick={() => setPoModalItem(null)}>
-          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: c.title, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>⚡</span> Dispatch Purchase Requisition — <span style={{ color: '#60A5FA' }}>{poModalItem.product_id}</span>
+        <div style={styles.modalOverlay} onClick={()=>setPoModalItem(null)}>
+          <div style={styles.modalBox} onClick={e=>e.stopPropagation()}>
+            <div style={styles.modalHead}>
+              <h3 style={{ fontSize:'15px', fontWeight:800, color:c.title, display:'flex', alignItems:'center', gap:'8px' }}>
+                ⚡ Purchase Requisition — <span style={{ color:'#60A5FA' }}>{poModalItem.product_id}</span>
               </h3>
-              <button onClick={() => setPoModalItem(null)} style={styles.modalCloseBtn}>✕</button>
+              <button onClick={()=>setPoModalItem(null)} style={styles.closeBtn}>✕</button>
             </div>
-
-            <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={styles.inputField}>
-                <label style={styles.inputLabel}>Material Name</label>
-                <div style={{ fontWeight: 600, color: c.title, fontSize: '14px', padding: '10px', background: c.subCard, borderRadius: '8px', border: `1px solid ${c.subCardBorder}` }}>
-                  {poModalItem.product_name}
-                </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:'14px', marginTop:'16px' }}>
+              <div style={{ padding:'12px', background:c.subCard, borderRadius:'10px', border:`1px solid ${c.subCardBorder}` }}>
+                <div style={{ fontSize:'10.5px', color:c.sub, fontWeight:700, marginBottom:'3px' }}>MATERIAL</div>
+                <div style={{ fontWeight:700, color:c.title, fontSize:'14px' }}>{poModalItem.product_name}</div>
               </div>
-
               <div style={styles.inputField}>
-                <label style={styles.inputLabel}>
-                  <span style={{ color: '#34D399', marginRight: '4px' }}>📦</span>
-                  Recommended Reorder Quantity <span style={{ color: '#F87171' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  value={poModalItem.reorder_quantity}
-                  onChange={(e) =>
-                    setPoModalItem((prev) => ({
-                      ...prev,
-                      reorder_quantity: parseInt(e.target.value) || 0,
-                    }))
-                  }
-                  className="input-field-glow"
-                  style={{ ...styles.textInput, ...styles.textInputHighlight, fontSize: '16px', fontWeight: 700 }}
-                />
+                <label style={styles.inputLabel}>📦 Recommended Reorder Quantity *</label>
+                <input type="number" value={poModalItem.reorder_quantity} onChange={e=>setPoModalItem(p=>({...p,reorder_quantity:parseInt(e.target.value)||0}))} className="input-focus" style={{ ...styles.textInput, fontSize:'16px', fontWeight:700 }} />
               </div>
-
               <div style={styles.inputField}>
-                <label style={styles.inputLabel}>
-                  <span style={{ marginRight: '4px' }}>🚚</span>
-                  Freight Dispatch Mode
-                </label>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  {[
-                    { mode: 'sea', label: '🚢 Sea Freight', sub: '7d ETA', color: '#60A5FA' },
-                    { mode: 'air', label: '✈️ Air Express', sub: '2d ETA (2.4× cost)', color: '#F59E0B' },
-                  ].map((opt) => (
-                    <button
-                      key={opt.mode}
-                      onClick={() => setFreightMode(opt.mode)}
-                      style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '10px',
-                        border: freightMode === opt.mode ? `2px solid ${opt.color}` : `1px solid ${c.tagBorder}`,
-                        cursor: 'pointer',
-                        background: freightMode === opt.mode ? opt.color + '18' : c.subCard,
-                        color: freightMode === opt.mode ? opt.color : c.sub,
-                        fontWeight: freightMode === opt.mode ? 700 : 500,
-                        transition: 'all 0.2s',
-                        boxShadow: freightMode === opt.mode ? `0 0 12px ${opt.color}33` : 'none',
-                      }}
-                    >
-                      <div style={{ fontSize: '14px' }}>{opt.label}</div>
-                      <div style={{ fontSize: '10px', opacity: 0.8, marginTop: '3px' }}>{opt.sub}</div>
+                <label style={styles.inputLabel}>🚚 Freight Dispatch Mode</label>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                  {[{m:'sea',l:'🚢 Sea Freight',s:'7d ETA',c:'#60A5FA'},{m:'air',l:'✈️ Air Express',s:'2d ETA (2.4× cost)',c:'#F59E0B'}].map(opt=>(
+                    <button key={opt.m} onClick={()=>setFreightMode(opt.m)} style={{ padding:'12px', borderRadius:'10px', border:`${freightMode===opt.m?'2':'1'}px solid ${freightMode===opt.m?opt.c:c.tagBorder}`, cursor:'pointer', background:freightMode===opt.m?opt.c+'18':c.subCard, color:freightMode===opt.m?opt.c:c.sub, fontWeight:freightMode===opt.m?700:500, transition:'all .2s', boxShadow:freightMode===opt.m?`0 0 14px ${opt.c}33`:'none' }}>
+                      <div style={{ fontSize:'14px' }}>{opt.l}</div>
+                      <div style={{ fontSize:'10px', opacity:.8, marginTop:'3px' }}>{opt.s}</div>
                     </button>
                   ))}
                 </div>
               </div>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-              <button onClick={() => setPoModalItem(null)} style={styles.cancelBtn}>Cancel</button>
-              <button className="action-btn-hover" onClick={handleDispatchPO} style={styles.confirmPoBtn}>
-                ✓ Confirm & Dispatch Requisition
-              </button>
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'20px' }}>
+              <button onClick={()=>setPoModalItem(null)} style={styles.cancelBtn}>Cancel</button>
+              <button className="btn-hover" onClick={handleDispatchPO} style={styles.confirmBtn}>✓ Confirm & Dispatch</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* FLOATING TOAST NOTIFICATION                                         */}
-      {/* ─────────────────────────────────────────────────────────────────── */}
-      {toastMessage && (
-        <div style={styles.toast}>
-          <span>{toastMessage}</span>
-          <button onClick={() => setToastMessage(null)} style={styles.toastClose}>✕</button>
-        </div>
-      )}
+      {/* ═══ TOAST STACK ═════════════════════════════════════════════════════ */}
+      <div style={{ position:'fixed', bottom:'28px', right:'28px', display:'flex', flexDirection:'column', gap:'10px', zIndex:3000 }}>
+        {toasts.map(t=>(
+          <div key={t.id} style={{ background: t.type==='error'?'linear-gradient(135deg,#7F1D1D,#991B1B)':'linear-gradient(135deg,#1E40AF,#2563EB)', color:'#fff', padding:'13px 18px', borderRadius:'14px', boxShadow:'0 10px 32px rgba(0,0,0,.4)', display:'flex', alignItems:'center', gap:'14px', fontSize:'13px', fontWeight:600, animation:'slide-up .3s ease', maxWidth:'380px', position:'relative', overflow:'hidden' }}>
+            <span style={{ flex:1 }}>{t.msg}</span>
+            <button onClick={()=>setToasts(ts=>ts.filter(x=>x.id!==t.id))} style={{ background:'rgba(255,255,255,.2)', border:'none', color:'#fff', width:'22px', height:'22px', borderRadius:'6px', cursor:'pointer', fontSize:'12px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>✕</button>
+            <div style={{ position:'absolute', bottom:0, left:0, height:'3px', background:'rgba(255,255,255,.4)', borderRadius:'2px', animation:'toast-shrink 4s linear forwards' }} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// THEME-AWARE STYLES FACTORY
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── THEME ────────────────────────────────────────────────────────────────────
 function getThemeColors(isDark) {
   return {
     isDark,
-    bg: isDark ? '#060D18' : '#F0F4F8',
-    card: isDark ? '#0D1B2E' : '#FFFFFF',
-    cardBorder: isDark ? '#1A2E4A' : '#E2E8F0',
-    title: isDark ? '#F1F5F9' : '#0B1F3A',
-    sub: isDark ? '#8BA3C0' : '#475569',
-    subCard: isDark ? '#111D30' : '#F8FAFC',
-    subCardBorder: isDark ? '#1A2E4A' : '#E2E8F0',
-    tableHead: isDark ? '#0D1B2E' : '#F1F5F9',
-    tableBorder: isDark ? '#1A2E4A' : '#E9EEF4',
-    inputBg: isDark ? '#0D1B2E' : '#FFFFFF',
-    inputBorder: isDark ? '#2A3F5F' : '#CBD5E1',
-    inputText: isDark ? '#F1F5F9' : '#0F172A',
-    modalBg: isDark ? '#0D1B2E' : '#FFFFFF',
-    tagBg: isDark ? '#1A2E4A' : '#F1F5F9',
-    tagText: isDark ? '#94A3B8' : '#334155',
-    tagBorder: isDark ? '#2A3F5F' : '#CBD5E1',
+    bg:            isDark ? '#060C17' : '#EFF2F7',
+    card:          isDark ? '#0D1B2E' : '#FFFFFF',
+    cardBorder:    isDark ? '#182B44' : '#E2E8F0',
+    title:         isDark ? '#F1F5F9' : '#0B1F3A',
+    sub:           isDark ? '#7A9EC0' : '#475569',
+    subCard:       isDark ? '#0A1626' : '#F8FAFC',
+    subCardBorder: isDark ? '#182B44' : '#E2E8F0',
+    tableHead:     isDark ? '#0A1626' : '#F1F5F9',
+    tableBorder:   isDark ? '#182B44' : '#E9EEF4',
+    inputBg:       isDark ? '#0D1B2E' : '#FFFFFF',
+    inputBorder:   isDark ? '#2A3F5F' : '#CBD5E1',
+    inputText:     isDark ? '#F1F5F9' : '#0F172A',
+    modalBg:       isDark ? '#0D1B2E' : '#FFFFFF',
+    tagBg:         isDark ? '#182B44' : '#F1F5F9',
+    tagText:       isDark ? '#94A3B8' : '#334155',
+    tagBorder:     isDark ? '#2A3F5F' : '#CBD5E1',
   };
 }
 
+// ─── STYLES ───────────────────────────────────────────────────────────────────
 function getStyles(c) {
   return {
-    // ── Layout ──
     container: {
-      padding: '24px',
-      backgroundColor: c.bg,
-      minHeight: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '20px',
-      maxWidth: '1600px',
-      margin: '0 auto',
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      position: 'relative',
+      padding:'24px', backgroundColor:c.bg, minHeight:'100%', display:'flex', flexDirection:'column',
+      gap:'18px', maxWidth:'1600px', margin:'0 auto', fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", position:'relative',
     },
-
-    // ── Header ──
+    // Header
     headerCard: {
-      background: c.isDark
-        ? 'linear-gradient(135deg, #0D1B2E 0%, #0A1520 50%, #0D1B2E 100%)'
-        : 'linear-gradient(135deg, #FFFFFF 0%, #F0F4FF 100%)',
-      border: `1px solid ${c.cardBorder}`,
-      borderRadius: '20px',
-      padding: '28px',
-      boxShadow: c.isDark
-        ? '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)'
-        : '0 4px 24px rgba(0,0,0,0.06)',
-      position: 'relative',
-      overflow: 'hidden',
-    },
-    orbBlue: {
-      position: 'absolute',
-      top: '-40px',
-      right: '5%',
-      width: '200px',
-      height: '200px',
-      background: 'radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 70%)',
-      borderRadius: '50%',
-      pointerEvents: 'none',
-    },
-    orbPurple: {
-      position: 'absolute',
-      bottom: '-60px',
-      right: '30%',
-      width: '240px',
-      height: '240px',
-      background: 'radial-gradient(circle, rgba(139,92,246,0.1) 0%, transparent 70%)',
-      borderRadius: '50%',
-      pointerEvents: 'none',
-    },
-    headerTopRow: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      flexWrap: 'wrap',
-      gap: '16px',
-      marginBottom: '24px',
-      position: 'relative',
-    },
-    headerIconBox: {
-      width: '54px',
-      height: '54px',
-      borderRadius: '14px',
-      background: 'linear-gradient(135deg, #1E40AF 0%, #7C3AED 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      boxShadow: '0 8px 20px rgba(37,99,235,0.4)',
-      flexShrink: 0,
-    },
-    moduleBadge: {
-      fontSize: '10.5px',
-      fontWeight: 800,
-      letterSpacing: '0.1em',
-      color: '#60A5FA',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-      marginBottom: '4px',
-    },
-    liveDot: {
-      width: '7px',
-      height: '7px',
-      borderRadius: '50%',
-      backgroundColor: '#10B981',
-      display: 'inline-block',
-      animation: 'pulse-dot 2s infinite',
-    },
-    headerTitle: {
-      fontSize: '28px',
-      fontWeight: 900,
-      color: c.isDark ? '#F1F5F9' : '#0B1F3A',
-      margin: '0 0 6px 0',
-      letterSpacing: '-0.02em',
-      textShadow: c.isDark ? '0 0 30px rgba(147,197,253,0.4)' : 'none',
-    },
-    headerSubtitle: {
-      fontSize: '12.5px',
-      color: c.sub,
-      lineHeight: 1.6,
-      margin: 0,
-      maxWidth: '700px',
-    },
-    headerBadgesRow: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      flexWrap: 'wrap',
-      flexShrink: 0,
-    },
-    demoModeBadge: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '6px',
-      backgroundColor: 'rgba(251,191,36,0.15)',
-      border: '1px solid rgba(251,191,36,0.4)',
-      color: '#FBBF24',
-      padding: '5px 12px',
-      borderRadius: '20px',
-      fontSize: '11px',
-      fontWeight: 700,
-    },
-    statusBadge: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '6px',
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
-      border: `1px solid ${c.tagBorder}`,
-      color: c.sub,
-      padding: '5px 12px',
-      borderRadius: '20px',
-      fontSize: '11px',
-      fontWeight: 600,
-    },
-    themeToggleBtn: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '6px',
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
-      border: `1px solid ${c.tagBorder}`,
-      color: c.title,
-      padding: '6px 14px',
-      borderRadius: '20px',
-      fontSize: '11.5px',
-      fontWeight: 700,
-      cursor: 'pointer',
-      transition: 'all 0.2s',
-    },
-
-    // ── KPI Cards ──
-    kpiGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-      gap: '14px',
-    },
-    kpiCard: {
-      borderRadius: '16px',
-      padding: '20px',
-      transition: 'transform 0.25s ease, box-shadow 0.25s ease',
-      cursor: 'default',
-      position: 'relative',
-      overflow: 'hidden',
-    },
-    kpiCardBlue: {
-      background: c.isDark ? 'linear-gradient(135deg, #0F1D36 0%, #0A1829 100%)' : 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)',
-      border: `1px solid ${c.isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`,
-      boxShadow: c.isDark ? '0 4px 20px rgba(37,99,235,0.15)' : '0 4px 16px rgba(37,99,235,0.08)',
-    },
-    kpiCardGreen: {
-      background: c.isDark ? 'linear-gradient(135deg, #0A1F1A 0%, #071A14 100%)' : 'linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%)',
-      border: `1px solid ${c.isDark ? 'rgba(16,185,129,0.3)' : '#BBF7D0'}`,
-      boxShadow: c.isDark ? '0 4px 20px rgba(16,185,129,0.15)' : '0 4px 16px rgba(16,185,129,0.08)',
-    },
-    kpiCardPurple: {
-      background: c.isDark ? 'linear-gradient(135deg, #150D2E 0%, #100A24 100%)' : 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)',
-      border: `1px solid ${c.isDark ? 'rgba(139,92,246,0.3)' : '#DDD6FE'}`,
-      boxShadow: c.isDark ? '0 4px 20px rgba(139,92,246,0.15)' : '0 4px 16px rgba(139,92,246,0.08)',
-    },
-    kpiCardRed: {
-      background: c.isDark ? 'linear-gradient(135deg, #220D0D 0%, #1A0808 100%)' : 'linear-gradient(135deg, #FFF5F5 0%, #FEE2E2 100%)',
-      border: `1px solid ${c.isDark ? 'rgba(239,68,68,0.3)' : '#FECACA'}`,
-      boxShadow: c.isDark ? '0 4px 20px rgba(239,68,68,0.15)' : '0 4px 16px rgba(239,68,68,0.08)',
-    },
-    kpiIconRing: {
-      width: '36px',
-      height: '36px',
-      borderRadius: '10px',
-      background: 'rgba(59,130,246,0.15)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '18px',
-      marginBottom: '10px',
-    },
-    kpiLabel: {
-      fontSize: '10px',
-      fontWeight: 800,
-      letterSpacing: '0.08em',
-      color: c.sub,
-      marginBottom: '6px',
-    },
-    kpiValRow: {
-      display: 'flex',
-      alignItems: 'baseline',
-      gap: '8px',
-      marginBottom: '8px',
-    },
-    kpiValue: {
-      fontSize: '28px',
-      fontWeight: 900,
-      letterSpacing: '-0.02em',
-    },
-    kpiTag: {
-      display: 'inline-block',
-      fontSize: '10px',
-      fontWeight: 700,
-      padding: '3px 10px',
-      borderRadius: '20px',
-      background: 'rgba(59,130,246,0.15)',
-      color: '#60A5FA',
-      border: '1px solid rgba(59,130,246,0.3)',
-      marginBottom: '8px',
-    },
-    kpiSub: {
-      fontSize: '11px',
-      color: c.sub,
-      lineHeight: 1.4,
-    },
-
-    // ── Tab Navigation ──
-    tabNavContainer: {
-      display: 'flex',
-      gap: '10px',
-      flexWrap: 'wrap',
-    },
-    tabNavBtn: {
-      flex: 1,
-      minWidth: '220px',
-      padding: '14px 18px',
-      borderRadius: '14px',
-      border: `1px solid ${c.cardBorder}`,
-      cursor: 'pointer',
-      textAlign: 'left',
-      transition: 'all 0.2s ease',
-      backgroundColor: c.card,
-      color: c.sub,
-      position: 'relative',
-      overflow: 'hidden',
-    },
-    tabNavBtnActive: {
-      background: 'linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)',
-      color: '#FFFFFF',
-      borderColor: '#2563EB',
-      boxShadow: '0 8px 24px rgba(37,99,235,0.35)',
-    },
-    tabActiveBar: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: '3px',
-      background: 'linear-gradient(90deg, #60A5FA, #A78BFA)',
-    },
-    tabContentGrid: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '20px',
-    },
-
-    // ── Glass Card (main card component) ──
-    glassCard: {
-      backgroundColor: c.card,
-      border: `1px solid ${c.cardBorder}`,
-      borderRadius: '18px',
-      padding: '24px',
-      boxShadow: c.isDark
-        ? '0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)'
-        : '0 4px 20px rgba(0,0,0,0.04)',
-      transition: 'box-shadow 0.3s',
-    },
-    cardHeaderFlex: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: '12px',
-      marginBottom: '20px',
-    },
-    cardIconBadge: {
-      width: '38px',
-      height: '38px',
-      borderRadius: '10px',
-      background: c.isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '18px',
-      flexShrink: 0,
-    },
-    sectionHeading: {
-      fontSize: '15.5px',
-      fontWeight: 800,
-      color: c.title,
-      margin: 0,
-      letterSpacing: '-0.01em',
-    },
-    sectionSub: {
-      fontSize: '11.5px',
-      color: c.sub,
-      marginTop: '3px',
-    },
-
-    // ── Data Flow Pipeline ──
-    flowThreeColumns: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-      gap: '16px',
-    },
-    flowColumnBox: {
-      backgroundColor: c.subCard,
-      border: `1px solid ${c.subCardBorder}`,
-      borderRadius: '14px',
-      padding: '18px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0',
-    },
-    flowColumnBoxEngine: {
-      background: c.isDark
-        ? 'linear-gradient(180deg, #0C1E3A 0%, #091729 100%)'
-        : 'linear-gradient(180deg, #EFF6FF 0%, #F0F9FF 100%)',
-      border: `1px solid ${c.isDark ? 'rgba(37,99,235,0.3)' : '#BAE6FD'}`,
-      borderRadius: '14px',
-      padding: '18px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '10px',
-      boxShadow: c.isDark ? '0 0 16px rgba(37,99,235,0.1)' : 'none',
-    },
-    flowColumnBoxOutput: {
-      background: c.isDark
-        ? 'linear-gradient(180deg, #0A1F1A 0%, #071812 100%)'
-        : 'linear-gradient(180deg, #F0FDF4 0%, #ECFDF5 100%)',
-      border: `1px solid ${c.isDark ? 'rgba(16,185,129,0.3)' : '#BBF7D0'}`,
-      borderRadius: '14px',
-      padding: '18px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0',
-      boxShadow: c.isDark ? '0 0 16px rgba(16,185,129,0.08)' : 'none',
-    },
-    colHeaderBlue: {
-      fontSize: '10.5px',
-      fontWeight: 800,
-      color: '#60A5FA',
-      letterSpacing: '0.08em',
-      marginBottom: '12px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-    },
-    colHeaderNavy: {
-      fontSize: '10.5px',
-      fontWeight: 800,
-      color: c.isDark ? '#93C5FD' : '#1E40AF',
-      letterSpacing: '0.08em',
-      marginBottom: '8px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-    },
-    colHeaderGreen: {
-      fontSize: '10.5px',
-      fontWeight: 800,
-      color: c.isDark ? '#6EE7B7' : '#059669',
-      letterSpacing: '0.08em',
-      marginBottom: '12px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-    },
-    itemRow: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      fontSize: '12px',
-      borderBottom: `1px solid ${c.tableBorder}`,
-      padding: '8px 0',
-    },
-    itemRowHighlight: {
-      background: c.isDark ? 'rgba(59,130,246,0.06)' : 'rgba(37,99,235,0.04)',
-      borderRadius: '6px',
-      padding: '8px 8px',
-      marginLeft: '-8px',
-      marginRight: '-8px',
-      border: 'none',
-      borderBottom: `1px solid ${c.tableBorder}`,
-    },
-    formulaPill: {
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
-      border: `1px solid ${c.isDark ? 'rgba(59,130,246,0.25)' : '#E0F2FE'}`,
-      borderRadius: '10px',
-      padding: '10px 12px',
-    },
-    activeSkuChip: {
-      backgroundColor: c.isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF',
-      border: `1px solid ${c.isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`,
-      color: c.isDark ? '#93C5FD' : '#1E40AF',
-      fontSize: '12px',
-      padding: '6px 14px',
-      borderRadius: '10px',
-      whiteSpace: 'nowrap',
-    },
-
-    // ── Table ──
-    searchWrapper: {
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-    },
-    searchIcon: {
-      position: 'absolute',
-      left: '10px',
-      fontSize: '13px',
-      pointerEvents: 'none',
-    },
-    searchInput: {
-      padding: '9px 12px 9px 32px',
-      borderRadius: '10px',
-      border: `1.5px solid ${c.inputBorder}`,
-      fontSize: '12.5px',
-      width: '210px',
-      backgroundColor: c.inputBg,
-      color: c.inputText,
-      outline: 'none',
-      transition: 'border-color 0.2s, box-shadow 0.2s',
-    },
-    selectFilter: {
-      padding: '9px 12px',
-      borderRadius: '10px',
-      border: `1.5px solid ${c.inputBorder}`,
-      fontSize: '12.5px',
-      backgroundColor: c.inputBg,
-      color: c.inputText,
-      outline: 'none',
-      cursor: 'pointer',
-      transition: 'border-color 0.2s, box-shadow 0.2s',
-    },
-    tableWrapper: {
-      overflowX: 'auto',
-      borderRadius: '12px',
-      border: `1px solid ${c.tableBorder}`,
-    },
-    table: {
-      width: '100%',
-      borderCollapse: 'collapse',
-      fontSize: '12.5px',
-    },
-    theadRow: {
-      backgroundColor: c.isDark ? '#0A1626' : '#F1F5F9',
-      borderBottom: `2px solid ${c.tableBorder}`,
-    },
-    th: {
-      textAlign: 'left',
-      padding: '12px 14px',
-      color: c.sub,
-      fontWeight: 800,
-      fontSize: '10.5px',
-      letterSpacing: '0.05em',
-      whiteSpace: 'nowrap',
-    },
-    thRight: {
-      textAlign: 'right',
-      padding: '12px 14px',
-      color: c.sub,
-      fontWeight: 800,
-      fontSize: '10.5px',
-      letterSpacing: '0.05em',
-      whiteSpace: 'nowrap',
-    },
-    thCenter: {
-      textAlign: 'center',
-      padding: '12px 14px',
-      color: c.sub,
-      fontWeight: 800,
-      fontSize: '10.5px',
-      letterSpacing: '0.05em',
-      whiteSpace: 'nowrap',
-    },
-    tr: {
-      borderBottom: `1px solid ${c.tableBorder}`,
-      cursor: 'pointer',
-      transition: 'background-color 0.15s ease',
-    },
-    td: {
-      padding: '13px 14px',
-      color: c.inputText,
-      verticalAlign: 'middle',
-    },
-    tdRight: {
-      padding: '13px 14px',
-      textAlign: 'right',
-      color: c.inputText,
-      verticalAlign: 'middle',
-    },
-    tdCenter: {
-      padding: '13px 14px',
-      textAlign: 'center',
-      color: c.inputText,
-      verticalAlign: 'middle',
-    },
-    categoryChip: {
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
-      border: `1px solid ${c.tagBorder}`,
-      padding: '3px 10px',
-      borderRadius: '8px',
-      fontSize: '10.5px',
-      color: c.sub,
-      fontWeight: 600,
-      whiteSpace: 'nowrap',
-    },
-    riskBadge: {
-      padding: '4px 10px',
-      borderRadius: '20px',
-      fontSize: '10.5px',
-      fontWeight: 800,
-      whiteSpace: 'nowrap',
-    },
-    availBadge: {
-      padding: '4px 10px',
-      borderRadius: '20px',
-      fontSize: '10.5px',
-      fontWeight: 700,
-      whiteSpace: 'nowrap',
-    },
-    xaiBtn: {
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.06)' : '#F8FAFC',
-      border: `1px solid ${c.tagBorder}`,
-      color: c.title,
-      borderRadius: '8px',
-      padding: '6px 10px',
-      fontSize: '11px',
-      fontWeight: 600,
-      cursor: 'pointer',
-      transition: 'all 0.2s',
-      whiteSpace: 'nowrap',
-    },
-    poBtn: {
-      border: 'none',
-      color: '#FFFFFF',
-      borderRadius: '8px',
-      padding: '6px 10px',
-      fontSize: '11px',
-      fontWeight: 700,
-      cursor: 'pointer',
-      transition: 'all 0.2s',
-      whiteSpace: 'nowrap',
-    },
-
-    // ── Simulator ──
-    sliderGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-      gap: '16px',
-      marginTop: '4px',
-    },
-    sliderBox: {
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
-      border: `1px solid ${c.subCardBorder}`,
-      borderRadius: '14px',
-      padding: '18px',
-      transition: 'border-color 0.2s',
-    },
-    sliderValueBadge: {
-      fontSize: '14px',
-      fontWeight: 800,
-      padding: '4px 12px',
-      borderRadius: '20px',
-      border: '1px solid',
-      whiteSpace: 'nowrap',
-    },
-    presetGroup: {
-      display: 'flex',
-      gap: '6px',
-      flexWrap: 'wrap',
-    },
-    presetBtn: {
-      border: '1px solid',
-      borderRadius: '10px',
-      padding: '7px 14px',
-      fontSize: '11.5px',
-      fontWeight: 700,
-      cursor: 'pointer',
-      transition: 'all 0.2s',
-    },
-    liveOutputBar: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0',
-      marginTop: '24px',
-      padding: '16px 20px',
-      background: c.isDark ? 'linear-gradient(135deg, rgba(37,99,235,0.1), rgba(139,92,246,0.1))' : 'linear-gradient(135deg, #EFF6FF, #F5F3FF)',
-      borderRadius: '14px',
-      border: `1px solid ${c.isDark ? 'rgba(59,130,246,0.2)' : '#DBEAFE'}`,
-    },
-    liveOutputItem: {
-      flex: 1,
-      textAlign: 'center',
-    },
-    liveOutputDivider: {
-      width: '1px',
-      height: '48px',
-      background: c.isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-    },
-    scenarioGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-      gap: '16px',
-    },
-    scenarioCard: {
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.02)' : '#FAFAFA',
-      border: '1px solid',
-      borderRadius: '14px',
-      padding: '18px',
-      transition: 'transform 0.2s, box-shadow 0.2s',
-    },
-    scCardHeader: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingBottom: '10px',
-      borderBottom: '1px solid',
-    },
-
-    // ── API Tester ──
-    apiExecuteBtn: {
-      background: 'linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)',
-      border: 'none',
-      color: '#FFFFFF',
-      borderRadius: '10px',
-      padding: '10px 20px',
-      fontSize: '12.5px',
-      fontWeight: 800,
-      cursor: 'pointer',
-      transition: 'all 0.2s',
-      boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
-      whiteSpace: 'nowrap',
-    },
-    directInputGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-      gap: '16px',
-      marginTop: '4px',
-    },
-    inputField: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '6px',
-    },
-    inputFieldHighlight: {
-      padding: '14px',
-      background: c.isDark ? 'rgba(59,130,246,0.05)' : 'rgba(37,99,235,0.03)',
-      borderRadius: '12px',
-      border: `1px solid ${c.isDark ? 'rgba(59,130,246,0.2)' : 'rgba(37,99,235,0.1)'}`,
-    },
-    inputLabel: {
-      fontSize: '11.5px',
-      fontWeight: 700,
-      color: c.sub,
-      display: 'flex',
-      alignItems: 'center',
-      gap: '4px',
-      flexWrap: 'wrap',
-    },
-    textInput: {
-      padding: '10px 14px',
-      borderRadius: '10px',
-      border: `1.5px solid ${c.inputBorder}`,
-      fontSize: '13px',
-      outline: 'none',
-      backgroundColor: c.inputBg,
-      color: c.inputText,
-      transition: 'border-color 0.2s, box-shadow 0.2s',
-      fontWeight: 600,
-    },
-    textInputHighlight: {
-      border: `2px solid ${c.isDark ? 'rgba(59,130,246,0.5)' : '#BFDBFE'}`,
-      background: c.isDark ? 'rgba(59,130,246,0.06)' : '#F0F6FF',
-    },
-    apiResultBox: {
-      marginTop: '20px',
-      backgroundColor: c.isDark ? 'rgba(16,185,129,0.06)' : '#F0FDF4',
-      border: `1px solid ${c.isDark ? 'rgba(16,185,129,0.25)' : '#BBF7D0'}`,
-      borderRadius: '14px',
-      padding: '18px',
-    },
-    apiResultGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-      gap: '12px',
-    },
-    apiResultItem: {
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
-      borderRadius: '10px',
-      padding: '12px',
-      border: `1px solid ${c.subCardBorder}`,
-      textAlign: 'center',
-    },
-
-    // ── Research ──
-    benchmarkGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-      gap: '16px',
-      marginTop: '4px',
-    },
-    benchmarkCard: {
-      backgroundColor: c.subCard,
-      border: `1px solid ${c.cardBorder}`,
-      borderRadius: '14px',
-      padding: '18px',
-    },
-    bmHeader: {
-      fontSize: '12.5px',
-      fontWeight: 800,
-      color: c.title,
-      marginBottom: '14px',
-      paddingBottom: '10px',
-      borderBottom: `1px solid ${c.tableBorder}`,
-      display: 'flex',
-      alignItems: 'center',
-    },
-    bmMetric: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      fontSize: '12px',
-      marginBottom: '8px',
-      color: c.sub,
-      padding: '4px 0',
-      borderBottom: `1px solid ${c.tableBorder}`,
-    },
-    bmDesc: {
-      fontSize: '11px',
-      color: c.sub,
-      marginTop: '12px',
-      lineHeight: 1.5,
-    },
-    mlBadge: {
-      backgroundColor: c.isDark ? 'rgba(139,92,246,0.15)' : '#F5F3FF',
-      border: `1px solid ${c.isDark ? 'rgba(139,92,246,0.3)' : '#DDD6FE'}`,
-      color: c.isDark ? '#A78BFA' : '#7C3AED',
-      fontSize: '11px',
-      fontWeight: 700,
-      padding: '5px 12px',
-      borderRadius: '8px',
-    },
-    mlMetricsRow: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-      gap: '14px',
-      marginTop: '4px',
-    },
-    mlMetricBox: {
-      background: c.isDark
-        ? 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)'
-        : 'linear-gradient(135deg, #FAFAFA 0%, #F3F4F6 100%)',
-      border: `1px solid ${c.subCardBorder}`,
-      borderRadius: '14px',
-      padding: '20px 16px',
-      textAlign: 'center',
-      transition: 'transform 0.2s',
-    },
-    mlLabel: {
-      fontSize: '10px',
-      fontWeight: 800,
-      color: c.sub,
-      letterSpacing: '0.08em',
-      marginTop: '8px',
-    },
-    mlValue: {
-      fontSize: '26px',
-      fontWeight: 900,
-      margin: '8px 0',
-      letterSpacing: '-0.02em',
-    },
-    mlSub: {
-      fontSize: '10.5px',
-      color: c.sub,
-      lineHeight: 1.4,
-    },
-    researchNoteBox: {
-      marginTop: '20px',
-      backgroundColor: c.isDark ? 'rgba(255,255,255,0.02)' : '#F8FAFC',
-      border: `1px solid ${c.subCardBorder}`,
-      borderRadius: '10px',
-      padding: '14px',
-      fontSize: '11.5px',
-      color: c.sub,
-      lineHeight: 1.6,
-    },
-
-    // ── Contract Badge ──
-    contractBadge: {
-      backgroundColor: c.isDark ? 'rgba(59,130,246,0.12)' : '#EFF6FF',
-      border: `1px solid ${c.isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`,
-      color: c.isDark ? '#93C5FD' : '#1E40AF',
-      fontSize: '11px',
-      fontWeight: 700,
-      padding: '6px 12px',
-      borderRadius: '8px',
-    },
-
-    // ── Modals ──
-    modalOverlay: {
-      position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-      backdropFilter: 'blur(6px)',
-    },
-    modalContent: {
-      backgroundColor: c.modalBg,
-      borderRadius: '20px',
-      width: '90%',
-      maxWidth: '580px',
-      padding: '28px',
-      boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
-      border: `1px solid ${c.cardBorder}`,
-      animation: 'slide-in-up 0.25s ease',
-    },
-    modalHeader: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      borderBottom: `1px solid ${c.cardBorder}`,
-      paddingBottom: '14px',
-    },
-    modalCloseBtn: {
-      background: c.isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
-      border: `1px solid ${c.tagBorder}`,
-      fontSize: '14px',
-      cursor: 'pointer',
-      color: c.sub,
-      width: '30px',
-      height: '30px',
-      borderRadius: '8px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    xaiStepBox: {
-      backgroundColor: c.subCard,
-      border: `1px solid ${c.subCardBorder}`,
-      borderRadius: '12px',
-      padding: '14px',
-    },
-    xaiStepTitle: {
-      fontSize: '12px',
-      fontWeight: 700,
-      color: c.title,
-    },
-    xaiFormulaText: {
-      fontSize: '12.5px',
-      fontFamily: "'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-      color: c.isDark ? '#93C5FD' : '#1E40AF',
-      background: c.isDark ? 'rgba(59,130,246,0.08)' : 'rgba(37,99,235,0.05)',
-      padding: '8px 12px',
-      borderRadius: '8px',
-      marginTop: '6px',
-      lineHeight: 1.6,
-    },
-    primaryBtn: {
-      background: 'linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)',
-      border: 'none',
-      color: '#FFFFFF',
-      borderRadius: '10px',
-      padding: '10px 20px',
-      fontSize: '13px',
-      fontWeight: 700,
-      cursor: 'pointer',
-      transition: 'all 0.2s',
-      boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
-    },
-    cancelBtn: {
-      backgroundColor: c.tagBg,
-      border: `1px solid ${c.tagBorder}`,
-      color: c.title,
-      borderRadius: '10px',
-      padding: '10px 18px',
-      fontSize: '12.5px',
-      fontWeight: 600,
-      cursor: 'pointer',
-    },
-    confirmPoBtn: {
-      background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)',
-      border: 'none',
-      color: '#FFFFFF',
-      borderRadius: '10px',
-      padding: '10px 20px',
-      fontSize: '12.5px',
-      fontWeight: 700,
-      cursor: 'pointer',
-      boxShadow: '0 4px 14px rgba(16,185,129,0.35)',
-    },
-
-    // ── Toast ──
-    toast: {
-      position: 'fixed',
-      bottom: '28px',
-      right: '28px',
-      background: 'linear-gradient(135deg, #1E40AF 0%, #2563EB 100%)',
-      color: '#FFFFFF',
-      padding: '14px 20px',
-      borderRadius: '14px',
-      boxShadow: '0 12px 32px rgba(37,99,235,0.4)',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '14px',
-      fontSize: '13px',
-      fontWeight: 600,
-      zIndex: 2000,
-      animation: 'slide-in-up 0.3s ease',
-      maxWidth: '420px',
-    },
-    toastClose: {
-      background: 'rgba(255,255,255,0.2)',
-      border: 'none',
-      color: '#FFFFFF',
-      cursor: 'pointer',
-      fontSize: '13px',
-      width: '24px',
-      height: '24px',
-      borderRadius: '6px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-    },
+      background: c.isDark ? 'linear-gradient(135deg,#0D1B2E 0%,#091526 60%,#0D1B2E 100%)' : 'linear-gradient(135deg,#FFFFFF,#F0F4FF)',
+      border:`1px solid ${c.cardBorder}`, borderRadius:'20px', padding:'28px',
+      boxShadow: c.isDark ? '0 8px 32px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.04)' : '0 4px 24px rgba(0,0,0,.06)',
+      position:'relative', overflow:'hidden',
+    },
+    orbBlue:   { position:'absolute', top:'-50px', right:'8%',  width:'220px', height:'220px', background:'radial-gradient(circle,rgba(37,99,235,.12) 0%,transparent 70%)', borderRadius:'50%', pointerEvents:'none' },
+    orbPurple: { position:'absolute', bottom:'-60px', right:'35%', width:'240px', height:'240px', background:'radial-gradient(circle,rgba(139,92,246,.08) 0%,transparent 70%)', borderRadius:'50%', pointerEvents:'none' },
+    headerTopRow: { display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'16px', marginBottom:'24px', position:'relative' },
+    headerIconBox: { width:'56px', height:'56px', borderRadius:'16px', background:'linear-gradient(135deg,#1E40AF,#7C3AED)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 20px rgba(37,99,235,.4)', flexShrink:0 },
+    moduleBadge: { fontSize:'10px', fontWeight:800, letterSpacing:'.1em', color:'#60A5FA', display:'flex', alignItems:'center', gap:'6px', marginBottom:'5px' },
+    liveDot: { width:'7px', height:'7px', borderRadius:'50%', backgroundColor:'#10B981', display:'inline-block', animation:'pulse-dot 2s infinite', flexShrink:0 },
+    headerTitle: { fontSize:'30px', fontWeight:900, color: c.isDark?'#F1F5F9':'#0B1F3A', margin:'0 0 6px 0', letterSpacing:'-0.025em', textShadow: c.isDark?'0 0 40px rgba(147,197,253,.35)':'none' },
+    headerSubtitle: { fontSize:'12px', color:c.sub, lineHeight:1.6, margin:0, maxWidth:'680px' },
+    themeToggleBtn: { display:'inline-flex', alignItems:'center', gap:'6px', background: c.isDark?'rgba(255,255,255,.06)':'#F1F5F9', border:`1px solid ${c.tagBorder}`, color:c.title, padding:'7px 16px', borderRadius:'20px', fontSize:'12px', fontWeight:700, cursor:'pointer', transition:'all .2s' },
+    demoModeBadge: { display:'inline-flex', alignItems:'center', gap:'5px', background:'rgba(251,191,36,.15)', border:'1px solid rgba(251,191,36,.4)', color:'#FBBF24', padding:'4px 12px', borderRadius:'20px', fontSize:'10.5px', fontWeight:700 },
+    statusBadge: { display:'inline-flex', alignItems:'center', gap:'5px', background: c.isDark?'rgba(255,255,255,.04)':'#F8FAFC', border:`1px solid ${c.tagBorder}`, color:c.sub, padding:'4px 12px', borderRadius:'20px', fontSize:'10.5px', fontWeight:600 },
+    // KPI
+    kpiGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:'14px' },
+    kpiCard: { borderRadius:'16px', padding:'20px', transition:'all .25s ease', cursor:'default', position:'relative', overflow:'hidden' },
+    // Alert banner
+    alertBanner: { background: c.isDark?'linear-gradient(135deg,rgba(127,29,29,.9),rgba(153,27,27,.8))':'linear-gradient(135deg,#FEF2F2,#FEE2E2)', border:`1px solid ${c.isDark?'rgba(239,68,68,.4)':'#FECACA'}`, borderRadius:'14px', padding:'16px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'12px', boxShadow: c.isDark?'0 4px 20px rgba(239,68,68,.2)':'none', animation:'slide-up .4s ease' },
+    // Tabs
+    tabNavContainer: { display:'flex', gap:'10px', flexWrap:'wrap' },
+    tabNavBtn: { flex:1, minWidth:'200px', padding:'14px 18px', borderRadius:'14px', border:`1px solid ${c.cardBorder}`, cursor:'pointer', textAlign:'left', background:c.card, color:c.sub, position:'relative', overflow:'hidden' },
+    tabActive: { background:'linear-gradient(135deg,#1E40AF,#2563EB)', color:'#FFFFFF', borderColor:'#2563EB', boxShadow:'0 8px 24px rgba(37,99,235,.35)' },
+    tabActiveBar: { position:'absolute', bottom:0, left:0, right:0, height:'3px', background:'linear-gradient(90deg,#60A5FA,#A78BFA)' },
+    tabContent: { display:'flex', flexDirection:'column', gap:'18px' },
+    // Cards
+    card: { background:c.card, border:`1px solid ${c.cardBorder}`, borderRadius:'18px', padding:'24px', boxShadow: c.isDark?'0 4px 24px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.02)':'0 2px 16px rgba(0,0,0,.04)' },
+    cardHeader: { display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'12px', marginBottom:'20px' },
+    cardIconBadge: { width:'38px', height:'38px', borderRadius:'10px', background: c.isDark?'rgba(59,130,246,.15)':'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'18px', flexShrink:0 },
+    cardTitle: { fontSize:'15px', fontWeight:800, color:c.title, letterSpacing:'-0.01em' },
+    cardSub:   { fontSize:'11.5px', color:c.sub, marginTop:'3px' },
+    subCard: { background:c.subCard, border:`1px solid ${c.subCardBorder}`, borderRadius:'14px', padding:'16px' },
+    // Pipeline
+    pipelineGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'16px' },
+    pipelineCol: { background:c.subCard, border:`1px solid ${c.subCardBorder}`, borderRadius:'14px', padding:'18px', display:'flex', flexDirection:'column', gap:'0' },
+    pipelineColHead: (color) => ({ fontSize:'10px', fontWeight:800, color, letterSpacing:'.08em', marginBottom:'12px', display:'flex', alignItems:'center', gap:'6px' }),
+    pipelineRows: { display:'flex', flexDirection:'column' },
+    pipelineRow: { display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'12px', borderBottom:`1px solid ${c.tableBorder}`, padding:'8px 0' },
+    formulaPill: { background: c.isDark?'rgba(255,255,255,.04)':'#FFFFFF', border:`1px solid ${c.isDark?'rgba(59,130,246,.25)':'#E0F2FE'}`, borderRadius:'10px', padding:'10px 12px' },
+    activeSkuChip: { background: c.isDark?'rgba(59,130,246,.15)':'#EFF6FF', border:`1px solid ${c.isDark?'rgba(59,130,246,.3)':'#BFDBFE'}`, color: c.isDark?'#93C5FD':'#1E40AF', fontSize:'12px', padding:'6px 14px', borderRadius:'10px' },
+    pillBtn: { display:'inline-flex', alignItems:'center', gap:'6px', padding:'6px 14px', borderRadius:'20px', border:'1px solid', fontSize:'11.5px', fontWeight:700, cursor:'pointer', transition:'all .2s' },
+    // Table
+    searchInput: { padding:'9px 12px', borderRadius:'10px', border:`1.5px solid ${c.inputBorder}`, fontSize:'12.5px', backgroundColor:c.inputBg, color:c.inputText, outline:'none', transition:'all .2s' },
+    tableWrapper: { overflowX:'auto', borderRadius:'12px', border:`1px solid ${c.tableBorder}` },
+    table: { width:'100%', borderCollapse:'collapse', fontSize:'12.5px' },
+    theadRow: { background: c.isDark?'#0A1626':'#F1F5F9', borderBottom:`2px solid ${c.tableBorder}` },
+    th:      { textAlign:'left',   padding:'12px 14px', color:c.sub, fontWeight:800, fontSize:'10.5px', letterSpacing:'.05em', whiteSpace:'nowrap' },
+    thRight: { textAlign:'right',  padding:'12px 14px', color:c.sub, fontWeight:800, fontSize:'10.5px', letterSpacing:'.05em', whiteSpace:'nowrap' },
+    thCenter:{ textAlign:'center', padding:'12px 14px', color:c.sub, fontWeight:800, fontSize:'10.5px', letterSpacing:'.05em', whiteSpace:'nowrap' },
+    tr: { borderBottom:`1px solid ${c.tableBorder}`, transition:'background-color .15s ease' },
+    td:      { padding:'13px 14px', color:c.inputText, verticalAlign:'middle' },
+    tdRight: { padding:'13px 14px', textAlign:'right',  color:c.inputText, verticalAlign:'middle' },
+    tdCenter:{ padding:'13px 14px', textAlign:'center', color:c.inputText, verticalAlign:'middle' },
+    categoryChip: { background: c.isDark?'rgba(255,255,255,.05)':'#F1F5F9', border:`1px solid ${c.tagBorder}`, padding:'3px 10px', borderRadius:'8px', fontSize:'10.5px', color:c.sub, fontWeight:600, whiteSpace:'nowrap' },
+    badge: { display:'inline-block', padding:'3px 9px', borderRadius:'20px', fontSize:'10.5px', fontWeight:700, whiteSpace:'nowrap' },
+    xaiBtn: { background: c.isDark?'rgba(255,255,255,.07)':'#F8FAFC', border:`1px solid ${c.tagBorder}`, color:c.title, borderRadius:'8px', padding:'6px 10px', fontSize:'12px', fontWeight:600, cursor:'pointer', transition:'all .2s' },
+    poBtn:  { border:'none', color:'#FFFFFF', borderRadius:'8px', padding:'6px 10px', fontSize:'11px', fontWeight:700, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' },
+    // Simulator
+    sliderGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'16px', marginTop:'4px' },
+    sliderCard: { background: c.isDark?'rgba(255,255,255,.02)':'#F8FAFC', border:`1px solid ${c.subCardBorder}`, borderRadius:'14px', padding:'18px' },
+    presetBtn: { border:'1px solid', borderRadius:'10px', padding:'7px 14px', fontSize:'11.5px', fontWeight:700, cursor:'pointer', transition:'all .2s' },
+    // API Tester
+    execBtn: { background:'linear-gradient(135deg,#1E40AF,#2563EB)', border:'none', color:'#FFFFFF', borderRadius:'10px', padding:'10px 20px', fontSize:'12.5px', fontWeight:800, cursor:'pointer', transition:'all .2s', boxShadow:'0 4px 14px rgba(37,99,235,.35)', whiteSpace:'nowrap' },
+    inputGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:'16px', marginTop:'4px' },
+    inputField: { display:'flex', flexDirection:'column', gap:'6px' },
+    inputLabel: { fontSize:'11.5px', fontWeight:700, color:c.sub, display:'flex', alignItems:'center', gap:'5px', flexWrap:'wrap' },
+    textInput: { padding:'10px 14px', borderRadius:'10px', border:`1.5px solid ${c.inputBorder}`, fontSize:'13px', outline:'none', background:c.inputBg, color:c.inputText, fontWeight:600, transition:'all .2s' },
+    // Modals
+    modalOverlay: { position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,.65)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, backdropFilter:'blur(8px)' },
+    modalBox: { background:c.modalBg, borderRadius:'20px', width:'90%', maxWidth:'580px', padding:'28px', boxShadow:'0 24px 60px rgba(0,0,0,.5)', border:`1px solid ${c.cardBorder}`, animation:'slide-up .25s ease', maxHeight:'90vh', overflowY:'auto' },
+    modalHead: { display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:`1px solid ${c.cardBorder}`, paddingBottom:'14px' },
+    closeBtn: { background: c.isDark?'rgba(255,255,255,.08)':'#F1F5F9', border:`1px solid ${c.tagBorder}`, fontSize:'13px', cursor:'pointer', color:c.sub, width:'30px', height:'30px', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center' },
+    primaryBtn: { background:'linear-gradient(135deg,#1E40AF,#2563EB)', border:'none', color:'#FFFFFF', borderRadius:'10px', padding:'10px 20px', fontSize:'13px', fontWeight:700, cursor:'pointer', boxShadow:'0 4px 14px rgba(37,99,235,.35)' },
+    cancelBtn: { background:c.tagBg, border:`1px solid ${c.tagBorder}`, color:c.title, borderRadius:'10px', padding:'10px 18px', fontSize:'12.5px', fontWeight:600, cursor:'pointer' },
+    confirmBtn: { background:'linear-gradient(135deg,#059669,#10B981)', border:'none', color:'#FFFFFF', borderRadius:'10px', padding:'10px 20px', fontSize:'12.5px', fontWeight:700, cursor:'pointer', boxShadow:'0 4px 14px rgba(16,185,129,.35)' },
   };
 }
