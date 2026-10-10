@@ -10,8 +10,74 @@ import SupplyDisruptionView from './pages/SupplyDisruption';
 import ProductionOptimizationView from './pages/ProductionOptimization';
 import InventoryOptimizationView from './pages/InventoryOptimization';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('OptiChain ErrorBoundary caught:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          padding: '32px',
+          margin: '24px',
+          backgroundColor: '#0f172a',
+          border: '1px solid #ef4444',
+          borderRadius: '12px',
+          color: '#f8fafc',
+          fontFamily: "'Inter', sans-serif"
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+            <span style={{ fontSize: '20px' }}>⚠️</span>
+            <h2 style={{ color: '#ef4444', fontSize: '18px', fontWeight: 800, margin: 0 }}>
+              Module Render Diagnostics
+            </h2>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px' }}>
+            {this.state.error?.message || 'An unexpected rendering error occurred in this view.'}
+          </p>
+          <pre style={{
+            background: '#070a12',
+            padding: '16px',
+            borderRadius: '8px',
+            fontSize: '11.5px',
+            overflow: 'auto',
+            color: '#fca5a5',
+            lineHeight: 1.5,
+            border: '1px solid #1e293b'
+          }}>
+            {this.state.error?.stack}
+          </pre>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{
+              marginTop: '16px',
+              padding: '8px 18px',
+              backgroundColor: '#3b82f6',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Retry View Render
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('inventory');
 
   // User Authentication State
   const [user, setUser] = useState({
@@ -70,9 +136,11 @@ export default function App() {
           activeTab={activeTab}
         />
 
-        {/* Dynamic Content View */}
+        {/* Dynamic Content View with Error Boundary */}
         <main style={styles.contentArea}>
-          {renderActiveView()}
+          <ErrorBoundary key={activeTab}>
+            {renderActiveView()}
+          </ErrorBoundary>
         </main>
 
         {/* Telemetry Footer with Clocks & API links */}

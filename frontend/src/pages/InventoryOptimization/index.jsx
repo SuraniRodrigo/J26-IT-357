@@ -9,6 +9,18 @@ import {
 } from '../../services/inventoryService';
 
 export default function InventoryOptimizationView() {
+  // ── Theme State ───────────────────────────────────────────────────────────
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('optichain_inventory_theme') || 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
+  const isDark = theme === 'dark';
+  const c = useMemo(() => getThemeColors(isDark), [isDark]);
+  const styles = useMemo(() => getStyles(c), [c]);
+
   // ── Navigation & View State ───────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('operations'); // 'operations', 'simulator', 'readiness', 'research'
   const [loading, setLoading] = useState(true);
@@ -287,6 +299,17 @@ export default function InventoryOptimizationView() {
               <span style={{ color: '#2563eb', fontWeight: 800 }}>●</span>
               <span>ML: backorder-xgb-v1.0</span>
             </div>
+            <button
+              onClick={() => {
+                const nextTheme = isDark ? 'light' : 'dark';
+                setTheme(nextTheme);
+                try { localStorage.setItem('optichain_inventory_theme', nextTheme); } catch(e){}
+              }}
+              style={styles.themeToggleBtn}
+              title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
+            >
+              <span>{isDark ? '☀️ Light Mode' : '🌙 Dark Mode'}</span>
+            </button>
           </div>
         </div>
 
@@ -299,7 +322,7 @@ export default function InventoryOptimizationView() {
           <div style={styles.kpiCard}>
             <div style={styles.kpiLabel}>TARGET SERVICE LEVEL</div>
             <div style={styles.kpiValRow}>
-              <span style={{ ...styles.kpiValue, color: '#0B1F3A' }}>
+              <span style={{ ...styles.kpiValue, color: c.title }}>
                 {summaryData?.average_service_level || 99.95}%
               </span>
               <span style={styles.tagGreen}>🛡 Adaptive Policy</span>
@@ -359,9 +382,9 @@ export default function InventoryOptimizationView() {
             onClick={() => setActiveTab(tab.id)}
             style={{
               ...styles.tabNavBtn,
-              background: activeTab === tab.id ? '#0B1F3A' : '#FFFFFF',
-              color: activeTab === tab.id ? '#FFFFFF' : '#475569',
-              borderColor: activeTab === tab.id ? '#0B1F3A' : '#E2E8F0',
+              background: activeTab === tab.id ? (isDark ? '#2563EB' : '#0B1F3A') : c.card,
+              color: activeTab === tab.id ? '#FFFFFF' : c.sub,
+              borderColor: activeTab === tab.id ? (isDark ? '#2563EB' : '#0B1F3A') : c.cardBorder,
               boxShadow: activeTab === tab.id ? '0 4px 12px rgba(11, 31, 58, 0.15)' : 'none',
             }}
           >
@@ -430,19 +453,19 @@ export default function InventoryOptimizationView() {
                 <div style={styles.colHeaderNavy}>⚙️ 2. ADAPTIVE OPTIMIZATION ENGINE</div>
                 <div style={styles.formulaPill}>
                   <div style={{ fontSize: '10px', color: '#64748b' }}>SAFETY STOCK FORMULA</div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0B1F3A', fontSize: '11px' }}>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, color: c.title, fontSize: '11px' }}>
                     SS = z · √(L·σ_D² + D²·σ_L²) · (1 + P_disrupt)
                   </div>
                 </div>
                 <div style={styles.formulaPill}>
                   <div style={{ fontSize: '10px', color: '#64748b' }}>DYNAMIC REORDER POINT</div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0B1F3A', fontSize: '11px' }}>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, color: c.title, fontSize: '11px' }}>
                     ROP = D · L_adj + Safety_Stock
                   </div>
                 </div>
                 <div style={styles.formulaPill}>
                   <div style={{ fontSize: '10px', color: '#64748b' }}>REORDER QUANTITY</div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0B1F3A', fontSize: '11px' }}>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, color: c.title, fontSize: '11px' }}>
                     ROQ = D · Cycle_Days · (1 + P_disrupt)
                   </div>
                 </div>
@@ -541,13 +564,15 @@ export default function InventoryOptimizationView() {
                         key={item.product_id}
                         style={{
                           ...styles.tr,
-                          backgroundColor: isSelected ? '#F0F9FF' : '#FFFFFF',
+                          backgroundColor: isSelected
+                            ? (c.isDark ? 'rgba(59, 130, 246, 0.2)' : '#F0F9FF')
+                            : (c.isDark ? '#0F172A' : '#FFFFFF'),
                         }}
                         onClick={() => setSelectedSku(item.product_id)}
                       >
                         <td style={styles.td}>
-                          <div style={{ fontWeight: 700, color: '#0B1F3A' }}>{item.product_id}</div>
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>{item.product_name}</div>
+                          <div style={{ fontWeight: 700, color: c.title }}>{item.product_id}</div>
+                          <div style={{ fontSize: '11px', color: c.sub }}>{item.product_name}</div>
                         </td>
                         <td style={styles.td}>
                           <span style={styles.categoryChip}>{item.category}</span>
@@ -564,23 +589,29 @@ export default function InventoryOptimizationView() {
                               ...styles.riskBadge,
                               backgroundColor:
                                 item.disruption_probability >= 0.7
-                                  ? '#FEE2E2'
+                                  ? (c.isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2')
                                   : item.disruption_probability >= 0.35
-                                  ? '#FEF3C7'
-                                  : '#DCFCE7',
+                                  ? (c.isDark ? 'rgba(245, 158, 11, 0.2)' : '#FEF3C7')
+                                  : (c.isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7'),
                               color:
                                 item.disruption_probability >= 0.7
-                                  ? '#991B1B'
+                                  ? (c.isDark ? '#FCA5A5' : '#991B1B')
                                   : item.disruption_probability >= 0.35
-                                  ? '#92400E'
-                                  : '#166534',
+                                  ? (c.isDark ? '#FDE047' : '#92400E')
+                                  : (c.isDark ? '#6EE7B7' : '#166534'),
+                              border:
+                                item.disruption_probability >= 0.7
+                                  ? (c.isDark ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid #FCA5A5')
+                                  : item.disruption_probability >= 0.35
+                                  ? (c.isDark ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid #FCD34D')
+                                  : (c.isDark ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid #86EFAC'),
                             }}
                           >
                             {(item.disruption_probability * 100).toFixed(0)}% Risk
                           </span>
                         </td>
                         <td style={styles.tdRight}>
-                          <span style={{ color: '#2563EB', fontWeight: 600 }}>
+                          <span style={{ color: c.isDark ? '#60A5FA' : '#2563EB', fontWeight: 600 }}>
                             {Math.round(item.forecasted_demand * 0.35).toLocaleString()} {item.unit}
                           </span>
                         </td>
@@ -588,7 +619,7 @@ export default function InventoryOptimizationView() {
                           <strong>{Math.round(item.forecasted_demand * 1.2).toLocaleString()}</strong>
                         </td>
                         <td style={styles.tdRight}>
-                          <strong style={{ color: '#059669' }}>
+                          <strong style={{ color: c.isDark ? '#6EE7B7' : '#059669' }}>
                             {Math.round(item.forecasted_demand * 7 * (1 + item.disruption_probability)).toLocaleString()}
                           </strong>
                         </td>
@@ -596,8 +627,15 @@ export default function InventoryOptimizationView() {
                           <span
                             style={{
                               ...styles.availBadge,
-                              backgroundColor: hasShortage ? '#FEE2E2' : '#DCFCE7',
-                              color: hasShortage ? '#991B1B' : '#166534',
+                              backgroundColor: hasShortage
+                                ? (c.isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2')
+                                : (c.isDark ? 'rgba(16, 185, 129, 0.2)' : '#DCFCE7'),
+                              color: hasShortage
+                                ? (c.isDark ? '#FCA5A5' : '#991B1B')
+                                : (c.isDark ? '#6EE7B7' : '#166534'),
+                              border: hasShortage
+                                ? (c.isDark ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid #FCA5A5')
+                                : (c.isDark ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid #86EFAC'),
                             }}
                           >
                             {hasShortage ? 'Shortage' : 'Available'}
@@ -684,7 +722,7 @@ export default function InventoryOptimizationView() {
               <div style={styles.sliderBox}>
                 <div style={styles.sliderLabelRow}>
                   <span>Disruption Probability P(risk)</span>
-                  <strong style={{ color: '#0B1F3A' }}>{(disruptionProb * 100).toFixed(0)}%</strong>
+                  <strong style={{ color: c.title }}>{(disruptionProb * 100).toFixed(0)}%</strong>
                 </div>
                 <input
                   type="range"
@@ -700,7 +738,7 @@ export default function InventoryOptimizationView() {
               <div style={styles.sliderBox}>
                 <div style={styles.sliderLabelRow}>
                   <span>Lead Time Variability (σ_L)</span>
-                  <strong style={{ color: '#0B1F3A' }}>±{leadTimeVar.toFixed(1)} days</strong>
+                  <strong style={{ color: c.title }}>±{leadTimeVar.toFixed(1)} days</strong>
                 </div>
                 <input
                   type="range"
@@ -779,7 +817,7 @@ export default function InventoryOptimizationView() {
                   >
                     <div style={styles.scCardHeader}>
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: '14px', color: '#0B1F3A' }}>
+                        <div style={{ fontWeight: 800, fontSize: '14px', color: c.title }}>
                           {scName} DISRUPTION ({sc.multiplier}x)
                         </div>
                         <div style={{ fontSize: '11px', color: '#64748b' }}>
@@ -817,8 +855,8 @@ export default function InventoryOptimizationView() {
                     </div>
 
                     <div style={styles.scRecommendationBox}>
-                      <div style={{ fontSize: '10px', fontWeight: 700, color: '#475569' }}>ACTION DIRECTIVE:</div>
-                      <div style={{ fontSize: '11.5px', color: '#0B1F3A', marginTop: '2px' }}>{sc.reorder_recommendation}</div>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: c.sub }}>ACTION DIRECTIVE:</div>
+                      <div style={{ fontSize: '11.5px', color: c.title, marginTop: '2px' }}>{sc.reorder_recommendation}</div>
                     </div>
                   </div>
                 );
@@ -885,7 +923,7 @@ export default function InventoryOptimizationView() {
                   <div><strong>Shortage:</strong> {directApiResult.material_shortage} units</div>
                   <div><strong>Availability:</strong> {directApiResult.material_availability_flag ? 'TRUE' : 'FALSE'}</div>
                 </div>
-                <div style={{ marginTop: '8px', fontSize: '11px', color: '#475569' }}>
+                <div style={{ marginTop: '8px', fontSize: '11px', color: c.sub }}>
                   <strong>Directive:</strong> {directApiResult.reorder_recommendation}
                 </div>
               </div>
@@ -1023,13 +1061,21 @@ export default function InventoryOptimizationView() {
               </div>
 
               {/* Policy 3: OPTICHAIN Disruption-Aware */}
-              <div style={{ ...styles.benchmarkCard, border: '2px solid #059669', backgroundColor: '#F0FDF4' }}>
-                <div style={{ ...styles.bmHeader, color: '#166534' }}>3. OPTICHAIN DISRUPTION-AWARE</div>
-                <div style={styles.bmMetric}>
-                  <span>Service Level:</span> <strong style={{ color: '#059669' }}>99.96% (+0.49 pp)</strong>
+              <div
+                style={{
+                  ...styles.benchmarkCard,
+                  border: `2px solid ${c.isDark ? '#10B981' : '#059669'}`,
+                  backgroundColor: c.isDark ? '#0F1D36' : '#F0FDF4',
+                }}
+              >
+                <div style={{ ...styles.bmHeader, color: c.isDark ? '#6EE7B7' : '#166534' }}>
+                  3. OPTICHAIN DISRUPTION-AWARE
                 </div>
                 <div style={styles.bmMetric}>
-                  <span>Stockout Units:</span> <strong style={{ color: '#059669' }}>160.45 units (-91.95%)</strong>
+                  <span>Service Level:</span> <strong style={{ color: c.isDark ? '#6EE7B7' : '#059669' }}>99.96% (+0.49 pp)</strong>
+                </div>
+                <div style={styles.bmMetric}>
+                  <span>Stockout Units:</span> <strong style={{ color: c.isDark ? '#6EE7B7' : '#059669' }}>160.45 units (-91.95%)</strong>
                 </div>
                 <div style={styles.bmMetric}>
                   <span>Average Inventory:</span> <strong>77.70 units</strong>
@@ -1057,7 +1103,7 @@ export default function InventoryOptimizationView() {
             <div style={styles.mlMetricsRow}>
               <div style={styles.mlMetricBox}>
                 <div style={styles.mlLabel}>ROC-AUC SCORE</div>
-                <div style={{ ...styles.mlValue, color: '#0B1F3A' }}>0.9059</div>
+                <div style={{ ...styles.mlValue, color: c.title }}>0.9059</div>
                 <div style={styles.mlSub}>Outstanding discrimination</div>
               </div>
 
@@ -1094,7 +1140,7 @@ export default function InventoryOptimizationView() {
         <div style={styles.modalOverlay} onClick={() => setXaiModalSku(null)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0B1F3A' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: c.title }}>
                 📐 Explainable AI (XAI) Formula Inspector — {xaiModalSku.product_id}
               </h3>
               <button onClick={() => setXaiModalSku(null)} style={styles.modalCloseBtn}>✕</button>
@@ -1139,7 +1185,7 @@ export default function InventoryOptimizationView() {
         <div style={styles.modalOverlay} onClick={() => setPoModalItem(null)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0B1F3A' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: c.title }}>
                 ⚡ Dispatch Purchase Requisition — {poModalItem.product_id}
               </h3>
               <button onClick={() => setPoModalItem(null)} style={styles.modalCloseBtn}>✕</button>
@@ -1148,7 +1194,7 @@ export default function InventoryOptimizationView() {
             <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
                 <label style={styles.inputLabel}>Material Name</label>
-                <div style={{ fontWeight: 600, color: '#0B1F3A' }}>{poModalItem.product_name}</div>
+                <div style={{ fontWeight: 600, color: c.title }}>{poModalItem.product_name}</div>
               </div>
 
               <div>
@@ -1217,12 +1263,49 @@ export default function InventoryOptimizationView() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STYLES: Deep Navy Blue (#0B1F3A) on Clean White / Light Blue-White (#F8FAFC)
+// THEME-AWARE STYLES FACTORY
 // ─────────────────────────────────────────────────────────────────────────────
-const styles = {
+function getThemeColors(isDark) {
+  return {
+    isDark,
+    bg: isDark ? '#080E1A' : '#F8FAFC',
+    card: isDark ? '#0F172A' : '#FFFFFF',
+    cardBorder: isDark ? '#1E293B' : '#E2E8F0',
+    title: isDark ? '#F8FAFC' : '#0B1F3A',
+    sub: isDark ? '#94A3B8' : '#475569',
+    subCard: isDark ? '#162032' : '#F8FAFC',
+    subCardBorder: isDark ? '#1E293B' : '#E2E8F0',
+    tableHead: isDark ? '#162032' : '#F1F5F9',
+    tableBorder: isDark ? '#1E293B' : '#E2E8F0',
+    inputBg: isDark ? '#162032' : '#FFFFFF',
+    inputBorder: isDark ? '#334155' : '#CBD5E1',
+    inputText: isDark ? '#F8FAFC' : '#0F172A',
+    modalBg: isDark ? '#0F172A' : '#FFFFFF',
+    tagBg: isDark ? '#1E293B' : '#F1F5F9',
+    tagText: isDark ? '#94A3B8' : '#334155',
+    tagBorder: isDark ? '#334155' : '#CBD5E1',
+  };
+}
+
+function getStyles(c) {
+  return {
+    themeToggleBtn: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px',
+      backgroundColor: c.tagBg,
+      border: `1px solid ${c.tagBorder}`,
+      color: c.title,
+      padding: '5px 12px',
+      borderRadius: '20px',
+      fontSize: '11px',
+      fontWeight: 700,
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+    },
   container: {
     padding: '24px',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: c.bg,
     minHeight: '100%',
     display: 'flex',
     flexDirection: 'column',
@@ -1232,8 +1315,8 @@ const styles = {
     fontFamily: "'Inter', -apple-system, sans-serif",
   },
   headerCard: {
-    backgroundColor: '#FFFFFF',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.card,
+    border: `1px solid ${c.cardBorder}`,
     borderRadius: '16px',
     padding: '24px',
     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
@@ -1275,12 +1358,12 @@ const styles = {
   headerTitle: {
     fontSize: '24px',
     fontWeight: 800,
-    color: '#0B1F3A',
+    color: c.title,
     margin: '2px 0 0 0',
   },
   headerSubtitle: {
     fontSize: '13px',
-    color: '#475569',
+    color: c.sub,
     lineHeight: 1.6,
     margin: '10px 0 20px 0',
     maxWidth: '1200px',
@@ -1307,8 +1390,8 @@ const styles = {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '6px',
-    backgroundColor: '#F1F5F9',
-    border: '1px solid #CBD5E1',
+    backgroundColor: c.tagBg,
+    border: `1px solid ${c.tagBorder}`,
     color: '#334155',
     padding: '5px 12px',
     borderRadius: '20px',
@@ -1321,8 +1404,8 @@ const styles = {
     gap: '14px',
   },
   kpiCard: {
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.subCard,
+    border: `1px solid ${c.subCardBorder}`,
     borderRadius: '12px',
     padding: '16px',
   },
@@ -1342,7 +1425,7 @@ const styles = {
   kpiValue: {
     fontSize: '24px',
     fontWeight: 800,
-    color: '#0B1F3A',
+    color: c.title,
   },
   kpiSub: {
     fontSize: '11px',
@@ -1394,8 +1477,8 @@ const styles = {
     gap: '20px',
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.card,
+    border: `1px solid ${c.cardBorder}`,
     borderRadius: '16px',
     padding: '22px',
     boxShadow: '0 4px 16px rgba(0, 0, 0, 0.03)',
@@ -1411,20 +1494,20 @@ const styles = {
   sectionHeading: {
     fontSize: '16px',
     fontWeight: 800,
-    color: '#0B1F3A',
+    color: c.title,
     margin: 0,
   },
   sectionSub: {
     fontSize: '12px',
-    color: '#64748b',
+    color: c.sub,
     marginTop: '2px',
   },
   flowCard: {
-    backgroundColor: '#FFFFFF',
-    border: '1px solid #BFDBFE',
+    backgroundColor: c.card,
+    border: `1px solid ${c.cardBorder}`,
     borderRadius: '16px',
     padding: '20px',
-    boxShadow: '0 4px 16px rgba(37, 99, 235, 0.05)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.05)',
   },
   flowHeader: {
     display: 'flex',
@@ -1435,9 +1518,9 @@ const styles = {
     gap: '10px',
   },
   activeSkuChip: {
-    backgroundColor: '#EFF6FF',
-    border: '1px solid #BFDBFE',
-    color: '#1E40AF',
+    backgroundColor: c.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF',
+    border: `1px solid ${c.isDark ? 'rgba(59, 130, 246, 0.3)' : '#BFDBFE'}`,
+    color: c.isDark ? '#93C5FD' : '#1E40AF',
     fontSize: '12px',
     padding: '4px 12px',
     borderRadius: '8px',
@@ -1448,8 +1531,8 @@ const styles = {
     gap: '14px',
   },
   flowColumnBox: {
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.subCard,
+    border: `1px solid ${c.subCardBorder}`,
     borderRadius: '12px',
     padding: '16px',
     display: 'flex',
@@ -1457,8 +1540,8 @@ const styles = {
     gap: '8px',
   },
   flowColumnBoxEngine: {
-    backgroundColor: '#F0F9FF',
-    border: '1px solid #BAE6FD',
+    backgroundColor: c.isDark ? '#0F1D36' : '#F0F9FF',
+    border: `1px solid ${c.isDark ? '#1E3A8A' : '#BAE6FD'}`,
     borderRadius: '12px',
     padding: '16px',
     display: 'flex',
@@ -1468,21 +1551,21 @@ const styles = {
   colHeaderBlue: {
     fontSize: '11px',
     fontWeight: 800,
-    color: '#2563EB',
+    color: c.isDark ? '#60A5FA' : '#2563EB',
     letterSpacing: '0.06em',
     marginBottom: '4px',
   },
   colHeaderNavy: {
     fontSize: '11px',
     fontWeight: 800,
-    color: '#0B1F3A',
+    color: c.title,
     letterSpacing: '0.06em',
     marginBottom: '4px',
   },
   colHeaderGreen: {
     fontSize: '11px',
     fontWeight: 800,
-    color: '#059669',
+    color: c.isDark ? '#6EE7B7' : '#059669',
     letterSpacing: '0.06em',
     marginBottom: '4px',
   },
@@ -1491,30 +1574,33 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     fontSize: '12px',
-    borderBottom: '1px solid #F1F5F9',
+    borderBottom: `1px solid ${c.tableBorder}`,
     paddingBottom: '4px',
-    color: '#334155',
+    color: c.sub,
   },
   formulaPill: {
-    backgroundColor: '#FFFFFF',
-    border: '1px solid #E0F2FE',
+    backgroundColor: c.isDark ? '#162544' : '#FFFFFF',
+    border: `1px solid ${c.isDark ? '#1E3A8A' : '#E0F2FE'}`,
     borderRadius: '8px',
     padding: '8px 10px',
   },
   searchInput: {
     padding: '8px 12px',
     borderRadius: '8px',
-    border: '1px solid #CBD5E1',
+    border: `1px solid ${c.inputBorder}`,
     fontSize: '12px',
     width: '200px',
+    backgroundColor: c.inputBg,
+    color: c.inputText,
     outline: 'none',
   },
   selectFilter: {
     padding: '8px 12px',
     borderRadius: '8px',
-    border: '1px solid #CBD5E1',
+    border: `1px solid ${c.inputBorder}`,
     fontSize: '12px',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: c.inputBg,
+    color: c.inputText,
     outline: 'none',
   },
   tableWrapper: {
@@ -1526,55 +1612,56 @@ const styles = {
     fontSize: '12px',
   },
   theadRow: {
-    backgroundColor: '#F1F5F9',
-    borderBottom: '2px solid #E2E8F0',
+    backgroundColor: c.tableHead,
+    borderBottom: `2px solid ${c.tableBorder}`,
   },
   th: {
     textAlign: 'left',
     padding: '10px 12px',
-    color: '#475569',
+    color: c.sub,
     fontWeight: 700,
     fontSize: '11px',
   },
   thRight: {
     textAlign: 'right',
     padding: '10px 12px',
-    color: '#475569',
+    color: c.sub,
     fontWeight: 700,
     fontSize: '11px',
   },
   thCenter: {
     textAlign: 'center',
     padding: '10px 12px',
-    color: '#475569',
+    color: c.sub,
     fontWeight: 700,
     fontSize: '11px',
   },
   tr: {
-    borderBottom: '1px solid #E2E8F0',
+    borderBottom: `1px solid ${c.tableBorder}`,
     cursor: 'pointer',
     transition: 'background-color 0.15s',
   },
   td: {
     padding: '12px',
-    color: '#0F172A',
+    color: c.inputText,
   },
   tdRight: {
     padding: '12px',
     textAlign: 'right',
-    color: '#0F172A',
+    color: c.inputText,
   },
   tdCenter: {
     padding: '12px',
     textAlign: 'center',
-    color: '#0F172A',
+    color: c.inputText,
   },
   categoryChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: c.tagBg,
+    border: `1px solid ${c.tagBorder}`,
     padding: '3px 8px',
     borderRadius: '6px',
     fontSize: '10.5px',
-    color: '#475569',
+    color: c.sub,
     fontWeight: 600,
   },
   riskBadge: {
@@ -1590,9 +1677,9 @@ const styles = {
     fontWeight: 700,
   },
   xaiBtn: {
-    backgroundColor: '#F1F5F9',
-    border: '1px solid #CBD5E1',
-    color: '#0B1F3A',
+    backgroundColor: c.tagBg,
+    border: `1px solid ${c.tagBorder}`,
+    color: c.title,
     borderRadius: '6px',
     padding: '5px 8px',
     fontSize: '11px',
@@ -1600,7 +1687,7 @@ const styles = {
     cursor: 'pointer',
   },
   poBtn: {
-    backgroundColor: '#0B1F3A',
+    backgroundColor: c.isDark ? '#2563EB' : '#0B1F3A',
     border: 'none',
     color: '#FFFFFF',
     borderRadius: '6px',
@@ -1629,8 +1716,8 @@ const styles = {
     marginTop: '16px',
   },
   sliderBox: {
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.subCard,
+    border: `1px solid ${c.subCardBorder}`,
     borderRadius: '10px',
     padding: '14px',
   },
@@ -1639,7 +1726,7 @@ const styles = {
     justifyContent: 'space-between',
     fontSize: '12px',
     fontWeight: 600,
-    color: '#475569',
+    color: c.sub,
     marginBottom: '8px',
   },
   rangeInput: {
@@ -1653,7 +1740,7 @@ const styles = {
     marginTop: '16px',
   },
   scenarioCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: c.subCard,
     border: '1px solid',
     borderRadius: '12px',
     padding: '16px',
@@ -1665,7 +1752,7 @@ const styles = {
     alignItems: 'center',
     marginBottom: '12px',
     paddingBottom: '8px',
-    borderBottom: '1px solid #F1F5F9',
+    borderBottom: `1px solid ${c.tableBorder}`,
   },
   scMetricsList: {
     display: 'flex',
@@ -1676,15 +1763,15 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '12px',
-    color: '#334155',
+    color: c.sub,
   },
   scRecommendationBox: {
     marginTop: '12px',
     paddingTop: '8px',
-    borderTop: '1px dashed #E2E8F0',
+    borderTop: `1px dashed ${c.tableBorder}`,
   },
   apiExecuteBtn: {
-    backgroundColor: '#0B1F3A',
+    backgroundColor: c.isDark ? '#2563EB' : '#0B1F3A',
     border: 'none',
     color: '#FFFFFF',
     borderRadius: '8px',
@@ -1707,19 +1794,21 @@ const styles = {
   inputLabel: {
     fontSize: '11px',
     fontWeight: 700,
-    color: '#475569',
+    color: c.sub,
   },
   textInput: {
     padding: '8px 10px',
     borderRadius: '6px',
-    border: '1px solid #CBD5E1',
+    border: `1px solid ${c.inputBorder}`,
     fontSize: '12px',
     outline: 'none',
+    backgroundColor: c.inputBg,
+    color: c.inputText,
   },
   apiResultBox: {
     marginTop: '16px',
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #CBD5E1',
+    backgroundColor: c.subCard,
+    border: `1px solid ${c.subCardBorder}`,
     borderRadius: '10px',
     padding: '14px',
   },
@@ -1728,12 +1817,12 @@ const styles = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: '8px',
     fontSize: '12px',
-    color: '#334155',
+    color: c.sub,
   },
   contractBadge: {
-    backgroundColor: '#EFF6FF',
-    border: '1px solid #BFDBFE',
-    color: '#1E40AF',
+    backgroundColor: c.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF',
+    border: `1px solid ${c.isDark ? 'rgba(59, 130, 246, 0.3)' : '#BFDBFE'}`,
+    color: c.isDark ? '#93C5FD' : '#1E40AF',
     fontSize: '11px',
     fontWeight: 700,
     padding: '4px 10px',
@@ -1746,36 +1835,36 @@ const styles = {
     marginTop: '16px',
   },
   benchmarkCard: {
-    backgroundColor: '#FFFFFF',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.card,
+    border: `1px solid ${c.cardBorder}`,
     borderRadius: '12px',
     padding: '16px',
   },
   bmHeader: {
     fontSize: '13px',
     fontWeight: 800,
-    color: '#0B1F3A',
+    color: c.title,
     marginBottom: '10px',
     paddingBottom: '6px',
-    borderBottom: '1px solid #F1F5F9',
+    borderBottom: `1px solid ${c.tableBorder}`,
   },
   bmMetric: {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '12px',
     marginBottom: '6px',
-    color: '#334155',
+    color: c.sub,
   },
   bmDesc: {
     fontSize: '11px',
-    color: '#64748b',
+    color: c.sub,
     marginTop: '10px',
     lineHeight: 1.4,
   },
   mlBadge: {
-    backgroundColor: '#EFF6FF',
-    border: '1px solid #BFDBFE',
-    color: '#1E40AF',
+    backgroundColor: c.isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF',
+    border: `1px solid ${c.isDark ? 'rgba(59, 130, 246, 0.3)' : '#BFDBFE'}`,
+    color: c.isDark ? '#93C5FD' : '#1E40AF',
     fontSize: '11px',
     fontWeight: 700,
     padding: '4px 10px',
@@ -1788,8 +1877,8 @@ const styles = {
     marginTop: '14px',
   },
   mlMetricBox: {
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.subCard,
+    border: `1px solid ${c.subCardBorder}`,
     borderRadius: '10px',
     padding: '14px',
     textAlign: 'center',
@@ -1797,27 +1886,27 @@ const styles = {
   mlLabel: {
     fontSize: '10px',
     fontWeight: 800,
-    color: '#64748b',
+    color: c.sub,
     letterSpacing: '0.06em',
   },
   mlValue: {
     fontSize: '22px',
     fontWeight: 800,
-    color: '#0B1F3A',
+    color: c.title,
     margin: '4px 0',
   },
   mlSub: {
     fontSize: '10px',
-    color: '#64748b',
+    color: c.sub,
   },
   researchNoteBox: {
     marginTop: '16px',
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.subCard,
+    border: `1px solid ${c.subCardBorder}`,
     borderRadius: '8px',
     padding: '12px',
     fontSize: '11.5px',
-    color: '#475569',
+    color: c.sub,
     lineHeight: 1.5,
   },
   modalOverlay: {
@@ -1834,7 +1923,7 @@ const styles = {
     backdropFilter: 'blur(3px)',
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: c.modalBg,
     borderRadius: '16px',
     width: '90%',
     maxWidth: '560px',
@@ -1845,7 +1934,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottom: '1px solid #E2E8F0',
+    borderBottom: `1px solid ${c.cardBorder}`,
     paddingBottom: '12px',
   },
   modalCloseBtn: {
@@ -1853,27 +1942,27 @@ const styles = {
     border: 'none',
     fontSize: '16px',
     cursor: 'pointer',
-    color: '#64748b',
+    color: c.sub,
   },
   xaiStepBox: {
-    backgroundColor: '#F8FAFC',
-    border: '1px solid #E2E8F0',
+    backgroundColor: c.subCard,
+    border: `1px solid ${c.subCardBorder}`,
     borderRadius: '10px',
     padding: '12px',
   },
   xaiStepTitle: {
     fontSize: '11px',
     fontWeight: 700,
-    color: '#0B1F3A',
+    color: c.title,
     marginBottom: '4px',
   },
   xaiFormulaText: {
     fontSize: '12px',
     fontFamily: 'monospace',
-    color: '#334155',
+    color: c.inputText,
   },
   primaryBtn: {
-    backgroundColor: '#0B1F3A',
+    backgroundColor: c.isDark ? '#2563EB' : '#0B1F3A',
     border: 'none',
     color: '#FFFFFF',
     borderRadius: '8px',
@@ -1886,15 +1975,15 @@ const styles = {
     flex: 1,
     padding: '10px',
     borderRadius: '8px',
-    border: '1px solid #CBD5E1',
+    border: `1px solid ${c.tagBorder}`,
     cursor: 'pointer',
     fontSize: '11.5px',
     fontWeight: 600,
   },
   cancelBtn: {
-    backgroundColor: '#F1F5F9',
-    border: '1px solid #CBD5E1',
-    color: '#334155',
+    backgroundColor: c.tagBg,
+    border: `1px solid ${c.tagBorder}`,
+    color: c.title,
     borderRadius: '8px',
     padding: '8px 16px',
     fontSize: '12px',
@@ -1933,4 +2022,5 @@ const styles = {
     cursor: 'pointer',
     fontSize: '14px',
   },
+  };
 };
