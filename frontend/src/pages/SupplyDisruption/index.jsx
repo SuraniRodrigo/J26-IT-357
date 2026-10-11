@@ -1,8 +1,52 @@
 import React, { useState } from 'react';
+import { predictSupplyRisk } from '../../services/supplyService';
 
 export default function SupplyDisruptionView() {
   const [filterMode, setFilterMode] = useState('all'); // 'all' or 'highRisk'
   const [selectedNode, setSelectedNode] = useState(null);
+  const [predictionInput, setPredictionInput] = useState({
+    days_for_shipping_real: '',
+    days_for_shipment_scheduled: '',
+    category_id: '',
+    shipping_mode: '',
+    order_region: '',
+  });
+  const [prediction, setPrediction] = useState(null);
+  const [isPredicting, setIsPredicting] = useState(false);
+  const [predictionError, setPredictionError] = useState('');
+
+  async function handlePredictionSubmit(event) {
+    event.preventDefault();
+    setIsPredicting(true);
+    setPredictionError('');
+
+    try {
+      const result = await predictSupplyRisk({
+        days_for_shipping_real: Number(predictionInput.days_for_shipping_real),
+        days_for_shipment_scheduled: Number(predictionInput.days_for_shipment_scheduled),
+        category_id: Number(predictionInput.category_id),
+        shipping_mode: predictionInput.shipping_mode.trim(),
+        order_region: predictionInput.order_region.trim(),
+      });
+      setPrediction(result);
+    } catch (error) {
+      setPrediction(null);
+      setPredictionError(
+        error instanceof Error
+          ? `Prediction unavailable: ${error.message}`
+          : 'Prediction unavailable. Check the backend connection and try again.',
+      );
+    } finally {
+      setIsPredicting(false);
+    }
+  }
+
+  function updatePredictionInput(event) {
+    const { name, value } = event.target;
+    setPredictionInput((current) => ({ ...current, [name]: value }));
+    setPrediction(null);
+    setPredictionError('');
+  }
 
   const nodes = [
     { id: 1, name: 'Batu Badinding', risk: 'normal', score: 91, delay: '0h', x: 38, y: 25 },
@@ -27,11 +71,148 @@ export default function SupplyDisruptionView() {
             Continuous evaluation of supplier reliability to predict potential supply disruptions before they affect production planning.
           </p>
         </div>
-        <div style={styles.activeAlertsBadge}>
-          <span style={styles.redDot} className="pulse-dot-red" />
-          <span>3 ACTIVE ALERTS</span>
+        <div style={{
+          ...styles.activeAlertsBadge,
+          ...(prediction && !prediction.early_warning_alert ? styles.clearAlertsBadge : {}),
+        }}>
+          <span
+            style={{
+              ...styles.redDot,
+              ...(prediction && !prediction.early_warning_alert ? styles.greenDot : {}),
+            }}
+            className={prediction?.early_warning_alert ? 'pulse-dot-red' : ''}
+          />
+          <span>
+            {prediction
+              ? prediction.early_warning_alert ? 'EARLY WARNING ACTIVE' : 'NO EARLY WARNING'
+              : 'AWAITING PREDICTION'}
+          </span>
         </div>
       </div>
+
+      <section style={styles.predictionPanel} aria-busy={isPredicting}>
+        <div style={styles.predictionPanelHeader}>
+          <div>
+            <h2 style={styles.predictionTitle}>Shipment risk prediction</h2>
+            <p style={styles.predictionSubtitle}>Enter shipment details to score disruption risk.</p>
+          </div>
+          {prediction && (
+            <span style={{ ...styles.riskBadge, ...styles[`risk${prediction.risk_level}`] }}>
+              {prediction.risk_level.toUpperCase()} RISK
+            </span>
+          )}
+        </div>
+
+        <form onSubmit={handlePredictionSubmit} style={styles.predictionForm}>
+          <label style={styles.fieldLabel}>
+            Actual shipping days
+            <input
+              name="days_for_shipping_real"
+              type="number"
+              min="0"
+              step="1"
+              required
+              disabled={isPredicting}
+              value={predictionInput.days_for_shipping_real}
+              onChange={updatePredictionInput}
+              style={styles.fieldInput}
+            />
+          </label>
+          <label style={styles.fieldLabel}>
+            Scheduled shipping days
+            <input
+              name="days_for_shipment_scheduled"
+              type="number"
+              min="0"
+              step="1"
+              required
+              disabled={isPredicting}
+              value={predictionInput.days_for_shipment_scheduled}
+              onChange={updatePredictionInput}
+              style={styles.fieldInput}
+            />
+          </label>
+          <label style={styles.fieldLabel}>
+            Category ID
+            <input
+              name="category_id"
+              type="number"
+              min="0"
+              step="1"
+              required
+              disabled={isPredicting}
+              value={predictionInput.category_id}
+              onChange={updatePredictionInput}
+              style={styles.fieldInput}
+            />
+          </label>
+          <label style={styles.fieldLabel}>
+            Shipping mode
+            <input
+              name="shipping_mode"
+              type="text"
+              required
+              disabled={isPredicting}
+              value={predictionInput.shipping_mode}
+              onChange={updatePredictionInput}
+              style={styles.fieldInput}
+            />
+          </label>
+          <label style={styles.fieldLabel}>
+            Order region
+            <input
+              name="order_region"
+              type="text"
+              required
+              disabled={isPredicting}
+              value={predictionInput.order_region}
+              onChange={updatePredictionInput}
+              style={styles.fieldInput}
+            />
+          </label>
+          <button type="submit" style={styles.predictButton} disabled={isPredicting}>
+            {isPredicting ? 'Scoring shipment…' : 'Predict risk'}
+          </button>
+        </form>
+
+        {predictionError && (
+          <div role="alert" style={styles.predictionError}>
+            {predictionError}
+          </div>
+        )}
+
+        {prediction && (
+          <div style={styles.predictionResults} aria-live="polite">
+            <div style={styles.predictionMetric}>
+              <span style={styles.predictionMetricLabel}>DISRUPTION PROBABILITY</span>
+              <strong style={styles.predictionMetricValue}>
+                {prediction.disruption_probability_percent.toFixed(1)}%
+              </strong>
+            </div>
+            <div style={styles.predictionMetric}>
+              <span style={styles.predictionMetricLabel}>SUPPLIER TRUST SCORE</span>
+              <strong style={styles.predictionMetricValue}>
+                {prediction.supplier_trust_score.toFixed(1)} <small>/ 100</small>
+              </strong>
+            </div>
+            <div style={styles.predictionMetric}>
+              <span style={styles.predictionMetricLabel}>EARLY WARNING</span>
+              <strong style={{
+                ...styles.predictionMetricValue,
+                color: prediction.early_warning_alert ? '#f87171' : '#34d399',
+              }}>
+                {prediction.early_warning_alert ? 'ALERT' : 'CLEAR'}
+              </strong>
+            </div>
+            <div style={styles.predictionMetric}>
+              <span style={styles.predictionMetricLabel}>SHIPPING VARIANCE</span>
+              <strong style={styles.predictionMetricValue}>
+                {prediction.shipping_variance} days
+              </strong>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Main Grid: Left Radar Map, Right Anomalies + Warnings */}
       <div style={styles.topGrid}>
@@ -135,7 +316,10 @@ export default function SupplyDisruptionView() {
                 <span style={{ color: '#38bdf8', marginRight: '6px' }}>🛡</span>
                 <div>
                   <div style={styles.chipLabel}>OVERALL TRUST SCORE</div>
-                  <div style={styles.chipValue}>82 <span style={{ fontSize: '11px', fontWeight: 400 }}>/100</span></div>
+                  <div style={styles.chipValue}>
+                    {prediction ? prediction.supplier_trust_score.toFixed(1) : '--'}
+                    <span style={{ fontSize: '11px', fontWeight: 400 }}> /100</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -187,39 +371,36 @@ export default function SupplyDisruptionView() {
           <div style={styles.subCard}>
             <div style={styles.cardHeader}>
               <div style={styles.cardTitle}>Early Warnings</div>
-              <span style={styles.urgentBadge}>Urgent</span>
+              <span style={prediction?.early_warning_alert ? styles.urgentBadge : styles.clearBadge}>
+                {prediction
+                  ? prediction.early_warning_alert ? 'Alert' : 'Clear'
+                  : 'No prediction'}
+              </span>
             </div>
             <div style={styles.warningList}>
-              <div style={styles.warningItem}>
-                <div style={{ ...styles.alertDot, backgroundColor: '#ef4444' }} />
-                <div>
-                  <div style={styles.warningTitle}>Typhoon Yagi Impact Prediction</div>
-                  <div style={styles.warningMeta}>SUP_REG_A · ETA DELAY: 72H</div>
-                  <div style={styles.warningDesc}>
-                    Raw material shipment from Shanghai port expected to face severe delays due to typhoon rerouting.
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.warningItem}>
-                <div style={{ ...styles.alertDot, backgroundColor: '#f59e0b' }} />
-                <div>
-                  <div style={styles.warningTitle}>Supplier Consistency Drop</div>
-                  <div style={styles.warningMeta}>VEND_442 · TRUST SCORE: -5%</div>
-                  <div style={styles.warningDesc}>
-                    Recent deliveries show increasing variance in lead times. Assessment of buffer stock suggested.
-                  </div>
-                </div>
-              </div>
-
-              <div style={styles.warningItem}>
-                <div style={{ ...styles.alertDot, backgroundColor: '#f59e0b' }} />
-                <div>
-                  <div style={styles.warningTitle}>Customs Clearance Bottleneck</div>
-                  <div style={styles.warningMeta}>PORT_EU_W · DELAY: 24H</div>
-                  <div style={styles.warningDesc}>
-                    New regulatory checks causing congestion at primary entry node. Factory transit adjusted.
-                  </div>
+                <div style={styles.warningItem}>
+                  <div style={{
+                    ...styles.alertDot,
+                    backgroundColor: prediction?.early_warning_alert ? '#ef4444' : '#64748b',
+                  }} />
+                  <div>
+                    <div style={styles.warningTitle}>
+                      {prediction
+                        ? prediction.early_warning_alert
+                          ? 'Disruption risk requires attention'
+                          : 'No disruption warning detected'
+                        : 'Run a shipment prediction'}
+                    </div>
+                    <div style={styles.warningMeta}>
+                      {prediction
+                        ? `RISK: ${prediction.risk_level.toUpperCase()} · PROBABILITY: ${prediction.disruption_probability_percent.toFixed(1)}%`
+                        : 'PREDICTION STATUS: NOT RUN'}
+                    </div>
+                    <div style={styles.warningDesc}>
+                      {prediction
+                        ? `Supplier trust score: ${prediction.supplier_trust_score.toFixed(1)} / 100.`
+                        : 'Submit shipment details above to retrieve the current model assessment.'}
+                    </div>
                 </div>
               </div>
             </div>
@@ -334,6 +515,136 @@ const styles = {
     height: '8px',
     borderRadius: '50%',
     backgroundColor: '#ef4444',
+  },
+  clearAlertsBadge: {
+    background: 'rgba(16, 185, 129, 0.12)',
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+    color: '#34d399',
+  },
+  greenDot: {
+    backgroundColor: '#10b981',
+  },
+  predictionPanel: {
+    background: '#0d1322',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '12px',
+    padding: '20px',
+  },
+  predictionPanelHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '12px',
+    marginBottom: '16px',
+  },
+  predictionTitle: {
+    margin: 0,
+    fontSize: '16px',
+    fontWeight: 700,
+    color: '#f1f5f9',
+  },
+  predictionSubtitle: {
+    margin: '4px 0 0',
+    fontSize: '12px',
+    color: '#94a3b8',
+  },
+  predictionForm: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
+    alignItems: 'end',
+    gap: '12px',
+  },
+  fieldLabel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    color: '#cbd5e1',
+    fontSize: '11px',
+    fontWeight: 600,
+  },
+  fieldInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    minHeight: '38px',
+    padding: '8px 10px',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '6px',
+    background: '#090e1a',
+    color: '#f1f5f9',
+    font: 'inherit',
+  },
+  predictButton: {
+    minHeight: '38px',
+    padding: '8px 14px',
+    border: '1px solid #38bdf8',
+    borderRadius: '6px',
+    background: '#075985',
+    color: '#f0f9ff',
+    fontSize: '12px',
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  predictionError: {
+    marginTop: '14px',
+    padding: '10px 12px',
+    border: '1px solid rgba(248, 113, 113, 0.35)',
+    borderRadius: '6px',
+    background: 'rgba(127, 29, 29, 0.2)',
+    color: '#fca5a5',
+    fontSize: '12px',
+  },
+  predictionResults: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
+    gap: '10px',
+    marginTop: '16px',
+  },
+  predictionMetric: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    padding: '12px',
+    border: '1px solid rgba(255, 255, 255, 0.07)',
+    borderRadius: '8px',
+    background: 'rgba(15, 23, 42, 0.65)',
+  },
+  predictionMetricLabel: {
+    color: '#94a3b8',
+    fontSize: '9px',
+    fontWeight: 700,
+    letterSpacing: '0.04em',
+  },
+  predictionMetricValue: {
+    color: '#f8fafc',
+    fontSize: '20px',
+    fontWeight: 700,
+  },
+  riskBadge: {
+    borderRadius: '6px',
+    padding: '5px 9px',
+    fontSize: '10px',
+    fontWeight: 700,
+  },
+  risklow: {
+    background: 'rgba(16, 185, 129, 0.14)',
+    color: '#34d399',
+  },
+  riskmedium: {
+    background: 'rgba(245, 158, 11, 0.14)',
+    color: '#fbbf24',
+  },
+  riskhigh: {
+    background: 'rgba(239, 68, 68, 0.14)',
+    color: '#f87171',
+  },
+  clearBadge: {
+    borderRadius: '6px',
+    padding: '3px 8px',
+    background: 'rgba(16, 185, 129, 0.14)',
+    color: '#34d399',
+    fontSize: '10px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
   },
   topGrid: {
     display: 'grid',
