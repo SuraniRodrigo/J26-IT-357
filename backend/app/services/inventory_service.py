@@ -14,6 +14,7 @@ from app.integration.mock_upstream import (
 from app.ml.inventory.inventory_optimizer import InventoryOptimizer
 from app.ml.inventory.simulator import InventorySimulator
 from app.schemas.inventory import (
+    CreateProductCatalogItem,
     InventoryOptimizationRequest,
     InventoryOptimizationResponse,
     InventoryPolicySchema,
@@ -25,6 +26,7 @@ from app.schemas.inventory import (
     ScenarioAnalysisRequest,
     ScenarioAnalysisResponse,
     ScenarioEntrySchema,
+    UpdateProductCatalogItem,
 )
 
 logger = logging.getLogger("optichain.inventory.service")
@@ -174,31 +176,135 @@ def run_scenario_analysis(request: ScenarioAnalysisRequest) -> ScenarioAnalysisR
     )
 
 
-def get_product_catalog() -> list[ProductCatalogItem]:
-    """Retrieves full monitored materials catalog with mock upstream signals."""
-    mock_items = list_all_mock_products()
-    catalog: list[ProductCatalogItem] = []
+_CATALOG_STORE: dict[str, ProductCatalogItem] = {}
 
-    for item in mock_items:
-        seed = MATERIAL_SEEDS.get(item.product_id, {"current_inventory": 1000.0, "unit": item.unit})
-        catalog.append(
-            ProductCatalogItem(
+
+def _ensure_catalog_initialized() -> dict[str, ProductCatalogItem]:
+    """Populates initial seed catalog if empty."""
+    global _CATALOG_STORE
+    if not _CATALOG_STORE:
+        mock_items = list_all_mock_products()
+        for item in mock_items:
+            seed = MATERIAL_SEEDS.get(item.product_id, {"current_inventory": 1000.0, "unit": item.unit})
+            _CATALOG_STORE[item.product_id] = ProductCatalogItem(
                 product_id=item.product_id,
                 product_name=item.product_name,
                 category=item.category,
                 unit=item.unit,
-                current_inventory=seed["current_inventory"],
-                forecasted_demand=item.forecasted_demand,
-                demand_std_dev=item.demand_std_dev,
-                average_lead_time=item.average_lead_time,
-                lead_time_std_dev=item.lead_time_std_dev,
-                disruption_probability=item.disruption_probability,
-                supplier_trust_score=item.supplier_trust_score,
+                current_inventory=float(seed["current_inventory"]),
+                forecasted_demand=float(item.forecasted_demand),
+                demand_std_dev=float(item.demand_std_dev),
+                average_lead_time=float(item.average_lead_time),
+                lead_time_std_dev=float(item.lead_time_std_dev),
+                disruption_probability=float(item.disruption_probability),
+                supplier_trust_score=float(item.supplier_trust_score),
                 risk_level=item.risk_level,
                 is_demo_data=True,
             )
-        )
-    return catalog
+    return _CATALOG_STORE
+
+
+def get_product_catalog() -> list[ProductCatalogItem]:
+    """Retrieves full monitored materials catalog."""
+    store = _ensure_catalog_initialized()
+    return list(store.values())
+
+
+def create_product_catalog_item(item: CreateProductCatalogItem) -> ProductCatalogItem:
+    """Adds a new raw material SKU to the monitored portfolio."""
+    store = _ensure_catalog_initialized()
+    pid = item.product_id.strip().upper()
+    if pid in store:
+        raise ValueError(f"Product with ID '{pid}' already exists in catalog.")
+
+    # Determine risk level if not explicitly provided
+    risk_level = item.risk_level
+    if not risk_level:
+        if item.disruption_probability >= 0.7:
+            risk_level = "CRITICAL"
+        elif item.disruption_probability >= 0.4:
+            risk_level = "HIGH"
+        elif item.disruption_probability >= 0.2:
+            risk_level = "MEDIUM"
+        else:
+            risk_level = "LOW"
+
+    demand_std_dev = item.demand_std_dev if item.demand_std_dev > 0 else round(item.forecasted_demand * 0.15, 2)
+
+    new_item = ProductCatalogItem(
+        product_id=pid,
+        product_name=item.product_name.strip(),
+        category=item.category.strip(),
+        unit=item.unit.strip(),
+        current_inventory=float(item.current_inventory),
+        forecasted_demand=float(item.forecasted_demand),
+        demand_std_dev=float(demand_std_dev),
+        average_lead_time=float(item.average_lead_time),
+        lead_time_std_dev=float(item.lead_time_std_dev),
+        disruption_probability=float(item.disruption_probability),
+        supplier_trust_score=float(item.supplier_trust_score),
+        risk_level=risk_level,
+        is_demo_data=False,
+    )
+    store[pid] = new_item
+    MATERIAL_SEEDS[pid] = {
+        "current_inventory": new_item.current_inventory,
+        "in_transit_qty": 0.0,
+        "unit": new_item.unit,
+    }
+    logger.info(f"Created new raw material SKU: {pid} ({new_item.product_name})")
+    return new_item
+
+
+def update_product_catalog_item(product_id: str, updates: UpdateProductCatalogItem) -> ProductCatalogItem:
+    """Updates an existing raw material SKU in the inventory catalog."""
+    store = _ensure_catalog_initialized()
+    pid = product_id.strip().upper()
+    if pid not in store:
+        raise ValueError(f"Product '{pid}' not found in catalog.")
+
+    existing = store[pid]
+    dump = updates.model_dump(exclude_unset=True)
+
+    updated_dict = existing.model_dump()
+    for k, v in dump.items():
+        if v is not None:
+            updated_dict[k] = v
+
+    if "disruption_probability" in dump:
+        dp = updated_dict["disruption_probability"]
+        if dp >= 0.7:
+            updated_dict["risk_level"] = "CRITICAL"
+        elif dp >= 0.4:
+            updated_dict["risk_level"] = "HIGH"
+        elif dp >= 0.2:
+            updated_dict["risk_level"] = "MEDIUM"
+        else:
+            updated_dict["risk_level"] = "LOW"
+
+    updated_item = ProductCatalogItem(**updated_dict)
+    store[pid] = updated_item
+    MATERIAL_SEEDS[pid] = {
+        "current_inventory": updated_item.current_inventory,
+        "in_transit_qty": MATERIAL_SEEDS.get(pid, {}).get("in_transit_qty", 0.0),
+        "unit": updated_item.unit,
+    }
+    logger.info(f"Updated material SKU: {pid}")
+    return updated_item
+
+
+def delete_product_catalog_item(product_id: str) -> bool:
+    """Removes a raw material SKU from inventory monitoring."""
+    store = _ensure_catalog_initialized()
+    pid = product_id.strip().upper()
+    if pid not in store:
+        raise ValueError(f"Product '{pid}' not found in catalog.")
+
+    del store[pid]
+    if pid in MATERIAL_SEEDS:
+        del MATERIAL_SEEDS[pid]
+    logger.info(f"Deleted material SKU: {pid}")
+    return True
 
 
 def get_inventory_summary() -> InventorySummaryResponse:

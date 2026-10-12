@@ -35,6 +35,35 @@ export async function getInventoryProducts() {
 }
 
 /**
+ * Creates a new raw material SKU in the monitored portfolio.
+ */
+export async function createInventoryProduct(payload) {
+  return apiRequest('/api/inventory/products', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Updates an existing raw material SKU in the inventory catalog.
+ */
+export async function updateInventoryProduct(productId, payload) {
+  return apiRequest(`/api/inventory/products/${encodeURIComponent(productId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Removes a raw material SKU from inventory monitoring.
+ */
+export async function deleteInventoryProduct(productId) {
+  return apiRequest(`/api/inventory/products/${encodeURIComponent(productId)}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
  * Fetches high-level executive summary KPIs across the portfolio.
  */
 export async function getInventorySummary() {

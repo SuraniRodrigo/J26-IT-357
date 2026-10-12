@@ -6,6 +6,9 @@ import {
   runScenarioAnalysis,
   getProductionInterface,
   getResearchResults,
+  createInventoryProduct,
+  updateInventoryProduct,
+  deleteInventoryProduct,
 } from '../../services/inventoryService';
 
 // ─── tiny SVG bar-chart used in Research tab ───────────────────────────────
@@ -161,7 +164,10 @@ export default function InventoryOptimizationView() {
         getProductionInterface().catch(() => []),
       ]);
       if (sumRes) setSummaryData(sumRes);
-      if (prodRes?.length) { setProductsList(prodRes); setSelectedSku(prodRes[0].product_id); }
+      if (prodRes?.length) {
+        setProductsList(prodRes);
+        setSelectedSku(prev => (prodRes.some(p => p.product_id === prev) ? prev : prodRes[0].product_id));
+      }
       if (piRes) setProductionInterfaceData(piRes);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -240,6 +246,129 @@ export default function InventoryOptimizationView() {
     }));
     showToast(`Purchase Order #${poNum} dispatched to ERP ✓`);
     setPoModalItem(null);
+  };
+
+  // ── Material CRUD State & Handlers ────────────────────────────────────────
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addForm, setAddForm] = useState({
+    product_id: '',
+    product_name: '',
+    category: 'Fabrics',
+    unit: 'kg',
+    current_inventory: 1000,
+    forecasted_demand: 10000,
+    average_lead_time: 7.0,
+    lead_time_std_dev: 1.5,
+    disruption_probability: 0.35,
+    supplier_trust_score: 75.0,
+  });
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
+
+  const [editModalItem, setEditModalItem] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
+  const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
+
+  const handleCreateProduct = async (e) => {
+    e.preventDefault();
+    if (!addForm.product_id.trim() || !addForm.product_name.trim()) {
+      showToast('Please provide both Product ID and Material Name.', 'error');
+      return;
+    }
+    try {
+      setIsSubmittingAdd(true);
+      const created = await createInventoryProduct({
+        ...addForm,
+        product_id: addForm.product_id.trim().toUpperCase(),
+        current_inventory: parseFloat(addForm.current_inventory) || 0,
+        forecasted_demand: parseFloat(addForm.forecasted_demand) || 0,
+        average_lead_time: parseFloat(addForm.average_lead_time) || 1,
+        lead_time_std_dev: parseFloat(addForm.lead_time_std_dev) || 1,
+        disruption_probability: parseFloat(addForm.disruption_probability) || 0,
+        supplier_trust_score: parseFloat(addForm.supplier_trust_score) || 50,
+      });
+      showToast(`✓ Material ${created.product_id} added successfully`);
+      setIsAddModalOpen(false);
+      setAddForm({
+        product_id: '',
+        product_name: '',
+        category: 'Fabrics',
+        unit: 'kg',
+        current_inventory: 1000,
+        forecasted_demand: 10000,
+        average_lead_time: 7.0,
+        lead_time_std_dev: 1.5,
+        disruption_probability: 0.35,
+        supplier_trust_score: 75.0,
+      });
+      await fetchAll();
+      setSelectedSku(created.product_id);
+    } catch (err) {
+      showToast(`Creation failed: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsSubmittingAdd(false);
+    }
+  };
+
+  const openEditModal = (item) => {
+    setEditModalItem(item);
+    setEditForm({
+      product_name: item.product_name,
+      category: item.category,
+      unit: item.unit,
+      current_inventory: item.current_inventory,
+      forecasted_demand: item.forecasted_demand,
+      average_lead_time: item.average_lead_time,
+      lead_time_std_dev: item.lead_time_std_dev,
+      disruption_probability: item.disruption_probability,
+      supplier_trust_score: item.supplier_trust_score,
+    });
+  };
+
+  const handleUpdateProduct = async (e) => {
+    e.preventDefault();
+    if (!editModalItem) return;
+    try {
+      setIsSubmittingEdit(true);
+      await updateInventoryProduct(editModalItem.product_id, {
+        product_name: editForm.product_name,
+        category: editForm.category,
+        unit: editForm.unit,
+        current_inventory: parseFloat(editForm.current_inventory) || 0,
+        forecasted_demand: parseFloat(editForm.forecasted_demand) || 0,
+        average_lead_time: parseFloat(editForm.average_lead_time) || 1,
+        lead_time_std_dev: parseFloat(editForm.lead_time_std_dev) || 1,
+        disruption_probability: parseFloat(editForm.disruption_probability) || 0,
+        supplier_trust_score: parseFloat(editForm.supplier_trust_score) || 50,
+      });
+      showToast(`✓ Material ${editModalItem.product_id} updated`);
+      setEditModalItem(null);
+      await fetchAll();
+    } catch (err) {
+      showToast(`Update failed: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!deleteConfirmItem) return;
+    try {
+      setIsSubmittingDelete(true);
+      await deleteInventoryProduct(deleteConfirmItem.product_id);
+      showToast(`✓ Material ${deleteConfirmItem.product_id} deleted`);
+      setDeleteConfirmItem(null);
+      await fetchAll();
+      if (selectedSku === deleteConfirmItem.product_id) {
+        setSelectedSku('FAB-001');
+      }
+    } catch (err) {
+      showToast(`Delete failed: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsSubmittingDelete(false);
+    }
   };
 
   // ── Table sort + filter ───────────────────────────────────────────────────
@@ -529,6 +658,10 @@ export default function InventoryOptimizationView() {
                     className="input-focus"
                     style={{ ...styles.searchInput, paddingLeft:'30px', transition:'width .3s', width: searchQuery ? '220px' : '180px' }} />
                 </div>
+                {/* Add Material Button */}
+                <button className="btn-hover" onClick={()=>setIsAddModalOpen(true)} style={styles.addBtn}>
+                  <span style={{ fontSize:'14px' }}>＋</span> Add Raw Material
+                </button>
                 {/* PO history badge */}
                 {dispatchedList.length > 0 && (
                   <button className="btn-hover" onClick={()=>setShowPoHistory(v=>!v)} style={{ ...styles.pillBtn, background:'rgba(16,185,129,0.15)', borderColor:'rgba(16,185,129,0.4)', color:'#34D399' }}>
@@ -641,8 +774,10 @@ export default function InventoryOptimizationView() {
                           </span>
                         </td>
                         <td style={{ ...styles.tdCenter, position:'sticky', right:0, background:rowBg, zIndex:1 }}>
-                          <div style={{ display:'flex', gap:'5px', justifyContent:'center' }}>
-                            <button className="btn-hover" onClick={e=>{e.stopPropagation();setXaiModalSku(item);}} style={styles.xaiBtn} title="XAI Formula">📐</button>
+                          <div style={{ display:'flex', gap:'5px', justifyContent:'center', alignItems:'center' }}>
+                            <button className="btn-hover" onClick={e=>{e.stopPropagation();setXaiModalSku(item);}} style={styles.xaiBtn} title="XAI Formula Inspector">📐</button>
+                            <button className="btn-hover" onClick={e=>{e.stopPropagation();openEditModal(item);}} style={styles.editBtn} title="Edit Material">✏️</button>
+                            <button className="btn-hover" onClick={e=>{e.stopPropagation();setDeleteConfirmItem(item);}} style={styles.deleteBtn} title="Archive / Delete Material">🗑️</button>
                             <button className="btn-hover" onClick={e=>{e.stopPropagation();setPoModalItem({...item,reorder_quantity:Math.round(item.forecasted_demand*7*(1+item.disruption_probability))});}} style={{ ...styles.poBtn, background: isDispatched?'#059669':(isDark?'#2563EB':'#0B1F3A') }}>
                               {isDispatched ? '✓' : '⚡ PO'}
                             </button>
@@ -1051,6 +1186,308 @@ export default function InventoryOptimizationView() {
         </div>
       )}
 
+      {/* ═══ ADD RAW MATERIAL MODAL ══════════════════════════════════════════ */}
+      {isAddModalOpen && (
+        <div style={styles.modalOverlay} onClick={()=>setIsAddModalOpen(false)}>
+          <div style={styles.modalBox} onClick={e=>e.stopPropagation()}>
+            <div style={styles.modalHead}>
+              <h3 style={{ fontSize:'16px', fontWeight:800, color:c.title, display:'flex', alignItems:'center', gap:'8px' }}>
+                <span>📦</span> Add New Raw Material SKU
+              </h3>
+              <button onClick={()=>setIsAddModalOpen(false)} style={styles.closeBtn}>✕</button>
+            </div>
+            <form onSubmit={handleCreateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px', marginTop:'16px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Product SKU ID *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. FAB-009"
+                    required
+                    value={addForm.product_id}
+                    onChange={e=>setAddForm(f=>({...f, product_id:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Material Name *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Heavy Duty Indigo Denim"
+                    required
+                    value={addForm.product_name}
+                    onChange={e=>setAddForm(f=>({...f, product_name:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Category</label>
+                  <select
+                    value={addForm.category}
+                    onChange={e=>setAddForm(f=>({...f, category:e.target.value}))}
+                    className="input-focus"
+                    style={{ ...styles.textInput, cursor:'pointer' }}
+                  >
+                    <option value="Fabrics">Fabrics</option>
+                    <option value="Dyes & Chemicals">Dyes & Chemicals</option>
+                    <option value="Trims & Fasteners">Trims & Fasteners</option>
+                    <option value="Yarns & Threads">Yarns & Threads</option>
+                  </select>
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Unit of Measure</label>
+                  <input
+                    type="text"
+                    placeholder="kg, meters, pcs, cones"
+                    value={addForm.unit}
+                    onChange={e=>setAddForm(f=>({...f, unit:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Current On-Hand Stock</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={addForm.current_inventory}
+                    onChange={e=>setAddForm(f=>({...f, current_inventory:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>14-Day Forecast Demand</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={addForm.forecasted_demand}
+                    onChange={e=>setAddForm(f=>({...f, forecasted_demand:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Avg Lead Time (d)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.1"
+                    required
+                    value={addForm.average_lead_time}
+                    onChange={e=>setAddForm(f=>({...f, average_lead_time:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>P(disrupt) [0-1]</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    required
+                    value={addForm.disruption_probability}
+                    onChange={e=>setAddForm(f=>({...f, disruption_probability:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Trust Score [0-100]</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={addForm.supplier_trust_score}
+                    onChange={e=>setAddForm(f=>({...f, supplier_trust_score:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'16px' }}>
+                <button type="button" onClick={()=>setIsAddModalOpen(false)} style={styles.cancelBtn}>Cancel</button>
+                <button type="submit" disabled={isSubmittingAdd} className="btn-hover" style={styles.confirmBtn}>
+                  {isSubmittingAdd ? 'Saving...' : '✓ Add SKU to Monitoring'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ EDIT MATERIAL MODAL ═════════════════════════════════════════════ */}
+      {editModalItem && (
+        <div style={styles.modalOverlay} onClick={()=>setEditModalItem(null)}>
+          <div style={styles.modalBox} onClick={e=>e.stopPropagation()}>
+            <div style={styles.modalHead}>
+              <h3 style={{ fontSize:'16px', fontWeight:800, color:c.title, display:'flex', alignItems:'center', gap:'8px' }}>
+                <span>✏️</span> Edit Material — <span style={{ color:'#60A5FA' }}>{editModalItem.product_id}</span>
+              </h3>
+              <button onClick={()=>setEditModalItem(null)} style={styles.closeBtn}>✕</button>
+            </div>
+            <form onSubmit={handleUpdateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px', marginTop:'16px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Material Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.product_name || ''}
+                    onChange={e=>setEditForm(f=>({...f, product_name:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Category</label>
+                  <select
+                    value={editForm.category || 'Fabrics'}
+                    onChange={e=>setEditForm(f=>({...f, category:e.target.value}))}
+                    className="input-focus"
+                    style={{ ...styles.textInput, cursor:'pointer' }}
+                  >
+                    <option value="Fabrics">Fabrics</option>
+                    <option value="Dyes & Chemicals">Dyes & Chemicals</option>
+                    <option value="Trims & Fasteners">Trims & Fasteners</option>
+                    <option value="Yarns & Threads">Yarns & Threads</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Current On-Hand Stock ({editForm.unit || 'units'})</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={editForm.current_inventory ?? 0}
+                    onChange={e=>setEditForm(f=>({...f, current_inventory:e.target.value}))}
+                    className="input-focus"
+                    style={{ ...styles.textInput, fontWeight:700, color:'#34D399' }}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>14-Day Forecast Demand ({editForm.unit || 'units'})</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={editForm.forecasted_demand ?? 0}
+                    onChange={e=>setEditForm(f=>({...f, forecasted_demand:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Avg Lead Time (d)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.1"
+                    required
+                    value={editForm.average_lead_time ?? 1}
+                    onChange={e=>setEditForm(f=>({...f, average_lead_time:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>P(disrupt) [0-1]</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    required
+                    value={editForm.disruption_probability ?? 0}
+                    onChange={e=>setEditForm(f=>({...f, disruption_probability:e.target.value}))}
+                    className="input-focus"
+                    style={{ ...styles.textInput, fontWeight:700, color: (editForm.disruption_probability >= 0.7) ? '#F87171' : '#FBBF24' }}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Trust Score [0-100]</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={editForm.supplier_trust_score ?? 50}
+                    onChange={e=>setEditForm(f=>({...f, supplier_trust_score:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'16px' }}>
+                <button type="button" onClick={()=>setEditModalItem(null)} style={styles.cancelBtn}>Cancel</button>
+                <button type="submit" disabled={isSubmittingEdit} className="btn-hover" style={styles.confirmBtn}>
+                  {isSubmittingEdit ? 'Saving...' : '✓ Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ DELETE CONFIRMATION MODAL ═══════════════════════════════════════ */}
+      {deleteConfirmItem && (
+        <div style={styles.modalOverlay} onClick={()=>setDeleteConfirmItem(null)}>
+          <div style={{ ...styles.modalBox, maxWidth:'460px' }} onClick={e=>e.stopPropagation()}>
+            <div style={styles.modalHead}>
+              <h3 style={{ fontSize:'16px', fontWeight:800, color:'#F87171', display:'flex', alignItems:'center', gap:'8px' }}>
+                <span>🗑️</span> Remove SKU from Monitoring
+              </h3>
+              <button onClick={()=>setDeleteConfirmItem(null)} style={styles.closeBtn}>✕</button>
+            </div>
+            <div style={{ marginTop:'16px', fontSize:'13px', color:c.title, lineHeight:1.6 }}>
+              Are you sure you want to remove <strong style={{ color:'#60A5FA' }}>{deleteConfirmItem.product_id}</strong> ({deleteConfirmItem.product_name}) from active inventory monitoring?
+              <div style={{ marginTop:'10px', fontSize:'11.5px', color:c.sub, background: isDark?'rgba(239,68,68,.1)':'#FEE2E2', padding:'10px 12px', borderRadius:'8px', border:'1px solid rgba(239,68,68,.3)' }}>
+                ⚠️ This will remove the material from real-time disruption monitoring and production line handoff.
+              </div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'20px' }}>
+              <button onClick={()=>setDeleteConfirmItem(null)} style={styles.cancelBtn}>Cancel</button>
+              <button
+                disabled={isSubmittingDelete}
+                onClick={handleDeleteProduct}
+                className="btn-hover"
+                style={{ ...styles.confirmBtn, background:'linear-gradient(135deg,#DC2626,#EF4444)' }}
+              >
+                {isSubmittingDelete ? 'Deleting...' : '🗑️ Yes, Delete SKU'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══ PO MODAL ════════════════════════════════════════════════════════ */}
       {poModalItem && (
         <div style={styles.modalOverlay} onClick={()=>setPoModalItem(null)}>
@@ -1193,6 +1630,9 @@ function getStyles(c) {
     tdCenter:{ padding:'13px 14px', textAlign:'center', color:c.inputText, verticalAlign:'middle' },
     categoryChip: { background: c.isDark?'rgba(255,255,255,.05)':'#F1F5F9', border:`1px solid ${c.tagBorder}`, padding:'3px 10px', borderRadius:'8px', fontSize:'10.5px', color:c.sub, fontWeight:600, whiteSpace:'nowrap' },
     badge: { display:'inline-block', padding:'3px 9px', borderRadius:'20px', fontSize:'10.5px', fontWeight:700, whiteSpace:'nowrap' },
+    addBtn: { background:'linear-gradient(135deg,#1E40AF,#2563EB)', border:'none', color:'#FFFFFF', borderRadius:'10px', padding:'9px 16px', fontSize:'12px', fontWeight:800, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px', boxShadow:'0 4px 14px rgba(37,99,235,.35)', whiteSpace:'nowrap' },
+    editBtn: { background: c.isDark?'rgba(59,130,246,.12)':'#EFF6FF', border:`1px solid ${c.isDark?'rgba(59,130,246,.3)':'#BFDBFE'}`, color: c.isDark?'#93C5FD':'#1E40AF', borderRadius:'8px', padding:'6px 9px', fontSize:'12px', fontWeight:600, cursor:'pointer', transition:'all .2s' },
+    deleteBtn: { background: c.isDark?'rgba(239,68,68,.12)':'#FEE2E2', border:`1px solid ${c.isDark?'rgba(239,68,68,.3)':'#FECACA'}`, color: c.isDark?'#FCA5A5':'#DC2626', borderRadius:'8px', padding:'6px 9px', fontSize:'12px', fontWeight:600, cursor:'pointer', transition:'all .2s' },
     xaiBtn: { background: c.isDark?'rgba(255,255,255,.07)':'#F8FAFC', border:`1px solid ${c.tagBorder}`, color:c.title, borderRadius:'8px', padding:'6px 10px', fontSize:'12px', fontWeight:600, cursor:'pointer', transition:'all .2s' },
     poBtn:  { border:'none', color:'#FFFFFF', borderRadius:'8px', padding:'6px 10px', fontSize:'11px', fontWeight:700, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' },
     // Simulator

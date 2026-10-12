@@ -166,6 +166,34 @@ class ProductCatalogItem(BaseModel):
     is_demo_data: bool = True
 
 
+class CreateProductCatalogItem(BaseModel):
+    product_id: str
+    product_name: str
+    category: str
+    unit: str
+    current_inventory: float
+    forecasted_demand: float
+    demand_std_dev: float = 0.0
+    average_lead_time: float
+    lead_time_std_dev: float = 1.0
+    disruption_probability: float
+    supplier_trust_score: float = 80.0
+    risk_level: str | None = None
+
+
+class UpdateProductCatalogItem(BaseModel):
+    product_name: str | None = None
+    category: str | None = None
+    unit: str | None = None
+    current_inventory: float | None = None
+    forecasted_demand: float | None = None
+    demand_std_dev: float | None = None
+    average_lead_time: float | None = None
+    lead_time_std_dev: float | None = None
+    disruption_probability: float | None = None
+    supplier_trust_score: float | None = None
+
+
 # ─── 6. RESEARCH RESULTS SCHEMA (Section 8 & 41) ────────────────────────────
 class PolicyComparisonMetric(BaseModel):
     policy_name: str

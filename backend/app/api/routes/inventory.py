@@ -8,6 +8,7 @@ from app.integration.mock_upstream import (
     list_all_mock_products,
 )
 from app.schemas.inventory import (
+    CreateProductCatalogItem,
     InventoryOptimizationRequest,
     InventoryOptimizationResponse,
     InventoryPolicySchema,
@@ -17,8 +18,11 @@ from app.schemas.inventory import (
     ResearchResultsResponse,
     ScenarioAnalysisRequest,
     ScenarioAnalysisResponse,
+    UpdateProductCatalogItem,
 )
 from app.services.inventory_service import (
+    create_product_catalog_item,
+    delete_product_catalog_item,
     get_inventory_summary,
     get_product_catalog,
     get_production_interface,
@@ -26,6 +30,7 @@ from app.services.inventory_service import (
     legacy_optimize_inventory,
     optimize_inventory,
     run_scenario_analysis,
+    update_product_catalog_item,
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -48,6 +53,40 @@ def list_products() -> list[ProductCatalogItem]:
     """Returns the full catalog of monitored materials with upstream demand and risk feeds."""
     try:
         return get_product_catalog()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/products", response_model=ProductCatalogItem, status_code=201)
+def create_product(item: CreateProductCatalogItem) -> ProductCatalogItem:
+    """Creates a new raw material SKU in the monitored inventory catalog."""
+    try:
+        return create_product_catalog_item(item)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.put("/products/{product_id}", response_model=ProductCatalogItem)
+def update_product(product_id: str, updates: UpdateProductCatalogItem) -> ProductCatalogItem:
+    """Updates an existing raw material SKU in the inventory catalog."""
+    try:
+        return update_product_catalog_item(product_id, updates)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.delete("/products/{product_id}")
+def delete_product(product_id: str) -> dict[str, str]:
+    """Removes a raw material SKU from inventory monitoring."""
+    try:
+        delete_product_catalog_item(product_id)
+        return {"status": "success", "message": f"Product '{product_id}' successfully removed from inventory monitoring."}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
