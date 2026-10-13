@@ -2,7 +2,25 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, Field
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class DisruptionEvent(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    line_id: str = Field(..., min_length=1)
+    disruption_type: str = Field(..., min_length=1)
+    severity_minutes: int = Field(..., ge=0)
+
+
+class ScheduleResponse(BaseModel):
+    status: Literal["success", "healing_active"]
+    affected_line: str
+    recovery_time_seconds: int = Field(default=14, ge=0)
+    rerouted_target_line: str
+    updated_sequences: list[dict[str, Any]]
 
 
 class ProductionConstraintSchema(BaseModel):
