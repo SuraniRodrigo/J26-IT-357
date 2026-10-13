@@ -371,6 +371,153 @@ export default function InventoryOptimizationView() {
     }
   };
 
+  // ── ERP Export: CSV ───────────────────────────────────────────────────────
+  const handleExportCSV = useCallback(() => {
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const headers = [
+      'SKU_ID','Material_Name','Category','Unit',
+      'Current_Stock','14D_Forecast_Demand','Disruption_Risk_Pct',
+      'Safety_Stock_Recommended','Safety_Stock_CI_Low','Safety_Stock_CI_High',
+      'Reorder_Point','Recommended_ROQ',
+      'Suggested_Freight_Mode','ERP_Procurement_Directive',
+    ];
+    const rows = productsList.map(p => {
+      const r = calc(p, disruptionProb, leadTimeVar, demandSurge, serviceLevel);
+      const freight = r.roq > p.forecasted_demand * 5 ? 'Air Express (Priority)' : 'Sea Freight (Standard)';
+      let directive = 'MONITOR';
+      if (r.risk === 'CRITICAL') directive = 'IMMEDIATE REPLENISHMENT — ESCALATE TO PROCUREMENT';
+      else if (r.risk === 'HIGH')   directive = 'EXPEDITE REORDER — RAISE PO WITHIN 24H';
+      else if (r.risk === 'MEDIUM') directive = 'SCHEDULE REORDER — STANDARD LEAD TIME';
+      const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+      return [
+        esc(p.product_id), esc(p.product_name), esc(p.category), esc(p.unit),
+        p.current_inventory, Math.round(r.demand),
+        `${Math.round(disruptionProb * 100)}%`,
+        r.ss, r.ssLo, r.ssHi,
+        r.rop, r.roq,
+        esc(freight), esc(directive),
+      ].join(',');
+    });
+    const csv = [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `OPTICHAIN_ERP_Replenishment_Schedule_${dateStr}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+    showToast('✓ ERP Replenishment CSV exported successfully');
+  }, [productsList, calc, disruptionProb, leadTimeVar, demandSurge, serviceLevel, showToast]);
+
+  // ── ERP Export: PDF Executive Summary ────────────────────────────────────
+  const handlePrintPDF = useCallback(() => {
+    const now = new Date();
+    const ts = now.toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
+    const critCount = productsList.filter(p => p.disruption_probability >= 0.7 && p.current_inventory < p.forecasted_demand * 0.35).length;
+    const totalStock = productsList.reduce((s, p) => s + p.current_inventory, 0);
+    const avgRisk = productsList.length ? (productsList.reduce((s,p) => s + p.disruption_probability, 0) / productsList.length * 100).toFixed(1) : '—';
+    const readyCount = productsList.filter(p => p.current_inventory >= p.forecasted_demand * 0.35).length;
+
+    const tableRows = productsList.map(p => {
+      const r = calc(p, disruptionProb, leadTimeVar, demandSurge, serviceLevel);
+      const freight = r.roq > p.forecasted_demand * 5 ? '✈ Air Express' : '🚢 Sea Freight';
+      const riskColors = { CRITICAL: '#DC2626', HIGH: '#D97706', MEDIUM: '#3B82F6', LOW: '#059669' };
+      const riskBg    = { CRITICAL: '#FEF2F2', HIGH: '#FFFBEB', MEDIUM: '#EFF6FF', LOW: '#F0FDF4' };
+      return `
+        <tr>
+          <td><strong>${p.product_id}</strong></td>
+          <td>${p.product_name}</td>
+          <td>${p.category}</td>
+          <td style="text-align:right">${p.current_inventory.toLocaleString()}</td>
+          <td style="text-align:right">${Math.round(r.demand).toLocaleString()}</td>
+          <td style="text-align:right"><strong>${r.ss.toLocaleString()}</strong></td>
+          <td style="text-align:right">${r.rop.toLocaleString()}</td>
+          <td style="text-align:right"><strong>${r.roq.toLocaleString()}</strong></td>
+          <td style="text-align:center">${freight}</td>
+          <td style="text-align:center;background:${riskBg[r.risk]};color:${riskColors[r.risk]};font-weight:700;border-radius:4px">
+            ${r.risk}
+          </td>
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/>
+<title>OPTICHAIN ERP Executive Summary</title>
+<style>
+  @page { margin: 16mm 14mm; size: A4 landscape; }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+  body { background: #fff; color: #1E293B; font-size: 11px; }
+  .header { background: linear-gradient(135deg,#0D1B2E 0%,#1E3A5F 60%,#2563EB 100%); color:#fff; padding:16px 22px; display:flex; justify-content:space-between; align-items:center; }
+  .logo { font-size:20px; font-weight:900; letter-spacing:2px; }
+  .logo span { color:#60A5FA; }
+  .section-title { font-size:11.5px; font-weight:800; color:#0D1B2E; text-transform:uppercase; letter-spacing:1px; margin:14px 0 8px; border-left:4px solid #2563EB; padding-left:10px; }
+  .kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px; }
+  .kpi { border:1px solid #E2E8F0; border-radius:8px; padding:10px 14px; background:#F8FAFC; }
+  .kpi-label { font-size:9px; color:#64748B; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
+  .kpi-value { font-size:20px; font-weight:900; color:#0D1B2E; }
+  .kpi-value.red { color:#DC2626; } .kpi-value.green { color:#059669; } .kpi-value.amber { color:#D97706; }
+  table { width:100%; border-collapse:collapse; font-size:10px; }
+  th { background:#0D1B2E; color:#fff; padding:7px 9px; font-size:9px; text-transform:uppercase; letter-spacing:.4px; font-weight:700; text-align:left; }
+  td { padding:5px 9px; border-bottom:1px solid #F1F5F9; vertical-align:middle; }
+  tr:nth-child(even) td { background:#F8FAFC; }
+  .footer { margin-top:14px; padding-top:8px; border-top:1px solid #E2E8F0; font-size:9px; color:#94A3B8; display:flex; justify-content:space-between; }
+  .alert-box { background:#FEF2F2; border:1px solid #FECACA; border-left:4px solid #DC2626; border-radius:6px; padding:9px 13px; margin-bottom:12px; font-size:10px; color:#7F1D1D; }
+  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+</style>
+</head><body>
+<div class="header">
+  <div>
+    <div class="logo">OPTI<span>CHAIN</span></div>
+    <div style="font-size:10.5px;opacity:.75;margin-top:3px">AI-Driven Supply Chain Intelligence Platform</div>
+    <div style="font-size:9.5px;opacity:.6;margin-top:2px">Factory Node: MAS Holdings — Colombo Hub · Sri Lanka</div>
+  </div>
+  <div style="text-align:right;font-size:10px;line-height:1.75;opacity:.85">
+    <div><strong>ERP Procurement Executive Summary</strong></div>
+    <div>Generated: ${ts}</div>
+    <div>Service Level Target: ${Math.round(serviceLevel * 100)}% · Disruption Risk: ${Math.round(disruptionProb * 100)}%</div>
+    <div>Lead Time Variance: ±${leadTimeVar}d · Demand Surge: +${demandSurge}%</div>
+  </div>
+</div>
+
+<div style="padding:0 2px">
+  <div class="section-title">Executive KPI Dashboard</div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Total SKUs Monitored</div><div class="kpi-value">${productsList.length}</div></div>
+    <div class="kpi"><div class="kpi-label">Critical Shortage SKUs</div><div class="kpi-value ${critCount > 0 ? 'red' : 'green'}">${critCount}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Inventory Units</div><div class="kpi-value">${totalStock.toLocaleString()}</div></div>
+    <div class="kpi"><div class="kpi-label">Avg Portfolio Risk</div><div class="kpi-value amber">${avgRisk}%</div></div>
+  </div>
+
+  ${critCount > 0 ? `<div class="alert-box">⚠ PROCUREMENT ALERT: ${critCount} SKU${critCount > 1 ? 's' : ''} flagged CRITICAL — immediate replenishment action required. Production continuity is at risk.</div>` : `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-left:4px solid #10B981;border-radius:6px;padding:9px 13px;margin-bottom:12px;font-size:10px;color:#14532D">✓ OPERATIONAL STATUS: All SKUs within acceptable risk thresholds. Production continuity confirmed.</div>`}
+
+  <div class="section-title">Full Replenishment Schedule — ${productsList.length} SKUs</div>
+  <table>
+    <thead><tr>
+      <th>SKU ID</th><th>Material Name</th><th>Category</th>
+      <th style="text-align:right">Current Stock</th><th style="text-align:right">14D Forecast</th>
+      <th style="text-align:right">Safety Stock</th><th style="text-align:right">Reorder Point</th>
+      <th style="text-align:right">Rec. ROQ</th><th style="text-align:center">Freight Mode</th>
+      <th style="text-align:center">Risk Level</th>
+    </tr></thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+
+  <div class="footer">
+    <div>OPTICHAIN v2.0 · Project J26-IT-357 · Confidential — Internal ERP Use Only</div>
+    <div>Production Readiness: ${readyCount}/${productsList.length} SKUs (${Math.round(readyCount/Math.max(1,productsList.length)*100)}% available)</div>
+  </div>
+</div>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=1280,height=820');
+    if (!win) { showToast('Pop-up blocked — please allow pop-ups for this site', 'error'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 700);
+    showToast('✓ PDF Executive Summary ready — save as PDF from the print dialog');
+  }, [productsList, calc, disruptionProb, leadTimeVar, demandSurge, serviceLevel, showToast]);
+
   // ── Table sort + filter ───────────────────────────────────────────────────
   const handleSort = (col) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -661,6 +808,26 @@ export default function InventoryOptimizationView() {
                 {/* Add Material Button */}
                 <button className="btn-hover" onClick={()=>setIsAddModalOpen(true)} style={styles.addBtn}>
                   <span style={{ fontSize:'14px' }}>＋</span> Add Raw Material
+                </button>
+                {/* Export CSV */}
+                <button className="btn-hover" onClick={handleExportCSV} style={{
+                  display:'flex', alignItems:'center', gap:'6px', padding:'7px 13px',
+                  borderRadius:'8px', border:'1px solid rgba(16,185,129,0.5)',
+                  background:'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))',
+                  color:'#34D399', fontWeight:700, fontSize:'12px', cursor:'pointer',
+                  whiteSpace:'nowrap',
+                }}>
+                  <span style={{ fontSize:'13px' }}>📥</span> Export ERP CSV
+                </button>
+                {/* Print PDF */}
+                <button className="btn-hover" onClick={handlePrintPDF} style={{
+                  display:'flex', alignItems:'center', gap:'6px', padding:'7px 13px',
+                  borderRadius:'8px', border:'1px solid rgba(139,92,246,0.5)',
+                  background:'linear-gradient(135deg,rgba(139,92,246,0.15),rgba(109,40,217,0.1))',
+                  color:'#A78BFA', fontWeight:700, fontSize:'12px', cursor:'pointer',
+                  whiteSpace:'nowrap',
+                }}>
+                  <span style={{ fontSize:'13px' }}>📄</span> PDF Summary
                 </button>
                 {/* PO history badge */}
                 {dispatchedList.length > 0 && (
