@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     app_name: str = "OPTICHAIN"
     app_env: str = "development"
     debug: bool = True
-    database_url: str = "postgresql+psycopg2://postgres:postgres@db:5432/optichain"
     secret_key: str = "change-me-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
