@@ -560,6 +560,112 @@ export default function InventoryOptimizationView() {
     ];
   }, [currentProduct, activeOpt]);
 
+  // ── Direct API Tester handler ─────────────────────────────────────────────
+  const [directApiError, setDirectApiError] = useState(null);
+  const [directApiMs, setDirectApiMs]       = useState(null);
+  const [directRawJson, setDirectRawJson]   = useState('');
+  const [directEndpoint, setDirectEndpoint] = useState('/api/inventory/optimize');
+  const [directMethod, setDirectMethod]     = useState('POST');
+
+  const DIRECT_PRESETS = {
+    optimize_fab001: {
+      label: 'Optimize FAB-001 (Port Crisis)',
+      endpoint: '/api/inventory/optimize',
+      method: 'POST',
+      body: {
+        product_id: 'FAB-001', current_inventory: 3400, forecasted_demand: 15200,
+        demand_std_dev: 2280, average_lead_time: 7.0, lead_time_std_dev: 3.2,
+        disruption_probability: 0.85, supplier_trust_score: 42.0,
+        service_level: 0.95, replenishment_cycle_days: 7,
+      },
+    },
+    optimize_low_risk: {
+      label: 'Optimize YRN-018 (Low Risk)',
+      endpoint: '/api/inventory/optimize',
+      method: 'POST',
+      body: {
+        product_id: 'YRN-018', current_inventory: 18000, forecasted_demand: 9800,
+        demand_std_dev: 980, average_lead_time: 5.0, lead_time_std_dev: 1.0,
+        disruption_probability: 0.12, supplier_trust_score: 88.0,
+        service_level: 0.99, replenishment_cycle_days: 7,
+      },
+    },
+    detailed_optimize: {
+      label: 'Detailed Optimize (full policy)',
+      endpoint: '/api/inventory/optimize/detailed',
+      method: 'POST',
+      body: {
+        product_id: 'DYE-008', current_inventory: 820, forecasted_demand: 3400,
+        demand_std_dev: 510, average_lead_time: 14.0, lead_time_std_dev: 4.5,
+        disruption_probability: 0.72, supplier_trust_score: 31.0,
+        service_level: 0.95, replenishment_cycle_days: 7,
+      },
+    },
+    get_products: {
+      label: 'GET /products catalog',
+      endpoint: '/api/inventory/products',
+      method: 'GET',
+      body: null,
+    },
+    get_summary: {
+      label: 'GET /summary KPIs',
+      endpoint: '/api/inventory/summary',
+      method: 'GET',
+      body: null,
+    },
+    get_health: {
+      label: 'GET /health check',
+      endpoint: '/api/inventory/health',
+      method: 'GET',
+      body: null,
+    },
+    scenario: {
+      label: 'Scenario: Force Majeure',
+      endpoint: '/api/inventory/scenario',
+      method: 'POST',
+      body: {
+        product_id: 'FAB-001', current_inventory: 3400, forecasted_demand: 15200,
+        base_disruption_prob: 0.95, average_lead_time: 7.0,
+        lead_time_std_dev: 5.0, demand_std_dev: 2280, service_level: 0.99,
+      },
+    },
+  };
+
+  const handleDirectApiCall = useCallback(async () => {
+    setIsExecutingDirectApi(true);
+    setDirectApiResult(null);
+    setDirectApiError(null);
+    setDirectApiMs(null);
+    const base = 'http://localhost:8000';
+    const t0 = performance.now();
+    try {
+      const opts = { method: directMethod, headers: { 'Content-Type': 'application/json' } };
+      if (directMethod !== 'GET' && directRawJson.trim()) opts.body = directRawJson;
+      const res = await fetch(`${base}${directEndpoint}`, opts);
+      const ms = Math.round(performance.now() - t0);
+      setDirectApiMs(ms);
+      const data = await res.json();
+      setDirectApiResult({ status: res.status, ok: res.ok, data });
+      showToast(res.ok ? `✓ ${res.status} OK — ${ms}ms` : `✗ ${res.status} Error — ${ms}ms`, res.ok ? 'success' : 'error');
+    } catch (err) {
+      setDirectApiError(err.message);
+      showToast(`Connection failed: ${err.message}`, 'error');
+    } finally {
+      setIsExecutingDirectApi(false);
+    }
+  }, [directEndpoint, directMethod, directRawJson, showToast]);
+
+  const applyDirectPreset = useCallback((key) => {
+    const p = DIRECT_PRESETS[key];
+    if (!p) return;
+    setDirectEndpoint(p.endpoint);
+    setDirectMethod(p.method);
+    setDirectRawJson(p.body ? JSON.stringify(p.body, null, 2) : '');
+    setDirectApiResult(null);
+    setDirectApiError(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const CATS = ['ALL', 'Fabrics', 'Dyes & Chemicals', 'Trims & Fasteners', 'Yarns & Threads'];
   const dispatchedList = Object.values(dispatchedPOs);
 
@@ -674,6 +780,7 @@ export default function InventoryOptimizationView() {
           { id:'simulator',  icon:'⚡', label:'What-If Simulator',          desc:'Disruption stress testing' },
           { id:'readiness',  icon:'🏭', label:'Production Readiness',        desc:'Module 4 handoff interface' },
           { id:'research',   icon:'📈', label:'Research & ML Benchmarks',    desc:'171K dataset · XGBoost ML' },
+          { id:'apitester',  icon:'🔌', label:'FastAPI Live Tester',         desc:'Viva defence · Direct API calls' },
         ].map(tab => (
           <button key={tab.id} className="tab-btn" onClick={() => setActiveTab(tab.id)} style={{ ...styles.tabNavBtn, ...(activeTab===tab.id ? styles.tabActive : {}) }}>
             <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
@@ -1307,6 +1414,255 @@ export default function InventoryOptimizationView() {
           </div>
         </div>
       )}
+
+      {/* ═══ TAB 5: FASTAPI LIVE TESTER ══════════════════════════════════════ */}
+      {activeTab === 'apitester' && (() => {
+        const methodColor = { GET:'#34D399', POST:'#60A5FA', PUT:'#FBBF24', DELETE:'#F87171' };
+        const mc = methodColor[directMethod] || '#94A3B8';
+        const resultStr = directApiResult ? JSON.stringify(directApiResult.data, null, 2) : '';
+
+        // Syntax-highlight JSON for display
+        const highlight = (json) => {
+          if (!json) return '';
+          return json
+            .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)/g, (m) => {
+              const cls = /:$/.test(m) ? '#93C5FD' : '#86EFAC';
+              return `<span style="color:${cls}">${m}</span>`;
+            })
+            .replace(/\b(true|false)\b/g, '<span style="color:#FDE68A">$1</span>')
+            .replace(/\b(null)\b/g,        '<span style="color:#FDA4AF">$1</span>')
+            .replace(/(-?\d+\.?\d*)/g,     '<span style="color:#C4B5FD">$1</span>');
+        };
+
+        return (
+          <div style={styles.tabContent}>
+
+            {/* Header card */}
+            <div style={styles.card}>
+              <div style={styles.cardHeader}>
+                <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                  <div style={styles.cardIconBadge}>🔌</div>
+                  <div>
+                    <div style={styles.cardTitle}>FastAPI Live Tester — Direct Backend API Console</div>
+                    <div style={styles.cardSub}>Hit the real FastAPI endpoints · Inspect raw JSON · Demonstrate backend intelligence during viva</div>
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                  <span style={{ padding:'4px 12px', borderRadius:'20px', fontSize:'10.5px', fontWeight:700, background:'rgba(16,185,129,0.15)', color:'#34D399', border:'1px solid rgba(16,185,129,0.3)' }}>
+                    <span style={{ animation:'pulse-dot 2s infinite', display:'inline-block', marginRight:'5px' }}>●</span>
+                    http://localhost:8000
+                  </span>
+                  <span style={{ padding:'4px 12px', borderRadius:'20px', fontSize:'10.5px', fontWeight:700, background:'rgba(37,99,235,0.15)', color:'#60A5FA', border:'1px solid rgba(37,99,235,0.3)' }}>
+                    FastAPI · Python 3.x
+                  </span>
+                </div>
+              </div>
+
+              {/* Preset buttons */}
+              <div style={{ marginBottom:'18px' }}>
+                <div style={{ fontSize:'11px', fontWeight:700, color:c.sub, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'10px' }}>
+                  Quick Presets — click to load
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
+                  {Object.entries(DIRECT_PRESETS).map(([key, p]) => (
+                    <button key={key} className="btn-hover chip-hover" onClick={() => applyDirectPreset(key)} style={{
+                      padding:'6px 14px', borderRadius:'8px', fontSize:'11.5px', fontWeight:700, cursor:'pointer',
+                      border:`1px solid ${methodColor[p.method] || '#94A3B8'}40`,
+                      background: isDark ? `${methodColor[p.method] || '#94A3B8'}15` : `${methodColor[p.method] || '#94A3B8'}20`,
+                      color: methodColor[p.method] || '#94A3B8',
+                    }}>
+                      <span style={{ fontSize:'10px', fontWeight:900, marginRight:'5px' }}>{p.method}</span>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Method + Endpoint bar */}
+              <div style={{ display:'flex', gap:'10px', alignItems:'center', marginBottom:'14px', flexWrap:'wrap' }}>
+                <select
+                  value={directMethod}
+                  onChange={e => setDirectMethod(e.target.value)}
+                  style={{
+                    padding:'8px 12px', borderRadius:'8px', fontWeight:800, fontSize:'12px',
+                    border:`2px solid ${mc}60`, background: isDark ? '#0D1B2E' : '#F8FAFC',
+                    color: mc, cursor:'pointer', minWidth:'90px',
+                  }}
+                >
+                  {['GET','POST','PUT','DELETE'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+
+                <div style={{ flex:1, display:'flex', alignItems:'center', background: isDark?'rgba(255,255,255,0.04)':'#F8FAFC', border:`1px solid ${c.tableBorder}`, borderRadius:'8px', padding:'0 12px', minWidth:'240px' }}>
+                  <span style={{ fontSize:'11px', color:c.sub, whiteSpace:'nowrap', marginRight:'6px' }}>localhost:8000</span>
+                  <input
+                    className="input-focus"
+                    value={directEndpoint}
+                    onChange={e => setDirectEndpoint(e.target.value)}
+                    style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:'13px', fontWeight:600, color:c.title, padding:'10px 0', fontFamily:'monospace' }}
+                    placeholder="/api/inventory/optimize"
+                  />
+                </div>
+
+                <button className="btn-hover" onClick={handleDirectApiCall} disabled={isExecutingDirectApi} style={{
+                  padding:'9px 22px', borderRadius:'8px', fontWeight:800, fontSize:'13px', cursor:'pointer', border:'none',
+                  background: isExecutingDirectApi ? '#374151' : `linear-gradient(135deg,${mc},${mc}CC)`,
+                  color:'#fff', display:'flex', alignItems:'center', gap:'8px', whiteSpace:'nowrap',
+                  boxShadow: isExecutingDirectApi ? 'none' : `0 4px 16px ${mc}40`,
+                  transition:'all .2s',
+                }}>
+                  {isExecutingDirectApi
+                    ? <><span style={{ animation:'pulse-dot 1s infinite', fontSize:'12px' }}>●</span> Executing...</>
+                    : <><span style={{ fontSize:'15px' }}>▶</span> Execute</>
+                  }
+                </button>
+
+                {directApiMs !== null && (
+                  <span style={{ fontSize:'12px', fontWeight:700, color: directApiMs < 100 ? '#34D399' : directApiMs < 300 ? '#FBBF24' : '#F87171', background: isDark?'rgba(0,0,0,0.3)':'#F1F5F9', padding:'6px 12px', borderRadius:'8px', border:`1px solid ${c.tableBorder}` }}>
+                    ⏱ {directApiMs}ms
+                  </span>
+                )}
+              </div>
+
+              {/* Two-column layout: request + response */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', alignItems:'start' }}>
+
+                {/* LEFT: Request body editor */}
+                <div>
+                  <div style={{ fontSize:'11px', fontWeight:700, color:c.sub, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span>Request Body (JSON)</span>
+                    {directMethod === 'GET' && <span style={{ color:'#64748B', fontStyle:'italic', fontSize:'10px', textTransform:'none' }}>GET requests have no body</span>}
+                  </div>
+                  <textarea
+                    className="input-focus"
+                    value={directRawJson}
+                    onChange={e => setDirectRawJson(e.target.value)}
+                    disabled={directMethod === 'GET'}
+                    rows={20}
+                    spellCheck={false}
+                    style={{
+                      width:'100%', boxSizing:'border-box',
+                      background: isDark ? '#0A1628' : '#F8FAFC',
+                      border:`1px solid ${c.tableBorder}`,
+                      borderRadius:'10px', padding:'14px', resize:'vertical',
+                      fontFamily:'JetBrains Mono, Cascadia Code, Consolas, monospace',
+                      fontSize:'12px', lineHeight:1.6, color: isDark?'#E2E8F0':'#1E293B',
+                      outline:'none', opacity: directMethod === 'GET' ? 0.4 : 1,
+                    }}
+                    placeholder={'{\n  "product_id": "FAB-001",\n  "disruption_probability": 0.85,\n  ...\n}'}
+                  />
+                </div>
+
+                {/* RIGHT: Response panel */}
+                <div>
+                  <div style={{ fontSize:'11px', fontWeight:700, color:c.sub, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span>Response</span>
+                    {directApiResult && (
+                      <span style={{
+                        padding:'3px 10px', borderRadius:'20px', fontSize:'10.5px', fontWeight:800,
+                        background: directApiResult.ok ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                        color: directApiResult.ok ? '#34D399' : '#F87171',
+                        border: `1px solid ${directApiResult.ok ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
+                      }}>
+                        {directApiResult.status} {directApiResult.ok ? 'OK' : 'Error'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Idle state */}
+                  {!directApiResult && !directApiError && !isExecutingDirectApi && (
+                    <div style={{ background: isDark?'#0A1628':'#F8FAFC', border:`1px dashed ${c.tableBorder}`, borderRadius:'10px', padding:'40px 20px', textAlign:'center', minHeight:'300px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'10px' }}>
+                      <span style={{ fontSize:'36px', opacity:.3 }}>🔌</span>
+                      <div style={{ fontSize:'13px', color:c.sub, opacity:.6 }}>Select a preset or type a request,<br/>then click Execute</div>
+                    </div>
+                  )}
+
+                  {/* Loading */}
+                  {isExecutingDirectApi && (
+                    <div style={{ background: isDark?'#0A1628':'#F8FAFC', border:`1px solid ${c.tableBorder}`, borderRadius:'10px', padding:'40px 20px', textAlign:'center', minHeight:'300px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}>
+                      <span style={{ fontSize:'28px', animation:'pulse-dot 1s infinite' }}>⚡</span>
+                      <div style={{ fontSize:'13px', color:c.sub }}>Calling FastAPI backend...</div>
+                    </div>
+                  )}
+
+                  {/* Error */}
+                  {directApiError && (
+                    <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.4)', borderRadius:'10px', padding:'20px', minHeight:'300px' }}>
+                      <div style={{ fontWeight:800, color:'#F87171', fontSize:'13px', marginBottom:'10px' }}>❌ Connection Error</div>
+                      <div style={{ fontFamily:'monospace', fontSize:'12px', color:'#FCA5A5', lineHeight:1.6, whiteSpace:'pre-wrap', wordBreak:'break-all' }}>{directApiError}</div>
+                      <div style={{ marginTop:'14px', fontSize:'11px', color:'#94A3B8' }}>Ensure the backend is running: <code style={{ color:'#60A5FA' }}>uvicorn app.main:app --port 8000</code></div>
+                    </div>
+                  )}
+
+                  {/* Success response */}
+                  {directApiResult && (
+                    <div style={{ background: isDark?'#0A1628':'#F8FAFC', border:`1px solid ${directApiResult.ok ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius:'10px', overflow:'hidden' }}>
+                      {/* response meta bar */}
+                      <div style={{ padding:'8px 14px', background: directApiResult.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:`1px solid ${c.tableBorder}` }}>
+                        <span style={{ fontFamily:'monospace', fontSize:'11px', color:c.sub }}>
+                          {directMethod} {directEndpoint}
+                        </span>
+                        <div style={{ display:'flex', gap:'8px' }}>
+                          <button className="btn-hover" onClick={() => navigator.clipboard.writeText(resultStr).then(() => showToast('✓ Copied to clipboard'))} style={{ padding:'3px 10px', borderRadius:'6px', fontSize:'10px', fontWeight:700, border:`1px solid ${c.tableBorder}`, background:'transparent', color:c.sub, cursor:'pointer' }}>
+                            📋 Copy
+                          </button>
+                        </div>
+                      </div>
+                      {/* highlighted JSON */}
+                      <pre style={{ margin:0, padding:'14px', fontFamily:'JetBrains Mono, Cascadia Code, Consolas, monospace', fontSize:'11.5px', lineHeight:1.65, color: isDark?'#E2E8F0':'#1E293B', overflowX:'auto', maxHeight:'420px', overflowY:'auto', whiteSpace:'pre-wrap', wordBreak:'break-word' }}
+                        dangerouslySetInnerHTML={{ __html: highlight(resultStr) }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Endpoint reference card */}
+            <div style={styles.card}>
+              <div style={styles.cardHeader}>
+                <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                  <div style={styles.cardIconBadge}>📚</div>
+                  <div>
+                    <div style={styles.cardTitle}>Endpoint Reference — Inventory Guardian API</div>
+                    <div style={styles.cardSub}>All routes prefixed with /api/inventory · FastAPI auto-docs at /docs</div>
+                  </div>
+                </div>
+                <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer" style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'11.5px', fontWeight:700, background:'rgba(37,99,235,0.15)', color:'#60A5FA', border:'1px solid rgba(37,99,235,0.3)', textDecoration:'none' }}>
+                  Open Swagger UI ↗
+                </a>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))', gap:'12px' }}>
+                {[
+                  { method:'GET',  path:'/api/inventory/health',              desc:'Module health, version, upstream mode' },
+                  { method:'GET',  path:'/api/inventory/products',             desc:'Full monitored SKU catalog with demand & risk feeds' },
+                  { method:'POST', path:'/api/inventory/products',             desc:'Create new raw material SKU (CRUD)' },
+                  { method:'PUT',  path:'/api/inventory/products/{id}',        desc:'Update existing SKU parameters (CRUD)' },
+                  { method:'DELETE',path:'/api/inventory/products/{id}',       desc:'Remove SKU from monitoring (CRUD)' },
+                  { method:'GET',  path:'/api/inventory/summary',              desc:'Executive KPI summary (service level, shortages)' },
+                  { method:'POST', path:'/api/inventory/optimize',             desc:'Run disruption-aware inventory optimization' },
+                  { method:'POST', path:'/api/inventory/optimize/detailed',    desc:'Full policy metadata: SS, ROP, ROQ, risk level' },
+                  { method:'POST', path:'/api/inventory/scenario',             desc:'Stress-test across Normal / Moderate / Severe scenarios' },
+                  { method:'GET',  path:'/api/inventory/production-interface', desc:'Module 4 (Line Optimizer) handoff contract records' },
+                  { method:'GET',  path:'/api/inventory/research-results',     desc:'Benchmark metrics: 3-policy comparison, XGBoost scores' },
+                ].map((ep, i) => (
+                  <div key={i} style={{ background:c.subCard, border:`1px solid ${c.subCardBorder}`, borderRadius:'10px', padding:'12px 14px', display:'flex', gap:'10px', alignItems:'flex-start', cursor:'pointer' }}
+                    onClick={() => { setDirectEndpoint(ep.path.replace(/{id}/g, 'FAB-001')); setDirectMethod(ep.method); setDirectRawJson(''); setDirectApiResult(null); }}
+                  >
+                    <span style={{ padding:'3px 8px', borderRadius:'5px', fontSize:'9.5px', fontWeight:900, background:`${methodColor[ep.method]}20`, color:methodColor[ep.method] || '#94A3B8', border:`1px solid ${methodColor[ep.method] || '#94A3B8'}40`, flexShrink:0, marginTop:'1px' }}>
+                      {ep.method}
+                    </span>
+                    <div>
+                      <div style={{ fontFamily:'monospace', fontSize:'11.5px', fontWeight:700, color:c.title, marginBottom:'3px' }}>{ep.path}</div>
+                      <div style={{ fontSize:'10.5px', color:c.sub }}>{ep.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        );
+      })()}
 
       {/* ═══ XAI MODAL ═══════════════════════════════════════════════════════ */}
       {xaiModalSku && (
