@@ -372,6 +372,18 @@ function ActivityFeed({ productsList, isDark }) {
   );
 }
 
+// ─── Module 4 Production Line Contract Metadata ──────────────────────────────
+const LINE_METADATA = {
+  'FAB-001': { line: 'Line 01 · T-Shirts & Polos', shortLine: 'Line 01', shift: 'Shift A (06:00)', shiftId: 'Shift A', order: 'WO-MAS-7721', rate: '850 pcs/hr', downtimeCost: 3500, category: 'Fabrics' },
+  'DYE-008': { line: 'Dyeing Bay 03 · Continuous Vat', shortLine: 'Bay 03', shift: 'Shift A (06:00)', shiftId: 'Shift A', order: 'WO-MAS-8842', rate: '1,200 kg/hr', downtimeCost: 4200, category: 'Dyes & Chemicals' },
+  'TRM-015': { line: 'Line 04 · Outerwear & Zips', shortLine: 'Line 04', shift: 'Shift B (14:00)', shiftId: 'Shift B', order: 'WO-MAS-6910', rate: '420 pcs/hr', downtimeCost: 2800, category: 'Accessories' },
+  'YRN-042': { line: 'Knitting Unit 02 · Circular 28G', shortLine: 'Knit 02', shift: 'Shift A (06:00)', shiftId: 'Shift A', order: 'WO-MAS-9934', rate: '940 kg/hr', downtimeCost: 1900, category: 'Fabrics' },
+  'FAB-002': { line: 'Line 02 · Sportswear Leggings', shortLine: 'Line 02', shift: 'Shift B (14:00)', shiftId: 'Shift B', order: 'WO-MAS-5541', rate: '680 pcs/hr', downtimeCost: 4800, category: 'Fabrics' },
+  'TRM-022': { line: 'Line 05 · Jackets & Hoodies', shortLine: 'Line 05', shift: 'Shift A (06:00)', shiftId: 'Shift A', order: 'WO-MAS-3312', rate: '510 pcs/hr', downtimeCost: 3100, category: 'Accessories' },
+  'CHM-005': { line: 'Finishing & Wash Hub 01', shortLine: 'Wash 01', shift: 'Shift C (22:00)', shiftId: 'Shift C', order: 'WO-MAS-2245', rate: '1,500 L/hr', downtimeCost: 2400, category: 'Dyes & Chemicals' },
+  'YRN-018': { line: 'Sewing Line 07 · Innerwear Basics', shortLine: 'Line 07', shift: 'Shift B (14:00)', shiftId: 'Shift B', order: 'WO-MAS-1198', rate: '1,100 pcs/hr', downtimeCost: 2600, category: 'Fabrics' },
+};
+
 export default function InventoryOptimizationView() {
   // ── Theme ─────────────────────────────────────────────────────────────────
   const [theme, setTheme] = useState(() => {
@@ -406,6 +418,8 @@ export default function InventoryOptimizationView() {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [sortCol, setSortCol] = useState('disruption_probability');
   const [sortDir, setSortDir] = useState('desc');
+  const [availabilityFilter, setAvailabilityFilter] = useState('ALL');
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
 
   // ── Modals & PO ───────────────────────────────────────────────────────────
   const [xaiModalSku, setXaiModalSku] = useState(null);
@@ -413,7 +427,15 @@ export default function InventoryOptimizationView() {
   const [freightMode, setFreightMode] = useState('sea');
   const [dispatchedPOs, setDispatchedPOs] = useState({});
   const [showPoHistory, setShowPoHistory] = useState(false);
+  const [drawerItem, setDrawerItem] = useState(null);
   const [toasts, setToasts] = useState([]);
+
+  // ── Module 4 Readiness & Line Handoff ─────────────────────────────────────
+  const [readinessFilter, setReadinessFilter] = useState('ALL');
+  const [readinessShift, setReadinessShift] = useState('ALL');
+  const [simulateExpeditedArrival, setSimulateExpeditedArrival] = useState(false);
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [releasedGates, setReleasedGates] = useState({});
 
   // ── Direct API Tester ─────────────────────────────────────────────────────
   const [directParams, setDirectParams] = useState({
@@ -726,6 +748,47 @@ export default function InventoryOptimizationView() {
     showToast('✓ ERP Replenishment CSV exported successfully');
   }, [productsList, calc, disruptionProb, leadTimeVar, demandSurge, serviceLevel, showToast]);
 
+  // ── Module 4 Integration Contract CSV Export ─────────────────────────────
+  const downloadReadinessCSV = useCallback(() => {
+    if (!productionInterfaceData || !productionInterfaceData.length) {
+      showToast('No production readiness records to export.', 'error');
+      return;
+    }
+    const headers = [
+      'Product_SKU', 'Material_Name', 'Work_Order', 'Target_Line', 'Assigned_Shift',
+      'Required_Units', 'Available_Units', 'Shortage_Units', 'Fulfillment_Pct',
+      'Readiness_Flag', 'Line_Idle_Risk_USD_Hr', 'Recommended_Action'
+    ];
+    const rows = productionInterfaceData.map(item => {
+      const isSim = simulateExpeditedArrival || Boolean(releasedGates[item.product_id]);
+      const isReady = isSim ? true : Boolean(item.material_availability_flag);
+      const req = item.material_requirement || 0;
+      const avail = isSim ? Math.max(req, item.available_inventory || 0) : (item.available_inventory || 0);
+      const shortage = isSim ? 0 : (item.material_shortage || 0);
+      const pct = Math.min(100, Math.round((avail / Math.max(1, req)) * 100));
+      const meta = LINE_METADATA[item.product_id] || { line: 'Line 01', shift: 'Shift A', order: 'WO-MAS-001', downtimeCost: 3000 };
+      const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+      return [
+        esc(item.product_id), esc(item.product_name || ''), esc(meta.order), esc(meta.line), esc(meta.shift),
+        req, avail, shortage, `${pct}%`,
+        isReady ? 'PRODUCTION_READY' : 'GATED_SHORTAGE',
+        meta.downtimeCost,
+        esc(isReady ? 'Ready for line allocation' : 'Trigger expedited dispatch / Reschedule line')
+      ].join(',');
+    });
+    const csv = [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Inventory_to_Production_Scheduling_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('✓ Inventory_to_Production_Scheduling.csv exported successfully');
+  }, [productionInterfaceData, simulateExpeditedArrival, releasedGates, showToast]);
+
   // ── ERP Export: PDF Executive Summary ────────────────────────────────────
   const handlePrintPDF = useCallback(() => {
     const now = new Date();
@@ -846,7 +909,11 @@ export default function InventoryOptimizationView() {
       const catOk = selectedCategory === 'ALL' || item.category === selectedCategory;
       const srchOk = item.product_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
                      item.product_name.toLowerCase().includes(searchQuery.toLowerCase());
-      return catOk && srchOk;
+      const hasShortage = item.current_inventory < item.forecasted_demand;
+      const availOk = availabilityFilter === 'ALL'
+        || (availabilityFilter === 'SHORTAGE' && hasShortage)
+        || (availabilityFilter === 'READY' && !hasShortage);
+      return catOk && srchOk && availOk;
     });
     list = [...list].sort((a, b) => {
       let av, bv;
@@ -858,7 +925,7 @@ export default function InventoryOptimizationView() {
       return sortDir === 'asc' ? av - bv : bv - av;
     });
     return list;
-  }, [productsList, selectedCategory, searchQuery, sortCol, sortDir]);
+  }, [productsList, selectedCategory, searchQuery, sortCol, sortDir, availabilityFilter]);
 
   // ── Critical SKUs alert ───────────────────────────────────────────────────
   const criticalSkus = useMemo(() =>
@@ -1000,6 +1067,8 @@ export default function InventoryOptimizationView() {
         @keyframes slide-up  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes toast-shrink { from{width:100%} to{width:0%} }
         @keyframes badge-pop { 0%{transform:scale(0.8)} 100%{transform:scale(1)} }
+        @keyframes slide-drawer { from{transform:translateX(100%)} to{transform:translateX(0)} }
+        @keyframes fade-backdrop { from{opacity:0} to{opacity:1} }
         .row-hover:hover { background: ${isDark ? 'rgba(59,130,246,0.1)' : 'rgba(37,99,235,0.05)'} !important; }
         .th-sort { cursor:pointer; user-select:none; }
         .th-sort:hover { color: ${isDark ? '#F1F5F9' : '#0B1F3A'} !important; }
@@ -1363,21 +1432,98 @@ export default function InventoryOptimizationView() {
               </div>
             </div>
 
-            {/* Category chips */}
-            <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'16px' }}>
-              {CATS.map(cat=>(
-                <button key={cat} className="chip-hover btn-hover" onClick={()=>setSelectedCategory(cat)} style={{
-                  padding:'5px 14px', borderRadius:'20px', fontSize:'11.5px', fontWeight:700, border:'1px solid',
-                  background: selectedCategory===cat ? '#2563EB' : c.tagBg,
-                  color:       selectedCategory===cat ? '#FFFFFF'  : c.sub,
-                  borderColor: selectedCategory===cat ? '#2563EB'  : c.tagBorder,
-                  cursor:'pointer', transition:'all .15s',
-                  boxShadow:   selectedCategory===cat ? '0 2px 10px rgba(37,99,235,.35)' : 'none',
-                }}>{cat}</button>
-              ))}
-              <span style={{ marginLeft:'auto', fontSize:'11px', color:c.sub, alignSelf:'center' }}>
-                {filteredProducts.length} SKU{filteredProducts.length!==1?'s':''} shown · sorted by {sortCol} {sortDir==='asc'?'↑':'↓'}
-              </span>
+            {/* Filter ribbons: Categories & Availability Quick-Toggle */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'12px', marginBottom:'16px' }}>
+              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                {CATS.map(cat=>(
+                  <button key={cat} className="chip-hover btn-hover" onClick={()=>setSelectedCategory(cat)} style={{
+                    padding:'5px 14px', borderRadius:'20px', fontSize:'11.5px', fontWeight:700, border:'1px solid',
+                    background: selectedCategory===cat ? '#2563EB' : c.tagBg,
+                    color:       selectedCategory===cat ? '#FFFFFF'  : c.sub,
+                    borderColor: selectedCategory===cat ? '#2563EB'  : c.tagBorder,
+                    cursor:'pointer', transition:'all .15s',
+                    boxShadow:   selectedCategory===cat ? '0 2px 10px rgba(37,99,235,.35)' : 'none',
+                  }}>{cat}</button>
+                ))}
+              </div>
+
+              {/* Availability Filter Chips */}
+              <div style={{ display:'flex', gap:'6px', alignItems:'center', background: isDark?'rgba(0,0,0,0.25)':'#F1F5F9', padding:'4px 10px', borderRadius:'14px', border:`1px solid ${c.tagBorder}` }}>
+                <span style={{ fontSize:'10.5px', fontWeight:700, color:c.sub, marginRight:'2px' }}>Filter Availability:</span>
+                {[
+                  { id: 'ALL', label: 'All SKUs', color: '#60A5FA' },
+                  { id: 'SHORTAGE', label: '⚠ Shortages', color: '#EF4444' },
+                  { id: 'READY', label: '✓ In Stock', color: '#10B981' },
+                ].map(af => (
+                  <button
+                    key={af.id}
+                    onClick={() => setAvailabilityFilter(af.id)}
+                    style={{
+                      padding:'3px 10px',
+                      borderRadius:'10px',
+                      fontSize:'11px',
+                      fontWeight: availabilityFilter===af.id ? 800 : 600,
+                      cursor:'pointer',
+                      background: availabilityFilter===af.id ? (isDark?'#1E293B':'#FFFFFF') : 'transparent',
+                      color: availabilityFilter===af.id ? af.color : c.sub,
+                      border: availabilityFilter===af.id ? `1px solid ${af.color}60` : '1px solid transparent',
+                      boxShadow: availabilityFilter===af.id ? `0 2px 6px ${af.color}25` : 'none',
+                      transition:'all .15s ease',
+                    }}
+                  >
+                    {af.label}
+                  </button>
+                ))}
+                <span style={{ marginLeft:'8px', fontSize:'10.5px', color:c.sub, borderLeft:`1px solid ${c.tagBorder}`, paddingLeft:'8px' }}>
+                  {filteredProducts.length} shown
+                </span>
+              </div>
+
+              {/* View Switcher: Cards vs Table */}
+              <div style={{ display:'flex', background: isDark?'rgba(0,0,0,0.3)':'#F1F5F9', padding:'3px', borderRadius:'10px', border:`1px solid ${c.tagBorder}` }}>
+                <button
+                  onClick={() => setViewMode('cards')}
+                  style={{
+                    padding:'5px 12px',
+                    borderRadius:'8px',
+                    fontSize:'11.5px',
+                    fontWeight: viewMode==='cards' ? 800 : 600,
+                    cursor:'pointer',
+                    background: viewMode==='cards' ? '#2563EB' : 'transparent',
+                    color: viewMode==='cards' ? '#FFFFFF' : c.sub,
+                    border:'none',
+                    display:'flex',
+                    alignItems:'center',
+                    gap:'5px',
+                    boxShadow: viewMode==='cards' ? '0 2px 8px rgba(37,99,235,0.4)' : 'none',
+                    transition:'all .15s ease',
+                  }}
+                  title="Card Grid layout with zero overlaps"
+                >
+                  <span>⊞</span> Bento Cards
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  style={{
+                    padding:'5px 12px',
+                    borderRadius:'8px',
+                    fontSize:'11.5px',
+                    fontWeight: viewMode==='table' ? 800 : 600,
+                    cursor:'pointer',
+                    background: viewMode==='table' ? '#2563EB' : 'transparent',
+                    color: viewMode==='table' ? '#FFFFFF' : c.sub,
+                    border:'none',
+                    display:'flex',
+                    alignItems:'center',
+                    gap:'5px',
+                    boxShadow: viewMode==='table' ? '0 2px 8px rgba(37,99,235,0.4)' : 'none',
+                    transition:'all .15s ease',
+                  }}
+                  title="Dense tabular spreadsheet view"
+                >
+                  <span>☰</span> Dense Table
+                </button>
+              </div>
             </div>
 
             {/* PO History Panel */}
@@ -1397,95 +1543,369 @@ export default function InventoryOptimizationView() {
               </div>
             )}
 
-            {/* Table */}
-            <div style={styles.tableWrapper}>
-              <table style={styles.table}>
-                <thead>
-                  <tr style={styles.theadRow}>
-                    <th style={styles.th}>SKU & Name</th>
-                    <th style={styles.th}>Category</th>
-                    <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('current_inventory')}>Current Stock <SortIcon col="current_inventory"/></th>
-                    <th style={styles.thRight}>14d Forecast</th>
-                    <th className="th-sort" style={styles.thCenter} onClick={()=>handleSort('disruption_probability')}>Risk <SortIcon col="disruption_probability"/></th>
-                    <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('safety_stock')}>Safety Stock <SortIcon col="safety_stock"/></th>
-                    <th style={styles.thRight}>ROP</th>
-                    <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('roq')}>ROQ <SortIcon col="roq"/></th>
-                    <th style={styles.thCenter}>Availability</th>
-                    <th style={{ ...styles.thCenter, position:'sticky', right:0, background: isDark?'#0A1626':'#F1F5F9', zIndex:2 }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredProducts.map((item, idx) => {
-                    const isSelected = item.product_id === selectedSku;
-                    const hasShortage = item.current_inventory < item.forecasted_demand;
-                    const isDispatched = !!dispatchedPOs[item.product_id];
-                    const rp = item.disruption_probability;
-                    const skuSS = Math.round(item.forecasted_demand * 0.35);
-                    const healthPct = Math.min(1, item.current_inventory / Math.max(1, skuSS));
-                    const healthColor = healthPct < 0.5 ? '#EF4444' : healthPct < 0.8 ? '#F59E0B' : '#10B981';
-                    const rowBg = isSelected
-                      ? (isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF')
-                      : (isDark ? (idx%2===0?'#0F172A':'#0B1526') : (idx%2===0?'#FFFFFF':'#F8FAFC'));
-                    return (
-                      <tr key={item.product_id} className="row-hover" onClick={()=>setSelectedSku(item.product_id)}
-                        style={{ ...styles.tr, backgroundColor:rowBg, borderLeft: isSelected?'3px solid #3B82F6':'3px solid transparent', cursor:'pointer' }}>
-                        <td style={styles.td}>
-                          <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                            <MaterialThumb category={item.category} isDark={isDark}/>
+            {/* View Mode 1: Modern Bento Cards View (Zero Overlaps, Responsive) */}
+            {viewMode === 'cards' ? (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+                gap: '16px',
+              }}>
+                {filteredProducts.map((item) => {
+                  const isSelected = item.product_id === selectedSku;
+                  const hasShortage = item.current_inventory < item.forecasted_demand;
+                  const isDispatched = !!dispatchedPOs[item.product_id];
+                  const rp = item.disruption_probability;
+                  const skuSS = Math.round(item.forecasted_demand * 0.35);
+                  const healthPct = Math.min(1, item.current_inventory / Math.max(1, skuSS));
+                  const healthColor = healthPct < 0.5 ? '#EF4444' : healthPct < 0.8 ? '#F59E0B' : '#10B981';
+                  const roq = Math.round(item.forecasted_demand * 7 * (1 + item.disruption_probability));
+
+                  const binLoc = item.product_id.startsWith('FAB') ? 'MAS Colombo · Bay 02 · Rack 14'
+                    : item.product_id.startsWith('DYE') ? 'MAS Colombo · Chemical Safe Vault 08'
+                    : item.product_id.startsWith('PKG') ? 'MAS Logistics Center · High-Bay 21'
+                    : 'MAS Trim Stores · Drawer Shelf 05';
+
+                  return (
+                    <div
+                      key={item.product_id}
+                      className="kpi-hover"
+                      onClick={() => { setSelectedSku(item.product_id); setDrawerItem(item); }}
+                      style={{
+                        background: isDark
+                          ? (isSelected ? 'linear-gradient(145deg, #13233D, #0D1B2E)' : '#0D1B2E')
+                          : (isSelected ? '#F0F7FF' : '#FFFFFF'),
+                        border: `1.5px solid ${isSelected ? '#3B82F6' : (hasShortage ? (isDark ? 'rgba(239,68,68,0.35)' : '#FECACA') : c.cardBorder)}`,
+                        borderRadius: '16px',
+                        padding: '18px 20px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '14px',
+                        boxShadow: isSelected
+                          ? (isDark ? '0 0 24px rgba(59,130,246,0.25)' : '0 8px 24px rgba(37,99,235,0.12)')
+                          : (isDark ? '0 4px 16px rgba(0,0,0,0.2)' : '0 2px 10px rgba(15,23,42,0.04)'),
+                        transition: 'all .2s ease',
+                        position: 'relative',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* Top Status Accent Line */}
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: '3px',
+                        background: hasShortage
+                          ? 'linear-gradient(to right, #EF4444, #F59E0B)'
+                          : 'linear-gradient(to right, #10B981, #059669)',
+                      }} />
+
+                      {/* Header: Thumbnail + SKU + Category */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <MaterialThumb category={item.category} isDark={isDark} />
                             <div>
-                              <div style={{ fontWeight:700, color:c.title, fontSize:'12.5px' }}>{item.product_id}</div>
-                              <div style={{ fontSize:'10.5px', color:c.sub, marginTop:'2px' }}>{item.product_name}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontWeight: 800, color: isDark ? '#60A5FA' : '#2563EB', fontSize: '14px', letterSpacing: '.02em' }}>
+                                  {item.product_id}
+                                </span>
+                                <span style={{ fontSize: '9.5px', color: c.sub, background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', border: `1px solid ${c.tagBorder}`, padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                  Inspect ↗
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '13px', fontWeight: 700, color: c.title, marginTop: '2px', lineHeight: 1.3 }}>
+                                {item.product_name}
+                              </div>
                             </div>
                           </div>
-                        </td>
-                        <td style={styles.td}><span style={styles.categoryChip}>{item.category}</span></td>
-                        <td style={styles.tdRight}>
-                          <div style={{ fontWeight:700, color:c.title }}>{item.current_inventory.toLocaleString()} <span style={{ fontSize:'10px', color:c.sub }}>{item.unit}</span></div>
-                          {/* Stock health bar */}
-                          <div style={{ marginTop:'5px', height:'4px', background: isDark?'#1E293B':'#E2E8F0', borderRadius:'2px', overflow:'hidden', width:'80px', marginLeft:'auto' }}>
-                            <div style={{ height:'100%', width:`${Math.min(100,healthPct*100)}%`, background:healthColor, borderRadius:'2px', transition:'width .6s ease' }} />
-                          </div>
-                          <div style={{ fontSize:'9px', color:healthColor, textAlign:'right', marginTop:'2px', fontWeight:700 }}>{Math.round(healthPct*100)}% of SS</div>
-                        </td>
-                        <td style={styles.tdRight}><span style={{ color:c.sub }}>{item.forecasted_demand.toLocaleString()} {item.unit}</span></td>
-                        <td style={styles.tdCenter}>
-                          <span style={{ ...styles.badge, background: rp>=.7?(isDark?'rgba(239,68,68,.2)':'#FEE2E2'):rp>=.35?(isDark?'rgba(245,158,11,.2)':'#FEF3C7'):(isDark?'rgba(16,185,129,.2)':'#DCFCE7'), color: rp>=.7?(isDark?'#FCA5A5':'#991B1B'):rp>=.35?(isDark?'#FDE047':'#92400E'):(isDark?'#6EE7B7':'#166534'), border:`1px solid ${rp>=.7?(isDark?'rgba(239,68,68,.4)':'#FCA5A5'):rp>=.35?(isDark?'rgba(245,158,11,.4)':'#FCD34D'):(isDark?'rgba(16,185,129,.4)':'#86EFAC')}` }}>
-                            {(rp*100).toFixed(0)}%
+                        </div>
+
+                        {/* Category & MAS Location */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10.5px', color: c.sub, marginBottom: '12px' }}>
+                          <span style={styles.categoryChip}>{item.category}</span>
+                          <span style={{ fontSize: '10px', color: c.sub }}>📍 {binLoc}</span>
+                        </div>
+
+                        {/* Availability & Deficit Banner */}
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '8px 12px',
+                          borderRadius: '10px',
+                          background: hasShortage
+                            ? (isDark ? 'rgba(239,68,68,0.14)' : '#FEF2F2')
+                            : (isDark ? 'rgba(16,185,129,0.14)' : '#F0FDF4'),
+                          border: `1px solid ${hasShortage
+                            ? (isDark ? 'rgba(239,68,68,0.3)' : '#FECACA')
+                            : (isDark ? 'rgba(16,185,129,0.3)' : '#BBF7D0')}`,
+                          marginBottom: '12px',
+                        }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            fontWeight: 800,
+                            fontSize: '11px',
+                            color: hasShortage ? (isDark ? '#FCA5A5' : '#B91C1C') : (isDark ? '#6EE7B7' : '#15803D'),
+                          }}>
+                            <span style={{
+                              width: '6px',
+                              height: '6px',
+                              borderRadius: '50%',
+                              background: hasShortage ? '#EF4444' : '#10B981',
+                              animation: hasShortage ? 'pulse-dot 1.8s infinite' : 'none',
+                            }} />
+                            {hasShortage ? '⚠ Shortage Alert' : '✓ Buffer Ready'}
                           </span>
-                          <div style={{ width:'50px', height:'3px', background: isDark?'#1E293B':'#E2E8F0', borderRadius:'2px', overflow:'hidden', margin:'4px auto 0' }}>
-                            <div style={{ height:'100%', width:`${rp*100}%`, background: rp>=.7?'#EF4444':rp>=.35?'#F59E0B':'#10B981', borderRadius:'2px' }} />
-                          </div>
-                        </td>
-                        <td style={styles.tdRight}>
-                          <span style={{ color: isDark?'#60A5FA':'#2563EB', fontWeight:700 }}>{skuSS.toLocaleString()}</span>
-                          <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
-                        </td>
-                        <td style={styles.tdRight}><span style={{ color:c.title, fontWeight:600 }}>{Math.round(item.forecasted_demand*1.2).toLocaleString()}</span></td>
-                        <td style={styles.tdRight}>
-                          <span style={{ color: isDark?'#6EE7B7':'#059669', fontWeight:700 }}>{Math.round(item.forecasted_demand*7*(1+item.disruption_probability)).toLocaleString()}</span>
-                          <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
-                        </td>
-                        <td style={styles.tdCenter}>
-                          <span style={{ ...styles.badge, padding:'5px 10px', fontWeight:700, background: hasShortage?(isDark?'rgba(239,68,68,.2)':'#FEE2E2'):(isDark?'rgba(16,185,129,.2)':'#DCFCE7'), color: hasShortage?(isDark?'#FCA5A5':'#991B1B'):(isDark?'#6EE7B7':'#166534'), border:`1px solid ${hasShortage?(isDark?'rgba(239,68,68,.4)':'#FCA5A5'):(isDark?'rgba(16,185,129,.4)':'#86EFAC')}` }}>
-                            {hasShortage ? '⚠ Shortage' : '✓ Ready'}
+                          <span style={{
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            color: hasShortage ? (isDark ? '#F87171' : '#DC2626') : (isDark ? '#34D399' : '#16A34A'),
+                          }}>
+                            {hasShortage
+                              ? `-${(item.forecasted_demand - item.current_inventory).toLocaleString()} ${item.unit} gap`
+                              : `+${(item.current_inventory - skuSS).toLocaleString()} ${item.unit} buffer`}
                           </span>
-                        </td>
-                        <td style={{ ...styles.tdCenter, position:'sticky', right:0, background:rowBg, zIndex:1 }}>
-                          <div style={{ display:'flex', gap:'5px', justifyContent:'center', alignItems:'center' }}>
-                            <button className="btn-hover" onClick={e=>{e.stopPropagation();setXaiModalSku(item);}} style={styles.xaiBtn} title="XAI Formula Inspector">📐</button>
-                            <button className="btn-hover" onClick={e=>{e.stopPropagation();openEditModal(item);}} style={styles.editBtn} title="Edit Material">✏️</button>
-                            <button className="btn-hover" onClick={e=>{e.stopPropagation();setDeleteConfirmItem(item);}} style={styles.deleteBtn} title="Archive / Delete Material">🗑️</button>
-                            <button className="btn-hover" onClick={e=>{e.stopPropagation();setPoModalItem({...item,reorder_quantity:Math.round(item.forecasted_demand*7*(1+item.disruption_probability))});}} style={{ ...styles.poBtn, background: isDispatched?'#059669':(isDark?'#2563EB':'#0B1F3A') }}>
-                              {isDispatched ? '✓' : '⚡ PO'}
-                            </button>
+                        </div>
+
+                        {/* Stock Runway Progress Bar */}
+                        <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#F8FAFC', padding: '10px 12px', borderRadius: '10px', border: `1px solid ${c.tableBorder}`, marginBottom: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: c.sub, textTransform: 'uppercase', letterSpacing: '.04em' }}>PHYSICAL STOCK</span>
+                            <div>
+                              <strong style={{ fontSize: '16px', color: c.title }}>{item.current_inventory.toLocaleString()}</strong>
+                              <span style={{ fontSize: '10.5px', color: c.sub, marginLeft: '3px' }}>{item.unit}</span>
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <div style={{ height: '6px', background: isDark ? '#1E293B' : '#E2E8F0', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${Math.min(100, healthPct * 100)}%`, background: healthColor, borderRadius: '3px', transition: 'width .6s ease' }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5px', color: c.sub, marginTop: '4px' }}>
+                            <span style={{ color: healthColor, fontWeight: 700 }}>{Math.round(healthPct * 100)}% of SS target</span>
+                            <span>Target: {skuSS.toLocaleString()} {item.unit}</span>
+                          </div>
+                        </div>
+
+                        {/* Mini Telemetry Grid (3 Bento Tiles) */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
+                          <div style={{ background: isDark ? 'rgba(0,0,0,0.2)' : '#F1F5F9', padding: '8px 6px', borderRadius: '8px', border: `1px solid ${c.tableBorder}` }}>
+                            <div style={{ fontSize: '9px', fontWeight: 700, color: c.sub }}>14D DEMAND</div>
+                            <div style={{ fontSize: '13px', fontWeight: 800, color: c.title, marginTop: '2px' }}>
+                              {item.forecasted_demand.toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '8.5px', color: c.sub }}>{item.unit}</div>
+                          </div>
+
+                          <div style={{ background: isDark ? 'rgba(0,0,0,0.2)' : '#F1F5F9', padding: '8px 6px', borderRadius: '8px', border: `1px solid ${c.tableBorder}` }}>
+                            <div style={{ fontSize: '9px', fontWeight: 700, color: c.sub }}>DISRUPTION RISK</div>
+                            <div style={{ fontSize: '13px', fontWeight: 800, color: rp >= 0.7 ? '#EF4444' : rp >= 0.35 ? '#F59E0B' : '#10B981', marginTop: '2px' }}>
+                              {(rp * 100).toFixed(0)}%
+                            </div>
+                            <div style={{ fontSize: '8.5px', color: rp >= 0.7 ? '#F87171' : c.sub }}>{rp >= 0.7 ? 'Critical' : 'Nominal'}</div>
+                          </div>
+
+                          <div style={{ background: isDark ? 'rgba(0,0,0,0.2)' : '#F1F5F9', padding: '8px 6px', borderRadius: '8px', border: `1px solid ${c.tableBorder}` }}>
+                            <div style={{ fontSize: '9px', fontWeight: 700, color: c.sub }}>OPT. ROQ</div>
+                            <div style={{ fontSize: '13px', fontWeight: 800, color: '#10B981', marginTop: '2px' }}>
+                              {roq.toLocaleString()}
+                            </div>
+                            <div style={{ fontSize: '8.5px', color: c.sub }}>{item.unit}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Footer Toolbar */}
+                      <div style={{
+                        display: 'flex',
+                        gap: '6px',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingTop: '10px',
+                        borderTop: `1px solid ${c.tableBorder}`,
+                      }} onClick={e => e.stopPropagation()}>
+                        <button
+                          className="btn-hover"
+                          onClick={() => {
+                            setPoModalItem({ ...item, reorder_quantity: roq });
+                          }}
+                          style={{
+                            flex: 1,
+                            background: isDispatched ? '#059669' : (isDark ? 'linear-gradient(135deg,#1E40AF,#2563EB)' : 'linear-gradient(135deg,#2563EB,#1D4ED8)'),
+                            color: '#fff',
+                            border: 'none',
+                            padding: '7px 10px',
+                            borderRadius: '8px',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '5px',
+                            boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
+                          }}
+                        >
+                          {isDispatched ? '✓ PO Sent' : '⚡ Quick PO'}
+                        </button>
+                        <button
+                          className="btn-hover"
+                          onClick={() => openEditModal(item)}
+                          style={{ ...styles.editBtn, padding: '7px 9px', borderRadius: '8px' }}
+                          title="Edit Material in SQLite"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          className="btn-hover"
+                          onClick={() => setXaiModalSku(item)}
+                          style={{ ...styles.xaiBtn, padding: '7px 9px', borderRadius: '8px' }}
+                          title="XAI Formula Inspector"
+                        >
+                          📐
+                        </button>
+                        <button
+                          className="btn-hover"
+                          onClick={() => setDeleteConfirmItem(item)}
+                          style={{ ...styles.deleteBtn, padding: '7px 9px', borderRadius: '8px' }}
+                          title="Delete / Archive Material"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* View Mode 2: Dense Table View (Natural non-sticky Actions to eliminate overlaps) */
+              <div style={styles.tableWrapper}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr style={styles.theadRow}>
+                      <th style={styles.th}>SKU & Name</th>
+                      <th style={styles.th}>Category</th>
+                      <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('current_inventory')}>Current Stock <SortIcon col="current_inventory"/></th>
+                      <th style={{ ...styles.thCenter, minWidth:'150px' }}>Availability & Buffer</th>
+                      <th style={styles.thRight}>14d Forecast</th>
+                      <th className="th-sort" style={styles.thCenter} onClick={()=>handleSort('disruption_probability')}>Risk <SortIcon col="disruption_probability"/></th>
+                      <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('safety_stock')}>Safety Stock <SortIcon col="safety_stock"/></th>
+                      <th style={styles.thRight}>ROP</th>
+                      <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('roq')}>ROQ <SortIcon col="roq"/></th>
+                      <th style={{ ...styles.thCenter, minWidth:'150px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProducts.map((item, idx) => {
+                      const isSelected = item.product_id === selectedSku;
+                      const hasShortage = item.current_inventory < item.forecasted_demand;
+                      const isDispatched = !!dispatchedPOs[item.product_id];
+                      const rp = item.disruption_probability;
+                      const skuSS = Math.round(item.forecasted_demand * 0.35);
+                      const healthPct = Math.min(1, item.current_inventory / Math.max(1, skuSS));
+                      const healthColor = healthPct < 0.5 ? '#EF4444' : healthPct < 0.8 ? '#F59E0B' : '#10B981';
+                      const rowBg = isSelected
+                        ? (isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF')
+                        : (isDark ? (idx%2===0?'#0F172A':'#0B1526') : (idx%2===0?'#FFFFFF':'#F8FAFC'));
+                      return (
+                        <tr
+                          key={item.product_id}
+                          className="row-hover"
+                          onClick={() => { setSelectedSku(item.product_id); setDrawerItem(item); }}
+                          title="Click to view material deep-dive inspector & live actions"
+                          style={{ ...styles.tr, backgroundColor:rowBg, borderLeft: isSelected?'3px solid #3B82F6':'3px solid transparent', cursor:'pointer' }}
+                        >
+                          <td style={styles.td}>
+                            <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                              <MaterialThumb category={item.category} isDark={isDark}/>
+                              <div>
+                                <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                                  <span style={{ fontWeight:800, color: isDark ? '#60A5FA' : '#2563EB', fontSize:'13px', letterSpacing:'.01em' }}>
+                                    {item.product_id}
+                                  </span>
+                                  <span style={{ fontSize:'9.5px', color:c.sub, background: isDark?'rgba(255,255,255,0.06)':'#F1F5F9', border:`1px solid ${c.tagBorder}`, padding:'1px 5px', borderRadius:'4px', fontWeight:600 }}>
+                                    Inspect ↗
+                                  </span>
+                                </div>
+                                <div style={{ fontSize:'11px', color:c.sub, marginTop:'2px' }}>{item.product_name}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={styles.td}><span style={styles.categoryChip}>{item.category}</span></td>
+                          <td style={styles.tdRight}>
+                            <div style={{ fontWeight:700, color:c.title }}>{item.current_inventory.toLocaleString()} <span style={{ fontSize:'10px', color:c.sub }}>{item.unit}</span></div>
+                            {/* Stock health bar */}
+                            <div style={{ marginTop:'5px', height:'4px', background: isDark?'#1E293B':'#E2E8F0', borderRadius:'2px', overflow:'hidden', width:'80px', marginLeft:'auto' }}>
+                              <div style={{ height:'100%', width:`${Math.min(100,healthPct*100)}%`, background:healthColor, borderRadius:'2px', transition:'width .6s ease' }} />
+                            </div>
+                            <div style={{ fontSize:'9px', color:healthColor, textAlign:'right', marginTop:'2px', fontWeight:700 }}>{Math.round(healthPct*100)}% of SS</div>
+                          </td>
+
+                          {/* Availability & Buffer Health Dual-Tier Telemetry Widget */}
+                          <td style={{ ...styles.tdCenter, minWidth:'150px' }}>
+                            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'3px' }}>
+                              <span style={{
+                                display:'inline-flex',
+                                alignItems:'center',
+                                gap:'5px',
+                                padding:'4px 11px',
+                                borderRadius:'20px',
+                                fontWeight:800,
+                                fontSize:'11px',
+                                letterSpacing:'.02em',
+                                whiteSpace:'nowrap',
+                                background: hasShortage?(isDark?'rgba(239,68,68,.22)':'#FEE2E2'):(isDark?'rgba(16,185,129,.22)':'#DCFCE7'),
+                                color: hasShortage?(isDark?'#FCA5A5':'#991B1B'):(isDark?'#6EE7B7':'#166534'),
+                                border:`1px solid ${hasShortage?(isDark?'rgba(239,68,68,.45)':'#FCA5A5'):(isDark?'rgba(16,185,129,.45)':'#86EFAC')}`,
+                                boxShadow: hasShortage?'0 0 10px rgba(239,68,68,.2)':'0 0 10px rgba(16,185,129,.2)'
+                              }}>
+                                <span style={{ width:'6px', height:'6px', borderRadius:'50%', background: hasShortage?'#EF4444':'#10B981', animation: hasShortage?'pulse-dot 1.8s infinite':'none' }}/>
+                                {hasShortage ? '⚠ Shortage' : '✓ Stock Ready'}
+                              </span>
+                              <span style={{ fontSize:'10px', fontWeight:700, color: hasShortage?(isDark?'#F87171':'#DC2626'):(isDark?'#34D399':'#059669') }}>
+                                {hasShortage ? `-${(item.forecasted_demand - item.current_inventory).toLocaleString()} ${item.unit} gap` : `+${(item.current_inventory - skuSS).toLocaleString()} ${item.unit} buffer`}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td style={styles.tdRight}><span style={{ color:c.sub }}>{item.forecasted_demand.toLocaleString()} {item.unit}</span></td>
+                          <td style={styles.tdCenter}>
+                            <span style={{ ...styles.badge, background: rp>=.7?(isDark?'rgba(239,68,68,.2)':'#FEE2E2'):rp>=.35?(isDark?'rgba(245,158,11,.2)':'#FEF3C7'):(isDark?'rgba(16,185,129,.2)':'#DCFCE7'), color: rp>=.7?(isDark?'#FCA5A5':'#991B1B'):rp>=.35?(isDark?'#FDE047':'#92400E'):(isDark?'#6EE7B7':'#166534'), border:`1px solid ${rp>=.7?(isDark?'rgba(239,68,68,.4)':'#FCA5A5'):rp>=.35?(isDark?'rgba(245,158,11,.4)':'#FCD34D'):(isDark?'rgba(16,185,129,.4)':'#86EFAC')}` }}>
+                              {(rp*100).toFixed(0)}%
+                            </span>
+                            <div style={{ width:'50px', height:'3px', background: isDark?'#1E293B':'#E2E8F0', borderRadius:'2px', overflow:'hidden', margin:'4px auto 0' }}>
+                              <div style={{ height:'100%', width:`${rp*100}%`, background: rp>=.7?'#EF4444':rp>=.35?'#F59E0B':'#10B981', borderRadius:'2px' }} />
+                            </div>
+                          </td>
+                          <td style={styles.tdRight}>
+                            <span style={{ color: isDark?'#60A5FA':'#2563EB', fontWeight:700 }}>{skuSS.toLocaleString()}</span>
+                            <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
+                          </td>
+                          <td style={styles.tdRight}><span style={{ color:c.title, fontWeight:600 }}>{Math.round(item.forecasted_demand*1.2).toLocaleString()}</span></td>
+                          <td style={styles.tdRight}>
+                            <span style={{ color: isDark?'#6EE7B7':'#059669', fontWeight:700 }}>{Math.round(item.forecasted_demand*7*(1+item.disruption_probability)).toLocaleString()}</span>
+                            <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
+                          </td>
+                          <td style={{ ...styles.tdCenter, minWidth:'150px' }}>
+                            <div style={{ display:'flex', gap:'5px', justifyContent:'center', alignItems:'center' }}>
+                              <button className="btn-hover" onClick={e=>{e.stopPropagation();setXaiModalSku(item);}} style={styles.xaiBtn} title="XAI Formula Inspector">📐</button>
+                              <button className="btn-hover" onClick={e=>{e.stopPropagation();openEditModal(item);}} style={styles.editBtn} title="Edit Material">✏️</button>
+                              <button className="btn-hover" onClick={e=>{e.stopPropagation();setDeleteConfirmItem(item);}} style={styles.deleteBtn} title="Archive / Delete Material">🗑️</button>
+                              <button className="btn-hover" onClick={e=>{e.stopPropagation();setPoModalItem({...item,reorder_quantity:Math.round(item.forecasted_demand*7*(1+item.disruption_probability))});}} style={{ ...styles.poBtn, background: isDispatched?'#059669':(isDark?'#2563EB':'#0B1F3A') }}>
+                                {isDispatched ? '✓' : '⚡ PO'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1692,63 +2112,758 @@ export default function InventoryOptimizationView() {
         </div>
       )}
 
-      {/* ═══ TAB 3: PRODUCTION READINESS ════════════════════════════════════ */}
-      {activeTab === 'readiness' && (
-        <div style={styles.tabContent}>
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                <div style={styles.cardIconBadge}>🏭</div>
-                <div>
-                  <div style={styles.cardTitle}>Production Material Readiness & Module 4 Handoff</div>
-                  <div style={styles.cardSub}>Integration contract serving live readiness flags to the Line Optimizer</div>
+      {/* ═══ TAB 3: PRODUCTION READINESS & MODULE 4 HANDOFF ═══════════════ */}
+      {activeTab === 'readiness' && (() => {
+        // Enrich data with factory lines, shifts, and simulation overrides
+        const enrichedList = (productionInterfaceData || []).map(item => {
+          const isSim = simulateExpeditedArrival || Boolean(releasedGates[item.product_id]);
+          const meta = LINE_METADATA[item.product_id] || {
+            line: `Line ${Math.abs(item.product_id.charCodeAt(0) % 8) + 1} · Assembly`,
+            shortLine: `Line 0${Math.abs(item.product_id.charCodeAt(0) % 8) + 1}`,
+            shift: 'Shift A (06:00)',
+            shiftId: 'Shift A',
+            order: `WO-MAS-${item.product_id.replace(/[^a-zA-Z0-9]/g, '')}`,
+            rate: '750 pcs/hr',
+            downtimeCost: 3000,
+            category: 'Fabrics',
+          };
+          const req = item.material_requirement || 0;
+          const avail = isSim ? Math.max(req, item.available_inventory || 0) : (item.available_inventory || 0);
+          const shortage = isSim ? 0 : (item.material_shortage || 0);
+          const isReady = isSim ? true : Boolean(item.material_availability_flag);
+          const fulfillmentPct = Math.min(100, Math.round((avail / Math.max(1, req)) * 100));
+
+          return {
+            ...item,
+            meta,
+            req,
+            avail,
+            shortage,
+            isReady,
+            isSim,
+            fulfillmentPct,
+          };
+        });
+
+        // Filtering
+        const filteredList = enrichedList.filter(item => {
+          const statusOk = readinessFilter === 'ALL'
+            || (readinessFilter === 'GATED' && !item.isReady)
+            || (readinessFilter === 'READY' && item.isReady);
+          const shiftOk = readinessShift === 'ALL' || item.meta.shiftId === readinessShift;
+          return statusOk && shiftOk;
+        });
+
+        const totalItems = enrichedList.length;
+        const readyCount = enrichedList.filter(d => d.isReady).length;
+        const gatedCount = totalItems - readyCount;
+        const readinessPct = totalItems ? Math.round((readyCount / totalItems) * 100) : 0;
+        const totalShortage = enrichedList.reduce((acc, d) => acc + d.shortage, 0);
+        const totalDowntimeRisk = enrichedList.filter(d => !d.isReady).reduce((acc, d) => acc + d.meta.downtimeCost, 0);
+
+        return (
+          <div style={styles.tabContent}>
+            {/* 1. Module 3 -> Module 4 Handoff Architecture Ribbon */}
+            <div style={{
+              background: isDark ? 'linear-gradient(135deg,rgba(37,99,235,0.14),rgba(124,58,237,0.08))' : 'linear-gradient(135deg,#EFF6FF,#F5F3FF)',
+              border: `1px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`,
+              borderRadius: '16px',
+              padding: '16px 22px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '14px',
+              boxShadow: isDark ? '0 4px 20px rgba(0,0,0,0.3)' : '0 2px 10px rgba(37,99,235,0.06)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'linear-gradient(135deg,#1E40AF,#2563EB)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '13px', boxShadow: '0 4px 12px rgba(37,99,235,0.35)' }}>
+                    M3
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12.5px', fontWeight: 800, color: c.title }}>Module 3: Inventory Guardian</div>
+                    <div style={{ fontSize: '10.5px', color: c.sub }}>Adaptive Buffers & Upstream Disruption Telemetry</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', color: '#60A5FA', fontSize: '11px', fontWeight: 700, background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding: '6px 14px', borderRadius: '20px', border: `1px solid ${c.tagBorder}` }}>
+                  <span style={{ animation: 'pulse-dot 2s infinite', color: '#10B981', fontSize: '9px' }}>●</span>
+                  <span>Integration Event Bus (REST / JSON Contract)</span>
+                  <span>➔</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'linear-gradient(135deg,#7C3AED,#6D28D9)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '13px', boxShadow: '0 4px 12px rgba(124,58,237,0.35)' }}>
+                    M4
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12.5px', fontWeight: 800, color: c.title }}>Module 4: Production Line Optimizer</div>
+                    <div style={{ fontSize: '10.5px', color: c.sub }}>MAS Holdings Colombo Hub · Dynamic Line Scheduler</div>
+                  </div>
                 </div>
               </div>
-              <div style={{ ...styles.pillBtn, cursor:'default', background:'rgba(59,130,246,.12)', borderColor:'rgba(59,130,246,.3)', color: isDark?'#93C5FD':'#1E40AF' }}>
-                📄 Inventory_to_Production_Scheduling.csv
+
+              <div style={{ display: 'flex', gap: '9px', alignItems: 'center' }}>
+                <button
+                  onClick={() => setShowContractModal(true)}
+                  className="btn-hover"
+                  style={{
+                    background: isDark ? '#1E293B' : '#FFFFFF',
+                    color: isDark ? '#E2E8F0' : '#1E293B',
+                    border: `1px solid ${c.cardBorder}`,
+                    padding: '8px 13px',
+                    borderRadius: '8px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                  title="View live REST contract JSON payload"
+                >
+                  <span>🔍 View JSON Contract</span>
+                </button>
+                <button
+                  onClick={downloadReadinessCSV}
+                  className="btn-hover"
+                  style={{
+                    background: isDark ? 'linear-gradient(135deg,#1E40AF,#2563EB)' : 'linear-gradient(135deg,#2563EB,#1D4ED8)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '8px 15px',
+                    borderRadius: '8px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
+                  }}
+                  title="Export live integration contract to CSV"
+                >
+                  <span>📄 Download CSV Handoff</span>
+                </button>
               </div>
             </div>
 
-            {productionInterfaceData.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'60px 20px' }}>
-                <div style={{ fontSize:'40px', marginBottom:'12px' }}>📭</div>
-                <div style={{ fontWeight:700, fontSize:'15px', color:c.title, marginBottom:'6px' }}>No Production Interface Data</div>
-                <div style={{ fontSize:'12px', color:c.sub, marginBottom:'20px' }}>The backend hasn't returned readiness data yet. Check the FastAPI server at :8000</div>
-                <button className="btn-hover" onClick={fetchAll} style={styles.execBtn}>↺ Retry Fetch</button>
+            {/* 2. Executive Readiness KPI Strip (4 Bento Cards) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+              {/* KPI 1 */}
+              <div style={{ ...styles.subCard, padding: '16px 18px', borderLeft: `4px solid ${readinessPct >= 50 ? '#10B981' : '#EF4444'}` }}>
+                <div style={{ fontSize: '10px', fontWeight: 800, color: c.sub, letterSpacing: '.06em' }}>OVERALL LINE CLEARANCE</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '26px', fontWeight: 900, color: readinessPct >= 50 ? '#10B981' : '#EF4444' }}>
+                    {readyCount} / {totalItems}
+                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: c.sub }}>({readinessPct}%)</span>
+                </div>
+                <div style={{ marginTop: '8px', height: '5px', background: isDark ? '#1E293B' : '#E2E8F0', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${readinessPct}%`, background: readinessPct >= 50 ? '#10B981' : '#EF4444', transition: 'width .6s ease' }} />
+                </div>
+                <div style={{ fontSize: '10px', color: c.sub, marginTop: '6px' }}>
+                  {readyCount} Work Order{readyCount !== 1 ? 's' : ''} cleared for immediate loading
+                </div>
               </div>
-            ) : (
-              <div style={styles.tableWrapper}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr style={styles.theadRow}>
-                      {['Product SKU','Material Name','Required','Available On-Hand','Shortage','Readiness Flag','Recommended Action'].map(h=>(
-                        <th key={h} style={h==='Required'||h==='Available On-Hand'||h==='Shortage'?styles.thRight:h==='Readiness Flag'?styles.thCenter:styles.th}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {productionInterfaceData.map((item,idx)=>(
-                      <tr key={item.product_id} className="row-hover" style={{ ...styles.tr, backgroundColor: isDark?(idx%2===0?'#0F172A':'#0B1526'):(idx%2===0?'#FFFFFF':'#F8FAFC') }}>
-                        <td style={styles.td}><strong style={{ color:c.title }}>{item.product_id}</strong></td>
-                        <td style={styles.td}><span style={{ color:c.sub }}>{item.product_name}</span></td>
-                        <td style={styles.tdRight}><span style={{ color:c.title, fontWeight:600 }}>{item.material_requirement?.toLocaleString()}</span></td>
-                        <td style={styles.tdRight}><strong style={{ color:'#34D399' }}>{item.available_inventory?.toLocaleString()}</strong></td>
-                        <td style={styles.tdRight}><strong style={{ color:item.material_shortage>0?'#F87171':c.sub }}>{item.material_shortage?.toLocaleString()}</strong></td>
-                        <td style={styles.tdCenter}>
-                          <span style={{ ...styles.badge, padding:'5px 12px', fontWeight:700, background:item.material_availability_flag?(isDark?'rgba(16,185,129,.2)':'#DCFCE7'):(isDark?'rgba(239,68,68,.2)':'#FEE2E2'), color:item.material_availability_flag?(isDark?'#6EE7B7':'#166534'):(isDark?'#FCA5A5':'#991B1B'), border:`1px solid ${item.material_availability_flag?(isDark?'rgba(16,185,129,.5)':'#86EFAC'):(isDark?'rgba(239,68,68,.5)':'#FCA5A5')}` }}>
-                            {item.material_availability_flag ? '✓ PRODUCTION READY' : '⚠ SHORTAGE / GATE'}
-                          </span>
-                        </td>
-                        <td style={styles.td}><span style={{ fontSize:'11.5px', color:item.material_availability_flag?(isDark?'#6EE7B7':'#059669'):(isDark?'#FCA5A5':'#DC2626') }}>{item.material_availability_flag?'✓ Ready for line allocation (Shift A)':'⚡ Reschedule / Trigger expedited dispatch'}</span></td>
+
+              {/* KPI 2 */}
+              <div style={{ ...styles.subCard, padding: '16px 18px', borderLeft: '4px solid #EF4444' }}>
+                <div style={{ fontSize: '10px', fontWeight: 800, color: c.sub, letterSpacing: '.06em' }}>GATED / STARVED WORK ORDERS</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '26px', fontWeight: 900, color: gatedCount > 0 ? '#EF4444' : '#10B981' }}>
+                    {gatedCount}
+                  </span>
+                  <span style={{ fontSize: '12px', color: c.sub }}>Lines Blocked</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: gatedCount > 0 ? '#F87171' : '#34D399', marginTop: '6px', fontWeight: 600 }}>
+                  {gatedCount > 0 ? '⚠ Immediate procurement action required' : '✓ All line gates cleared'}
+                </div>
+              </div>
+
+              {/* KPI 3 */}
+              <div style={{ ...styles.subCard, padding: '16px 18px', borderLeft: '4px solid #F59E0B' }}>
+                <div style={{ fontSize: '10px', fontWeight: 800, color: c.sub, letterSpacing: '.06em' }}>CUMULATIVE SHORTAGE DEFICIT</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '26px', fontWeight: 900, color: totalShortage > 0 ? '#F59E0B' : '#10B981' }}>
+                    {totalShortage.toLocaleString()}
+                  </span>
+                  <span style={{ fontSize: '12px', color: c.sub }}>units needed</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: c.sub, marginTop: '6px' }}>
+                  Physical stock gap across factory
+                </div>
+              </div>
+
+              {/* KPI 4 */}
+              <div style={{ ...styles.subCard, padding: '16px 18px', borderLeft: '4px solid #8B5CF6' }}>
+                <div style={{ fontSize: '10px', fontWeight: 800, color: c.sub, letterSpacing: '.06em' }}>EST. LINE IDLE RISK EXPOSURE</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+                  <span style={{ fontSize: '26px', fontWeight: 900, color: '#A78BFA' }}>
+                    ${totalDowntimeRisk.toLocaleString()}
+                  </span>
+                  <span style={{ fontSize: '12px', color: c.sub }}>/ hour</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: c.sub, marginTop: '6px' }}>
+                  Labor & fixed manufacturing overhead
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Main Data Card with Interactive Filters & Simulator Switch */}
+            <div style={styles.card}>
+              <div style={styles.cardHeader}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={styles.cardIconBadge}>📋</div>
+                  <div>
+                    <div style={styles.cardTitle}>Live Material Handoff Matrix</div>
+                    <div style={styles.cardSub}>Direct telemetry feed consumed by MAS Line Optimizer for real-time shift scheduling</div>
+                  </div>
+                </div>
+
+                {/* Simulation toggle */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: simulateExpeditedArrival ? (isDark ? 'rgba(16,185,129,0.18)' : '#DCFCE7') : (isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9'),
+                  padding: '7px 14px',
+                  borderRadius: '10px',
+                  border: `1px solid ${simulateExpeditedArrival ? '#10B981' : c.tagBorder}`,
+                  transition: 'all .2s ease',
+                }}>
+                  <input
+                    type="checkbox"
+                    id="sim-air-toggle"
+                    checked={simulateExpeditedArrival}
+                    onChange={e => {
+                      setSimulateExpeditedArrival(e.target.checked);
+                      if (e.target.checked) {
+                        showToast('🚀 Air express freight simulated — all line gates cleared for production!');
+                      } else {
+                        showToast('Reverted to physical on-hand warehouse stock levels.');
+                      }
+                    }}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#10B981' }}
+                  />
+                  <label htmlFor="sim-air-toggle" style={{ fontSize: '11.5px', fontWeight: 700, color: simulateExpeditedArrival ? (isDark ? '#6EE7B7' : '#166534') : c.title, cursor: 'pointer', userSelect: 'none' }}>
+                    ✈️ Simulate Expedited Air Arrival (Test Gate Release)
+                  </label>
+                </div>
+              </div>
+
+              {/* Filter Ribbon */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                flexWrap: 'wrap',
+                marginBottom: '16px',
+                padding: '10px 14px',
+                background: isDark ? 'rgba(0,0,0,0.2)' : '#F8FAFC',
+                borderRadius: '10px',
+                border: `1px solid ${c.tableBorder}`,
+              }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: c.sub, marginRight: '4px' }}>Readiness Filter:</span>
+                  {[
+                    { id: 'ALL', label: `All Materials (${totalItems})` },
+                    { id: 'GATED', label: `🔴 Gated Shortages (${gatedCount})` },
+                    { id: 'READY', label: `🟢 Cleared (${readyCount})` },
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => setReadinessFilter(f.id)}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '8px',
+                        fontSize: '11.5px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        background: readinessFilter === f.id ? (isDark ? '#2563EB' : '#1E40AF') : (isDark ? '#1E293B' : '#FFFFFF'),
+                        color: readinessFilter === f.id ? '#FFFFFF' : c.sub,
+                        border: `1px solid ${readinessFilter === f.id ? '#3B82F6' : c.tagBorder}`,
+                        transition: 'all .15s ease',
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+
+                  <div style={{ height: '18px', width: '1px', background: c.tableBorder, margin: '0 6px' }} />
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: c.sub }}>Filter Shift:</span>
+                  {['ALL', 'Shift A', 'Shift B', 'Shift C'].map(sh => (
+                    <button
+                      key={sh}
+                      onClick={() => setReadinessShift(sh)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        background: readinessShift === sh ? (isDark ? 'rgba(255,255,255,0.12)' : '#E2E8F0') : 'transparent',
+                        color: readinessShift === sh ? c.title : c.sub,
+                        border: 'none',
+                        fontWeight: readinessShift === sh ? 700 : 500,
+                      }}
+                    >
+                      {sh}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ fontSize: '11px', color: c.sub }}>
+                  Showing <strong>{filteredList.length}</strong> of {totalItems} items
+                </div>
+              </div>
+
+              {/* Table */}
+              {filteredList.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '50px 20px' }}>
+                  <div style={{ fontSize: '36px', marginBottom: '10px' }}>🔍</div>
+                  <div style={{ fontWeight: 700, fontSize: '14px', color: c.title, marginBottom: '4px' }}>No Materials Match Selected Filters</div>
+                  <div style={{ fontSize: '12px', color: c.sub, marginBottom: '16px' }}>Try switching the readiness or shift filters above.</div>
+                  <button onClick={() => { setReadinessFilter('ALL'); setReadinessShift('ALL'); }} className="btn-hover" style={styles.execBtn}>Reset Filters</button>
+                </div>
+              ) : (
+                <div style={styles.tableWrapper}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr style={styles.theadRow}>
+                        <th style={styles.th}>Material & Work Order</th>
+                        <th style={styles.th}>Target Factory Line</th>
+                        <th style={styles.thRight}>Required</th>
+                        <th style={styles.thRight}>Available On-Hand</th>
+                        <th style={{ ...styles.th, minWidth: '160px' }}>Fulfillment Ratio</th>
+                        <th style={styles.thRight}>Shortage</th>
+                        <th style={styles.thCenter}>Readiness Gate</th>
+                        <th style={{ ...styles.thCenter, minWidth: '170px' }}>Recommended Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {filteredList.map((item, idx) => {
+                        const targetProd = productsList.find(p => p.product_id === item.product_id) || item;
+                        const isDispatched = Boolean(dispatchedPOs[item.product_id]);
+                        const barColor = item.fulfillmentPct >= 100 ? '#10B981' : item.fulfillmentPct >= 50 ? '#F59E0B' : '#EF4444';
+
+                        return (
+                          <tr
+                            key={item.product_id}
+                            className="row-hover"
+                            onClick={() => { setSelectedSku(item.product_id); setDrawerItem(targetProd); }}
+                            title="Click to view material deep-dive inspector"
+                            style={{
+                              ...styles.tr,
+                              cursor: 'pointer',
+                              backgroundColor: isDark ? (idx % 2 === 0 ? '#0F172A' : '#0B1526') : (idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'),
+                            }}
+                          >
+                            {/* SKU + Name + Work Order */}
+                            <td style={styles.td}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <MaterialThumb category={item.meta.category} isDark={isDark} />
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <strong style={{ color: isDark ? '#60A5FA' : '#2563EB', fontSize: '13px' }}>{item.product_id}</strong>
+                                    <span style={{ fontSize: '9.5px', color: c.sub, background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', border: `1px solid ${c.tagBorder}`, padding: '1px 5px', borderRadius: '4px', fontWeight: 600 }}>
+                                      {item.meta.order}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: c.sub, marginTop: '2px' }}>{item.product_name}</div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Target Line & Shift */}
+                            <td style={styles.td}>
+                              <div style={{ fontWeight: 600, color: c.title, fontSize: '12px' }}>{item.meta.line}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                                <span style={{ fontSize: '9.5px', color: '#60A5FA', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', border: `1px solid ${isDark ? 'rgba(37,99,235,0.3)' : '#BFDBFE'}`, padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                  {item.meta.shift}
+                                </span>
+                                <span style={{ fontSize: '10px', color: c.sub }}>({item.meta.rate})</span>
+                              </div>
+                            </td>
+
+                            {/* Required */}
+                            <td style={styles.tdRight}>
+                              <span style={{ color: c.title, fontWeight: 700, fontSize: '12.5px' }}>{item.req.toLocaleString()}</span>
+                            </td>
+
+                            {/* Available */}
+                            <td style={styles.tdRight}>
+                              <strong style={{ color: item.avail >= item.req ? '#10B981' : '#F59E0B', fontSize: '12.5px' }}>
+                                {item.avail.toLocaleString()}
+                              </strong>
+                              {item.isSim && (
+                                <div style={{ fontSize: '9px', color: '#34D399', fontWeight: 700 }}>Air Simulated</div>
+                              )}
+                            </td>
+
+                            {/* Fulfillment Progress Bar */}
+                            <td style={styles.td}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 700, marginBottom: '3px' }}>
+                                <span style={{ color: barColor }}>{item.fulfillmentPct}% Filled</span>
+                                <span style={{ color: c.sub }}>Target: {item.req.toLocaleString()}</span>
+                              </div>
+                              <div style={{ height: '6px', background: isDark ? '#1E293B' : '#E2E8F0', borderRadius: '3px', overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${item.fulfillmentPct}%`, background: barColor, borderRadius: '3px', transition: 'width .5s ease' }} />
+                              </div>
+                            </td>
+
+                            {/* Shortage */}
+                            <td style={styles.tdRight}>
+                              <strong style={{ color: item.shortage > 0 ? '#EF4444' : '#10B981', fontSize: '12.5px' }}>
+                                {item.shortage > 0 ? `-${item.shortage.toLocaleString()}` : '0 (None)'}
+                              </strong>
+                              {item.shortage > 0 && (
+                                <div style={{ fontSize: '9px', color: '#F87171' }}>Line Blocked</div>
+                              )}
+                            </td>
+
+                            {/* Readiness Gate Flag */}
+                            <td style={styles.tdCenter}>
+                              <span style={{
+                                ...styles.badge,
+                                padding: '5px 12px',
+                                fontWeight: 800,
+                                fontSize: '11px',
+                                letterSpacing: '.03em',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                background: item.isReady ? (isDark ? 'rgba(16,185,129,.2)' : '#DCFCE7') : (isDark ? 'rgba(239,68,68,.2)' : '#FEE2E2'),
+                                color: item.isReady ? (isDark ? '#6EE7B7' : '#166534') : (isDark ? '#FCA5A5' : '#991B1B'),
+                                border: `1px solid ${item.isReady ? (isDark ? 'rgba(16,185,129,.5)' : '#86EFAC') : (isDark ? 'rgba(239,68,68,.5)' : '#FCA5A5')}`,
+                              }}>
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: item.isReady ? '#10B981' : '#EF4444', animation: item.isReady ? 'none' : 'pulse-dot 1.8s infinite' }} />
+                                {item.isReady ? '✓ PRODUCTION READY' : '⛔ SHORTAGE / GATE'}
+                              </span>
+                            </td>
+
+                            {/* Action Buttons */}
+                            <td style={styles.tdCenter} onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                                {!item.isReady ? (
+                                  <>
+                                    <button
+                                      className="btn-hover"
+                                      onClick={() => {
+                                        setPoModalItem({
+                                          ...targetProd,
+                                          reorder_quantity: item.shortage || Math.round(targetProd.forecasted_demand * 0.35),
+                                        });
+                                        setFreightMode('air');
+                                      }}
+                                      style={{
+                                        background: isDispatched ? '#059669' : (isDark ? '#DC2626' : '#EF4444'),
+                                        color: '#fff',
+                                        border: 'none',
+                                        padding: '5px 10px',
+                                        borderRadius: '6px',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        boxShadow: '0 2px 6px rgba(239,68,68,0.35)',
+                                      }}
+                                      title="Dispatch emergency air freight purchase order"
+                                    >
+                                      {isDispatched ? '✓ Air PO Sent' : '⚡ Expedite Air PO'}
+                                    </button>
+                                    <button
+                                      className="btn-hover"
+                                      onClick={() => {
+                                        setReleasedGates(prev => ({ ...prev, [item.product_id]: true }));
+                                        showToast(`Work order ${item.meta.order} rescheduled to Shift C — line gate temporarily released.`);
+                                      }}
+                                      style={{
+                                        background: isDark ? '#1E293B' : '#E2E8F0',
+                                        color: isDark ? '#E2E8F0' : '#1E293B',
+                                        border: `1px solid ${c.cardBorder}`,
+                                        padding: '5px 8px',
+                                        borderRadius: '6px',
+                                        fontSize: '11px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                      }}
+                                      title="Reschedule shift to postpone material demand"
+                                    >
+                                      🔄 Reschedule
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    className="btn-hover"
+                                    onClick={() => showToast(`✓ Material ${item.product_id} officially released to ${item.meta.line} floor`)}
+                                    style={{
+                                      background: isDark ? 'rgba(16,185,129,0.18)' : '#DCFCE7',
+                                      color: isDark ? '#6EE7B7' : '#166534',
+                                      border: `1px solid ${isDark ? 'rgba(16,185,129,0.4)' : '#86EFAC'}`,
+                                      padding: '5px 12px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    ✓ Floor Cleared
+                                  </button>
+                                )}
+                                <button
+                                  className="btn-hover"
+                                  onClick={() => { setSelectedSku(item.product_id); setDrawerItem(targetProd); }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: `1px solid ${c.tagBorder}`,
+                                    color: c.sub,
+                                    padding: '5px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    cursor: 'pointer',
+                                  }}
+                                  title="Inspect full SKU parameters"
+                                >
+                                  📋
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* 4. MAS Colombo Manufacturing Lines Scheduling Board */}
+            <div style={{ ...styles.card, marginTop: '20px' }}>
+              <div style={styles.cardHeader}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={styles.cardIconBadge}>🏭</div>
+                  <div>
+                    <div style={styles.cardTitle}>MAS Holdings Colombo Hub — Factory Line Operations Cockpit</div>
+                    <div style={styles.cardSub}>Visual status of all 8 production line bays mapped to material feed availability</div>
+                  </div>
+                </div>
+                <span style={{ fontSize: '11px', color: '#10B981', fontWeight: 700, background: isDark ? 'rgba(16,185,129,0.15)' : '#DCFCE7', padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.4)' }}>
+                  ● Shopfloor Telemetry Active
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+                {enrichedList.map(item => {
+                  const targetProd = productsList.find(p => p.product_id === item.product_id) || item;
+                  return (
+                    <div
+                      key={item.product_id}
+                      onClick={() => { setSelectedSku(item.product_id); setDrawerItem(targetProd); }}
+                      className="kpi-hover"
+                      style={{
+                        ...styles.subCard,
+                        padding: '16px',
+                        cursor: 'pointer',
+                        border: `1px solid ${item.isReady ? (isDark ? 'rgba(16,185,129,0.4)' : '#86EFAC') : (isDark ? 'rgba(239,68,68,0.4)' : '#FECACA')}`,
+                        background: item.isReady ? (isDark ? 'rgba(16,185,129,0.04)' : '#F0FDF4') : (isDark ? 'rgba(239,68,68,0.04)' : '#FEF2F2'),
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: '13px', color: c.title }}>{item.meta.shortLine}</div>
+                            <div style={{ fontSize: '10.5px', color: c.sub, marginTop: '1px' }}>{item.meta.line}</div>
+                          </div>
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            padding: '3px 8px',
+                            borderRadius: '5px',
+                            background: item.isReady ? '#10B981' : '#EF4444',
+                            color: '#FFFFFF',
+                          }}>
+                            {item.isReady ? '🟢 ACTIVE' : '⛔ GATED'}
+                          </span>
+                        </div>
+
+                        <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#FFFFFF', padding: '10px', borderRadius: '8px', border: `1px solid ${c.tableBorder}`, marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: c.sub }}>
+                            <span>Job Order:</span>
+                            <strong style={{ color: c.title }}>{item.meta.order}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: c.sub, marginTop: '3px' }}>
+                            <span>Material Feed:</span>
+                            <span style={{ color: isDark ? '#60A5FA' : '#2563EB', fontWeight: 700 }}>{item.product_id}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: c.sub, marginTop: '3px' }}>
+                            <span>Planned Shift:</span>
+                            <span style={{ color: c.title }}>{item.meta.shift}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: c.sub, marginTop: '3px' }}>
+                            <span>Output Velocity:</span>
+                            <span style={{ color: '#10B981', fontWeight: 700 }}>{item.isReady ? item.meta.rate : '0 pcs/hr (Idle)'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        {/* Progress */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: c.sub, marginBottom: '4px' }}>
+                          <span>Material Staging:</span>
+                          <strong style={{ color: item.fulfillmentPct >= 100 ? '#10B981' : '#EF4444' }}>{item.fulfillmentPct}%</strong>
+                        </div>
+                        <div style={{ height: '4px', background: isDark ? '#1E293B' : '#E2E8F0', borderRadius: '2px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${item.fulfillmentPct}%`, background: item.fulfillmentPct >= 100 ? '#10B981' : '#EF4444', transition: 'width .6s ease' }} />
+                        </div>
+                        {!item.isReady && (
+                          <div style={{ fontSize: '9.5px', color: '#EF4444', fontWeight: 600, marginTop: '6px' }}>
+                            Starved: Need {item.shortage.toLocaleString()} units · Idle Penalty: ${item.meta.downtimeCost}/hr
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 5. JSON Contract Inspection Modal */}
+            {showContractModal && (
+              <div
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.65)',
+                  backdropFilter: 'blur(5px)',
+                  zIndex: 2600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '20px',
+                  animation: 'fade-backdrop .2s ease',
+                }}
+                onClick={() => setShowContractModal(false)}
+              >
+                <div
+                  style={{
+                    background: isDark ? '#0D1B2E' : '#FFFFFF',
+                    border: `1px solid ${c.cardBorder}`,
+                    borderRadius: '16px',
+                    width: 'min(780px, 95vw)',
+                    maxHeight: '85vh',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                    overflow: 'hidden',
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div style={{ padding: '18px 24px', borderBottom: `1px solid ${c.cardBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: c.title, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>🔌</span> Module 4 REST / JSON Integration Contract Schema
+                      </h3>
+                      <div style={{ fontSize: '11px', color: c.sub, marginTop: '3px' }}>
+                        Delivered from <code>GET /api/inventory/production-interface</code> to the MAS Line Scheduler
+                      </div>
+                    </div>
+                    <button onClick={() => setShowContractModal(false)} style={styles.closeBtn}>✕</button>
+                  </div>
+
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '20px', background: isDark ? '#070E18' : '#F8FAFC' }}>
+                    <div style={{ fontSize: '11px', color: c.sub, marginBottom: '8px', fontWeight: 600 }}>SAMPLE PAYLOAD PAYLOAD DELIVERED TO MODULE 4:</div>
+                    <pre style={{
+                      background: isDark ? '#0A1424' : '#0F172A',
+                      color: '#6EE7B7',
+                      padding: '16px',
+                      borderRadius: '10px',
+                      fontSize: '11.5px',
+                      fontFamily: "'Fira Code', 'Consolas', monospace",
+                      lineHeight: 1.5,
+                      overflowX: 'auto',
+                      margin: 0,
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}>
+{JSON.stringify({
+  contract_version: "1.0.0",
+  source_module: "Module 3: Disruption-Aware Adaptive Inventory Guardian",
+  target_module: "Module 4: Dynamic Production Line Scheduling (MAS Holdings)",
+  factory_node: "MAS Holdings Colombo Hub · Sri Lanka",
+  handshake_timestamp: new Date().toISOString(),
+  total_skus: totalItems,
+  cleared_skus: readyCount,
+  gated_skus: gatedCount,
+  contract_items: enrichedList.slice(0, 3).map(i => ({
+    product_id: i.product_id,
+    material_name: i.product_name,
+    work_order: i.meta.order,
+    target_line: i.meta.line,
+    assigned_shift: i.meta.shift,
+    material_requirement: i.req,
+    available_inventory: i.avail,
+    material_shortage: i.shortage,
+    readiness_flag: i.isReady,
+    line_idle_risk_penalty_usd_hr: i.meta.downtimeCost,
+    recommended_action: i.isReady ? 'ALLOCATE_TO_LINE' : 'TRIGGER_EXPEDITED_AIR_FREIGHT'
+  }))
+}, null, 2)}
+                    </pre>
+
+                    <div style={{ marginTop: '16px', padding: '12px 14px', background: isDark ? 'rgba(59,130,246,0.1)' : '#EFF6FF', borderRadius: '10px', border: `1px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`, fontSize: '11.5px', color: c.title, lineHeight: 1.6 }}>
+                      <strong style={{ color: '#3B82F6' }}>Integration Contract Principle:</strong> Module 4 queries this endpoint before generating daily cutting & sewing schedules. When <code>readiness_flag == false</code>, Module 4 automatically gates the line and pushes the job order to an alternate shift, preventing assembly line starvation and costly factory floor work-in-progress pileups.
+                    </div>
+                  </div>
+
+                  <div style={{ padding: '14px 20px', borderTop: `1px solid ${c.cardBorder}`, display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(enrichedList, null, 2));
+                        showToast('✓ Full JSON contract copied to clipboard');
+                      }}
+                      className="btn-hover"
+                      style={{
+                        background: isDark ? '#1E293B' : '#FFFFFF',
+                        color: isDark ? '#E2E8F0' : '#1E293B',
+                        border: `1px solid ${c.cardBorder}`,
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      📋 Copy Full JSON Payload
+                    </button>
+                    <button
+                      onClick={() => setShowContractModal(false)}
+                      className="btn-hover"
+                      style={{
+                        background: '#2563EB',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ═══ TAB 4: RESEARCH & ML BENCHMARKS ════════════════════════════════ */}
       {activeTab === 'research' && (
@@ -2473,6 +3588,459 @@ export default function InventoryOptimizationView() {
         </div>
       )}
 
+      {/* ═══ SLIDE-OVER MATERIAL DETAIL DRAWER (SIDE SHEET) ════════════════ */}
+      {drawerItem && (() => {
+        const item = productsList.find(p => p.product_id === drawerItem.product_id) || drawerItem;
+        const rp = item.disruption_probability;
+        const skuSS = Math.round(item.forecasted_demand * 0.35 * (1 + rp));
+        const rop = Math.round(item.forecasted_demand * (item.average_lead_time * (1 + rp))) + skuSS;
+        const roq = Math.round(item.forecasted_demand * 7 * (1 + rp));
+        const shortage = Math.max(0, Math.round(item.forecasted_demand * 0.35 - item.current_inventory));
+        const hasShortage = shortage > 0;
+        const healthPct = Math.min(1, item.current_inventory / Math.max(1, skuSS));
+        const healthColor = healthPct < 0.5 ? '#EF4444' : healthPct < 0.8 ? '#F59E0B' : '#10B981';
+        const isDispatched = Boolean(dispatchedPOs[item.product_id]);
+
+        const coverImg = item.category === 'Fabrics'
+          ? 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=800&auto=format&fit=crop&q=80'
+          : item.category === 'Dyes & Chemicals'
+          ? 'https://images.unsplash.com/photo-1581093458791-9f3c3900df4b?w=800&auto=format&fit=crop&q=80'
+          : item.category === 'Packaging'
+          ? 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop&q=80'
+          : 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=800&auto=format&fit=crop&q=80';
+
+        const binLoc = item.product_id.startsWith('FAB') ? 'MAS Colombo · Bay 02 · Rack 14'
+          : item.product_id.startsWith('DYE') ? 'MAS Colombo · Chemical Safe Vault 08'
+          : item.product_id.startsWith('PKG') ? 'MAS Logistics Center · High-Bay 21'
+          : 'MAS Trim Stores · Drawer Shelf 05';
+
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.65)',
+              backdropFilter: 'blur(5px)',
+              zIndex: 2500,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              animation: 'fade-backdrop .2s ease',
+            }}
+            onClick={() => setDrawerItem(null)}
+          >
+            <div
+              style={{
+                width: 'min(620px, 94vw)',
+                height: '100%',
+                background: isDark ? '#0A1424' : '#FFFFFF',
+                borderLeft: `1px solid ${c.cardBorder}`,
+                boxShadow: '-16px 0 48px rgba(0,0,0,0.4)',
+                display: 'flex',
+                flexDirection: 'column',
+                animation: 'slide-drawer .28s cubic-bezier(0.16, 1, 0.3, 1)',
+                overflow: 'hidden',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Cover Image & Top Navigation Bar */}
+              <div style={{ position: 'relative', height: '180px', flexShrink: 0, overflow: 'hidden' }}>
+                <img
+                  src={coverImg}
+                  alt={item.product_name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: isDark
+                      ? 'linear-gradient(to bottom, rgba(10,20,36,0.3) 0%, rgba(10,20,36,0.95) 100%)'
+                      : 'linear-gradient(to bottom, rgba(15,23,42,0.2) 0%, rgba(15,23,42,0.85) 100%)',
+                  }}
+                />
+
+                {/* Top Floating Badges & Close Button */}
+                <div style={{ position: 'absolute', top: '16px', left: '20px', right: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '.06em', color: '#FFFFFF', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.2)' }}>
+                      MAS ERP MASTER
+                    </span>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#34D399', background: 'rgba(16,185,129,0.2)', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.4)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#34D399' }} />
+                      SQLite DB Persisted
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setDrawerItem(null)}
+                    style={{
+                      background: 'rgba(0,0,0,0.5)',
+                      border: '1px solid rgba(255,255,255,0.25)',
+                      color: '#FFFFFF',
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '14px',
+                      backdropFilter: 'blur(6px)',
+                      transition: 'all .2s ease',
+                    }}
+                    title="Close Inspector"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Title and Identification inside Banner */}
+                <div style={{ position: 'absolute', bottom: '16px', left: '22px', right: '22px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 900, fontSize: '15px', color: '#60A5FA', letterSpacing: '.04em', background: 'rgba(30,58,138,0.7)', padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(96,165,250,0.5)' }}>
+                      {item.product_id}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#E2E8F0', background: 'rgba(255,255,255,0.15)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                      {item.category}
+                    </span>
+                    <span style={{
+                      fontSize: '10.5px',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: rp >= 0.7 ? '#EF4444' : rp >= 0.35 ? '#F59E0B' : '#10B981',
+                      color: '#FFFFFF',
+                    }}>
+                      {rp >= 0.7 ? 'CRITICAL RISK' : rp >= 0.35 ? 'ELEVATED RISK' : 'LOW RISK'}
+                    </span>
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: '19px', fontWeight: 800, color: '#FFFFFF', textShadow: '0 2px 8px rgba(0,0,0,0.6)' }}>
+                    {item.product_name}
+                  </h2>
+                  <div style={{ fontSize: '11px', color: '#CBD5E1', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>📍 {binLoc}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Toolbar */}
+              <div style={{
+                padding: '12px 22px',
+                background: isDark ? '#0D1B2E' : '#F1F5F9',
+                borderBottom: `1px solid ${c.cardBorder}`,
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}>
+                <button
+                  className="btn-hover"
+                  onClick={() => { openEditModal(item); setDrawerItem(null); }}
+                  style={{
+                    background: isDark ? 'linear-gradient(135deg,#2563EB,#1D4ED8)' : 'linear-gradient(135deg,#2563EB,#1E40AF)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
+                  }}
+                >
+                  ✏️ Edit SKU Details
+                </button>
+                <button
+                  className="btn-hover"
+                  onClick={() => {
+                    setPoModalItem({ ...item, reorder_quantity: roq });
+                    setDrawerItem(null);
+                  }}
+                  style={{
+                    background: isDispatched ? '#059669' : (isDark ? '#059669' : '#047857'),
+                    color: '#fff',
+                    border: 'none',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(5,150,105,0.3)',
+                  }}
+                >
+                  {isDispatched ? '✓ PO Dispatched' : '⚡ Dispatch Quick PO'}
+                </button>
+                <button
+                  className="btn-hover"
+                  onClick={() => { setXaiModalSku(item); }}
+                  style={{
+                    background: isDark ? '#1E293B' : '#FFFFFF',
+                    color: isDark ? '#E2E8F0' : '#1E293B',
+                    border: `1px solid ${c.cardBorder}`,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                  }}
+                  title="Inspect mathematical derivation and safety stock proof"
+                >
+                  📐 XAI Proof
+                </button>
+                <button
+                  className="btn-hover"
+                  onClick={() => { setDeleteConfirmItem(item); setDrawerItem(null); }}
+                  style={{
+                    background: isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2',
+                    color: isDark ? '#FCA5A5' : '#B91C1C',
+                    border: isDark ? '1px solid rgba(239,68,68,0.3)' : '1px solid #FCA5A5',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    marginLeft: 'auto',
+                  }}
+                  title="Archive or delete SKU from database"
+                >
+                  🗑️ Delete
+                </button>
+              </div>
+
+              {/* Scrollable Content Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '22px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                {/* 1. Inventory Status & Health Gauge */}
+                <div style={{
+                  background: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                  border: `1px solid ${c.cardBorder}`,
+                  borderRadius: '14px',
+                  padding: '16px 18px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', color: c.sub, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                        Physical Stock Level
+                      </div>
+                      <div style={{ fontSize: '24px', fontWeight: 900, color: c.title, marginTop: '2px' }}>
+                        {item.current_inventory.toLocaleString()} <span style={{ fontSize: '13px', fontWeight: 500, color: c.sub }}>{item.unit}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        background: hasShortage ? (isDark ? 'rgba(239,68,68,0.2)' : '#FEE2E2') : (isDark ? 'rgba(16,185,129,0.2)' : '#DCFCE7'),
+                        color: hasShortage ? (isDark ? '#FCA5A5' : '#991B1B') : (isDark ? '#6EE7B7' : '#166534'),
+                        border: `1px solid ${hasShortage ? '#EF4444' : '#10B981'}`,
+                      }}>
+                        {hasShortage ? `⚠ Shortage: -${shortage.toLocaleString()} ${item.unit}` : '✓ Stock Ready'}
+                      </span>
+                      <div style={{ fontSize: '10.5px', color: c.sub, marginTop: '4px' }}>
+                        Target Safety Buffer: {skuSS.toLocaleString()} {item.unit}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Stock health progress bar */}
+                  <div style={{ height: '8px', background: isDark ? '#1E293B' : '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(100, healthPct * 100)}%`, background: healthColor, borderRadius: '4px', transition: 'width .6s ease' }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: c.sub, marginTop: '6px' }}>
+                    <span>0 {item.unit}</span>
+                    <span style={{ color: healthColor, fontWeight: 700 }}>{Math.round(healthPct * 100)}% of Adaptive Safety Buffer</span>
+                    <span>Target: {skuSS.toLocaleString()} {item.unit}</span>
+                  </div>
+                </div>
+
+                {/* 2. Stochastic Supply Chain Telemetry (4 Bento Mini-Tiles) */}
+                <div>
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: c.sub, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '10px' }}>
+                    Upstream Stochastic Telemetry
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                    {/* Tile 1: Demand */}
+                    <div style={{ background: isDark ? '#0D1B2E' : '#F8FAFC', border: `1px solid ${c.cardBorder}`, borderRadius: '12px', padding: '12px 14px' }}>
+                      <div style={{ fontSize: '10.5px', color: c.sub, fontWeight: 600 }}>14-DAY FORECAST</div>
+                      <div style={{ fontSize: '18px', fontWeight: 800, color: c.title, marginTop: '4px' }}>
+                        {item.forecasted_demand.toLocaleString()} <span style={{ fontSize: '11px', fontWeight: 500, color: c.sub }}>{item.unit}</span>
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#60A5FA', marginTop: '3px' }}>
+                        Std Dev: ±{item.demand_std_dev.toLocaleString()} {item.unit}
+                      </div>
+                    </div>
+
+                    {/* Tile 2: Lead Time */}
+                    <div style={{ background: isDark ? '#0D1B2E' : '#F8FAFC', border: `1px solid ${c.cardBorder}`, borderRadius: '12px', padding: '12px 14px' }}>
+                      <div style={{ fontSize: '10.5px', color: c.sub, fontWeight: 600 }}>AVERAGE LEAD TIME</div>
+                      <div style={{ fontSize: '18px', fontWeight: 800, color: c.title, marginTop: '4px' }}>
+                        {item.average_lead_time} <span style={{ fontSize: '11px', fontWeight: 500, color: c.sub }}>days</span>
+                      </div>
+                      <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
+                        Jitter: ±{item.lead_time_std_dev} days variance
+                      </div>
+                    </div>
+
+                    {/* Tile 3: Disruption Probability */}
+                    <div style={{ background: isDark ? '#0D1B2E' : '#F8FAFC', border: `1px solid ${c.cardBorder}`, borderRadius: '12px', padding: '12px 14px' }}>
+                      <div style={{ fontSize: '10.5px', color: c.sub, fontWeight: 600 }}>DISRUPTION RISK</div>
+                      <div style={{ fontSize: '18px', fontWeight: 800, color: rp >= 0.7 ? '#EF4444' : rp >= 0.35 ? '#F59E0B' : '#10B981', marginTop: '4px' }}>
+                        {(rp * 100).toFixed(0)}%
+                      </div>
+                      <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
+                        {rp >= 0.7 ? 'Port / Canal Severe Delay' : rp >= 0.35 ? 'Moderate Vessel Congestion' : 'Normal Transit Status'}
+                      </div>
+                    </div>
+
+                    {/* Tile 4: Supplier Trust */}
+                    <div style={{ background: isDark ? '#0D1B2E' : '#F8FAFC', border: `1px solid ${c.cardBorder}`, borderRadius: '12px', padding: '12px 14px' }}>
+                      <div style={{ fontSize: '10.5px', color: c.sub, fontWeight: 600 }}>SUPPLIER TRUST SCORE</div>
+                      <div style={{ fontSize: '18px', fontWeight: 800, color: item.supplier_trust_score >= 70 ? '#10B981' : item.supplier_trust_score >= 40 ? '#F59E0B' : '#EF4444', marginTop: '4px' }}>
+                        {item.supplier_trust_score.toFixed(1)} / 100
+                      </div>
+                      <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
+                        {item.supplier_trust_score >= 70 ? 'Tier-1 Certified Supplier' : 'Requires Dual-Sourcing'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. OPTICHAIN Adaptive Engine Directives */}
+                <div style={{
+                  background: isDark ? 'linear-gradient(135deg,rgba(37,99,235,0.1),rgba(124,58,237,0.08))' : 'linear-gradient(135deg,#EFF6FF,#F5F3FF)',
+                  border: `1px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`,
+                  borderRadius: '14px',
+                  padding: '16px 18px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '16px' }}>⚙️</span>
+                    <span style={{ fontWeight: 800, fontSize: '13px', color: isDark ? '#93C5FD' : '#1D4ED8' }}>
+                      AI Optimization Engine Recommendations
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', textAlign: 'center' }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding: '10px', borderRadius: '10px', border: `1px solid ${c.cardBorder}` }}>
+                      <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700 }}>SAFETY BUFFER</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: '#3B82F6', marginTop: '3px' }}>{skuSS.toLocaleString()}</div>
+                      <div style={{ fontSize: '9px', color: c.sub }}>{item.unit}</div>
+                    </div>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding: '10px', borderRadius: '10px', border: `1px solid ${c.cardBorder}` }}>
+                      <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700 }}>REORDER POINT (ROP)</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: c.title, marginTop: '3px' }}>{rop.toLocaleString()}</div>
+                      <div style={{ fontSize: '9px', color: c.sub }}>Trigger Level</div>
+                    </div>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding: '10px', borderRadius: '10px', border: `1px solid ${c.cardBorder}` }}>
+                      <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700 }}>RECOMMENDED ROQ</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: '#10B981', marginTop: '3px' }}>{roq.toLocaleString()}</div>
+                      <div style={{ fontSize: '9px', color: c.sub }}>Batch Size</div>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '12px', padding: '10px 12px', background: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.7)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px' }}>
+                    <span style={{ color: c.sub }}>Recommended Logistics Dispatch:</span>
+                    <span style={{ fontWeight: 700, color: rp >= 0.7 ? '#F59E0B' : '#60A5FA' }}>
+                      {rp >= 0.7 ? '✈️ Expedited Air Freight (2d ETA)' : '🚢 Standard Sea Freight (7d ETA)'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 4. Action Shortcuts & What-If Simulator Jump */}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    className="btn-hover"
+                    onClick={() => {
+                      setSelectedSku(item.product_id);
+                      setActiveTab('simulator');
+                      setDrawerItem(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      background: isDark ? '#1E293B' : '#E2E8F0',
+                      color: isDark ? '#E2E8F0' : '#1E293B',
+                      border: `1px solid ${c.cardBorder}`,
+                      padding: '11px',
+                      borderRadius: '10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    🧪 Launch in What-If Simulator ↗
+                  </button>
+                  <button
+                    className="btn-hover"
+                    onClick={() => {
+                      setSelectedSku(item.product_id);
+                      setActiveTab('apiTester');
+                      setDrawerItem(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      background: isDark ? '#1E293B' : '#E2E8F0',
+                      color: isDark ? '#E2E8F0' : '#1E293B',
+                      border: `1px solid ${c.cardBorder}`,
+                      padding: '11px',
+                      borderRadius: '10px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    ⚡ Test in Live API Studio ↗
+                  </button>
+                </div>
+
+                {/* 5. Database & Audit Traceability */}
+                <div style={{
+                  padding: '12px 14px',
+                  background: isDark ? 'rgba(0,0,0,0.2)' : '#F1F5F9',
+                  borderRadius: '10px',
+                  border: `1px dashed ${c.tagBorder}`,
+                  fontSize: '10.5px',
+                  color: c.sub,
+                  lineHeight: 1.6,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                    <span>Persistent Table:</span>
+                    <span style={{ color: isDark ? '#93C5FD' : '#2563EB', fontFamily: 'monospace' }}>inventory_products</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Storage Engine:</span>
+                    <span>SQLite (backend/optichain_inventory.db)</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>MAS ERP Sync:</span>
+                    <span style={{ color: '#10B981', fontWeight: 700 }}>● Active Real-time</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ═══ TOAST STACK ═════════════════════════════════════════════════════ */}
       <div style={{ position:'fixed', bottom:'28px', right:'28px', display:'flex', flexDirection:'column', gap:'10px', zIndex:3000 }}>
         {toasts.map(t=>(
@@ -2572,8 +4140,8 @@ function getStyles(c) {
     pillBtn: { display:'inline-flex', alignItems:'center', gap:'6px', padding:'6px 14px', borderRadius:'20px', border:'1px solid', fontSize:'11.5px', fontWeight:700, cursor:'pointer', transition:'all .2s' },
     // Table
     searchInput: { padding:'9px 12px', borderRadius:'10px', border:`1.5px solid ${c.inputBorder}`, fontSize:'12.5px', backgroundColor:c.inputBg, color:c.inputText, outline:'none', transition:'all .2s' },
-    tableWrapper: { overflowX:'auto', borderRadius:'12px', border:`1px solid ${c.tableBorder}` },
-    table: { width:'100%', borderCollapse:'collapse', fontSize:'12.5px' },
+    tableWrapper: { overflowX:'auto', borderRadius:'12px', border:`1px solid ${c.tableBorder}`, position:'relative' },
+    table: { width:'100%', minWidth:'1320px', borderCollapse:'collapse', fontSize:'12.5px' },
     theadRow: { background: c.isDark?'#0A1626':'#F1F5F9', borderBottom:`2px solid ${c.tableBorder}` },
     th:      { textAlign:'left',   padding:'12px 14px', color:c.sub, fontWeight:800, fontSize:'10.5px', letterSpacing:'.05em', whiteSpace:'nowrap' },
     thRight: { textAlign:'right',  padding:'12px 14px', color:c.sub, fontWeight:800, fontSize:'10.5px', letterSpacing:'.05em', whiteSpace:'nowrap' },
