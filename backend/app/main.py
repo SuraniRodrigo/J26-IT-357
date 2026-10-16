@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.database import models as _database_models
+from app.database.connection import Base, engine
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.demand import router as demand_router
 from app.api.routes.supply import router as supply_router
@@ -8,6 +10,8 @@ from app.api.routes.inventory import router as inventory_router
 from app.api.routes.production import router as production_router
 from app.api.routes.optichain import router as optichain_router
 from app.core.config import settings
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="OPTICHAIN",
@@ -19,7 +23,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
