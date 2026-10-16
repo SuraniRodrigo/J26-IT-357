@@ -6,6 +6,7 @@ import os
 from datetime import date
 from typing import Any
 
+from app.db.session import Base, SessionLocal, engine
 from app.integration.mock_upstream import (
     UPSTREAM_DATA_MODE,
     get_combined_upstream_signal,
@@ -13,6 +14,7 @@ from app.integration.mock_upstream import (
 )
 from app.ml.inventory.inventory_optimizer import InventoryOptimizer
 from app.ml.inventory.simulator import InventorySimulator
+from app.models.inventory_sql import ProductModel, PurchaseOrderModel
 from app.schemas.inventory import (
     CreateProductCatalogItem,
     InventoryOptimizationRequest,
@@ -176,135 +178,261 @@ def run_scenario_analysis(request: ScenarioAnalysisRequest) -> ScenarioAnalysisR
     )
 
 
-_CATALOG_STORE: dict[str, ProductCatalogItem] = {}
-
-
 def _ensure_catalog_initialized() -> dict[str, ProductCatalogItem]:
-    """Populates initial seed catalog if empty."""
-    global _CATALOG_STORE
-    if not _CATALOG_STORE:
-        mock_items = list_all_mock_products()
-        for item in mock_items:
-            seed = MATERIAL_SEEDS.get(item.product_id, {"current_inventory": 1000.0, "unit": item.unit})
-            _CATALOG_STORE[item.product_id] = ProductCatalogItem(
-                product_id=item.product_id,
-                product_name=item.product_name,
-                category=item.category,
-                unit=item.unit,
-                current_inventory=float(seed["current_inventory"]),
-                forecasted_demand=float(item.forecasted_demand),
-                demand_std_dev=float(item.demand_std_dev),
-                average_lead_time=float(item.average_lead_time),
-                lead_time_std_dev=float(item.lead_time_std_dev),
-                disruption_probability=float(item.disruption_probability),
-                supplier_trust_score=float(item.supplier_trust_score),
-                risk_level=item.risk_level,
-                is_demo_data=True,
+    """
+    Ensures SQLite tables exist and automatically seeds initial raw material records
+    from CSV data if the database table is empty.
+    """
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as session:
+        count = session.query(ProductModel).count()
+        if count == 0:
+            mock_items = list_all_mock_products()
+            for item in mock_items:
+                seed = MATERIAL_SEEDS.get(item.product_id, {"current_inventory": 1000.0, "unit": item.unit})
+                db_item = ProductModel(
+                    product_id=item.product_id,
+                    product_name=item.product_name,
+                    category=item.category,
+                    unit=item.unit,
+                    current_inventory=float(seed["current_inventory"]),
+                    forecasted_demand=float(item.forecasted_demand),
+                    demand_std_dev=float(item.demand_std_dev),
+                    average_lead_time=float(item.average_lead_time),
+                    lead_time_std_dev=float(item.lead_time_std_dev),
+                    disruption_probability=float(item.disruption_probability),
+                    supplier_trust_score=float(item.supplier_trust_score),
+                    risk_level=item.risk_level,
+                    in_transit_qty=float(seed.get("in_transit_qty", 0.0)),
+                    is_demo_data=True,
+                )
+                session.add(db_item)
+            session.commit()
+            logger.info("Successfully seeded 8 initial materials into SQLite (optichain_inventory.db).")
+
+        # Load from SQLite database
+        rows = session.query(ProductModel).all()
+        store: dict[str, ProductCatalogItem] = {}
+        for r in rows:
+            store[r.product_id] = ProductCatalogItem(
+                product_id=r.product_id,
+                product_name=r.product_name,
+                category=r.category,
+                unit=r.unit,
+                current_inventory=float(r.current_inventory),
+                forecasted_demand=float(r.forecasted_demand),
+                demand_std_dev=float(r.demand_std_dev),
+                average_lead_time=float(r.average_lead_time),
+                lead_time_std_dev=float(r.lead_time_std_dev),
+                disruption_probability=float(r.disruption_probability),
+                supplier_trust_score=float(r.supplier_trust_score),
+                risk_level=r.risk_level,
+                is_demo_data=bool(r.is_demo_data),
             )
-    return _CATALOG_STORE
+        return store
 
 
 def get_product_catalog() -> list[ProductCatalogItem]:
-    """Retrieves full monitored materials catalog."""
+    """Retrieves full monitored materials catalog from SQLite database."""
     store = _ensure_catalog_initialized()
     return list(store.values())
 
 
 def create_product_catalog_item(item: CreateProductCatalogItem) -> ProductCatalogItem:
-    """Adds a new raw material SKU to the monitored portfolio."""
-    store = _ensure_catalog_initialized()
+    """Adds a new raw material SKU persistently to the SQLite database."""
+    _ensure_catalog_initialized()
     pid = item.product_id.strip().upper()
-    if pid in store:
-        raise ValueError(f"Product with ID '{pid}' already exists in catalog.")
 
-    # Determine risk level if not explicitly provided
-    risk_level = item.risk_level
-    if not risk_level:
-        if item.disruption_probability >= 0.7:
-            risk_level = "CRITICAL"
-        elif item.disruption_probability >= 0.4:
-            risk_level = "HIGH"
-        elif item.disruption_probability >= 0.2:
-            risk_level = "MEDIUM"
-        else:
-            risk_level = "LOW"
+    with SessionLocal() as session:
+        existing = session.query(ProductModel).filter(ProductModel.product_id == pid).first()
+        if existing:
+            raise ValueError(f"Product with ID '{pid}' already exists in database catalog.")
 
-    demand_std_dev = item.demand_std_dev if item.demand_std_dev > 0 else round(item.forecasted_demand * 0.15, 2)
+        risk_level = item.risk_level
+        if not risk_level:
+            if item.disruption_probability >= 0.7:
+                risk_level = "CRITICAL"
+            elif item.disruption_probability >= 0.4:
+                risk_level = "HIGH"
+            elif item.disruption_probability >= 0.2:
+                risk_level = "MEDIUM"
+            else:
+                risk_level = "LOW"
 
-    new_item = ProductCatalogItem(
-        product_id=pid,
-        product_name=item.product_name.strip(),
-        category=item.category.strip(),
-        unit=item.unit.strip(),
-        current_inventory=float(item.current_inventory),
-        forecasted_demand=float(item.forecasted_demand),
-        demand_std_dev=float(demand_std_dev),
-        average_lead_time=float(item.average_lead_time),
-        lead_time_std_dev=float(item.lead_time_std_dev),
-        disruption_probability=float(item.disruption_probability),
-        supplier_trust_score=float(item.supplier_trust_score),
-        risk_level=risk_level,
-        is_demo_data=False,
-    )
-    store[pid] = new_item
-    MATERIAL_SEEDS[pid] = {
-        "current_inventory": new_item.current_inventory,
-        "in_transit_qty": 0.0,
-        "unit": new_item.unit,
-    }
-    logger.info(f"Created new raw material SKU: {pid} ({new_item.product_name})")
-    return new_item
+        demand_std_dev = item.demand_std_dev if item.demand_std_dev > 0 else round(item.forecasted_demand * 0.15, 2)
+
+        new_row = ProductModel(
+            product_id=pid,
+            product_name=item.product_name.strip(),
+            category=item.category.strip(),
+            unit=item.unit.strip(),
+            current_inventory=float(item.current_inventory),
+            forecasted_demand=float(item.forecasted_demand),
+            demand_std_dev=float(demand_std_dev),
+            average_lead_time=float(item.average_lead_time),
+            lead_time_std_dev=float(item.lead_time_std_dev),
+            disruption_probability=float(item.disruption_probability),
+            supplier_trust_score=float(item.supplier_trust_score),
+            risk_level=risk_level,
+            in_transit_qty=0.0,
+            is_demo_data=False,
+        )
+        session.add(new_row)
+        session.commit()
+        session.refresh(new_row)
+
+        MATERIAL_SEEDS[pid] = {
+            "current_inventory": new_row.current_inventory,
+            "in_transit_qty": 0.0,
+            "unit": new_row.unit,
+        }
+        logger.info(f"Persisted new SKU to SQLite database: {pid} ({new_row.product_name})")
+
+        return ProductCatalogItem(
+            product_id=new_row.product_id,
+            product_name=new_row.product_name,
+            category=new_row.category,
+            unit=new_row.unit,
+            current_inventory=new_row.current_inventory,
+            forecasted_demand=new_row.forecasted_demand,
+            demand_std_dev=new_row.demand_std_dev,
+            average_lead_time=new_row.average_lead_time,
+            lead_time_std_dev=new_row.lead_time_std_dev,
+            disruption_probability=new_row.disruption_probability,
+            supplier_trust_score=new_row.supplier_trust_score,
+            risk_level=new_row.risk_level,
+            is_demo_data=False,
+        )
 
 
 def update_product_catalog_item(product_id: str, updates: UpdateProductCatalogItem) -> ProductCatalogItem:
-    """Updates an existing raw material SKU in the inventory catalog."""
-    store = _ensure_catalog_initialized()
+    """Updates an existing raw material SKU in the SQLite database."""
+    _ensure_catalog_initialized()
     pid = product_id.strip().upper()
-    if pid not in store:
-        raise ValueError(f"Product '{pid}' not found in catalog.")
 
-    existing = store[pid]
-    dump = updates.model_dump(exclude_unset=True)
+    with SessionLocal() as session:
+        row = session.query(ProductModel).filter(ProductModel.product_id == pid).first()
+        if not row:
+            raise ValueError(f"Product '{pid}' not found in database catalog.")
 
-    updated_dict = existing.model_dump()
-    for k, v in dump.items():
-        if v is not None:
-            updated_dict[k] = v
+        dump = updates.model_dump(exclude_unset=True)
+        for k, v in dump.items():
+            if v is not None and hasattr(row, k):
+                setattr(row, k, v)
 
-    if "disruption_probability" in dump:
-        dp = updated_dict["disruption_probability"]
-        if dp >= 0.7:
-            updated_dict["risk_level"] = "CRITICAL"
-        elif dp >= 0.4:
-            updated_dict["risk_level"] = "HIGH"
-        elif dp >= 0.2:
-            updated_dict["risk_level"] = "MEDIUM"
-        else:
-            updated_dict["risk_level"] = "LOW"
+        if "disruption_probability" in dump:
+            dp = row.disruption_probability
+            if dp >= 0.7:
+                row.risk_level = "CRITICAL"
+            elif dp >= 0.4:
+                row.risk_level = "HIGH"
+            elif dp >= 0.2:
+                row.risk_level = "MEDIUM"
+            else:
+                row.risk_level = "LOW"
 
-    updated_item = ProductCatalogItem(**updated_dict)
-    store[pid] = updated_item
-    MATERIAL_SEEDS[pid] = {
-        "current_inventory": updated_item.current_inventory,
-        "in_transit_qty": MATERIAL_SEEDS.get(pid, {}).get("in_transit_qty", 0.0),
-        "unit": updated_item.unit,
-    }
-    logger.info(f"Updated material SKU: {pid}")
-    return updated_item
+        session.commit()
+        session.refresh(row)
+
+        MATERIAL_SEEDS[pid] = {
+            "current_inventory": row.current_inventory,
+            "in_transit_qty": MATERIAL_SEEDS.get(pid, {}).get("in_transit_qty", 0.0),
+            "unit": row.unit,
+        }
+        logger.info(f"Updated material SKU in SQLite: {pid}")
+
+        return ProductCatalogItem(
+            product_id=row.product_id,
+            product_name=row.product_name,
+            category=row.category,
+            unit=row.unit,
+            current_inventory=row.current_inventory,
+            forecasted_demand=row.forecasted_demand,
+            demand_std_dev=row.demand_std_dev,
+            average_lead_time=row.average_lead_time,
+            lead_time_std_dev=row.lead_time_std_dev,
+            disruption_probability=row.disruption_probability,
+            supplier_trust_score=row.supplier_trust_score,
+            risk_level=row.risk_level,
+            is_demo_data=bool(row.is_demo_data),
+        )
 
 
 def delete_product_catalog_item(product_id: str) -> bool:
-    """Removes a raw material SKU from inventory monitoring."""
-    store = _ensure_catalog_initialized()
+    """Permanently removes a raw material SKU from the SQLite database."""
+    _ensure_catalog_initialized()
     pid = product_id.strip().upper()
-    if pid not in store:
-        raise ValueError(f"Product '{pid}' not found in catalog.")
 
-    del store[pid]
-    if pid in MATERIAL_SEEDS:
-        del MATERIAL_SEEDS[pid]
-    logger.info(f"Deleted material SKU: {pid}")
-    return True
+    with SessionLocal() as session:
+        row = session.query(ProductModel).filter(ProductModel.product_id == pid).first()
+        if not row:
+            raise ValueError(f"Product '{pid}' not found in database catalog.")
+
+        session.delete(row)
+        session.commit()
+
+        if pid in MATERIAL_SEEDS:
+            del MATERIAL_SEEDS[pid]
+        logger.info(f"Deleted material SKU from SQLite database: {pid}")
+        return True
+
+
+def record_purchase_order(
+    po_number: str,
+    product_id: str,
+    product_name: str,
+    quantity: float,
+    freight_mode: str = "sea",
+    estimated_cost_usd: float = 0.0,
+) -> dict[str, Any]:
+    """Records a dispatched Purchase Order directly into the SQLite database."""
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as session:
+        po = PurchaseOrderModel(
+            po_number=po_number,
+            product_id=product_id,
+            product_name=product_name,
+            quantity=float(quantity),
+            freight_mode=freight_mode,
+            estimated_cost_usd=float(estimated_cost_usd),
+            status="DISPATCHED",
+        )
+        session.add(po)
+        session.commit()
+        session.refresh(po)
+        logger.info(f"Recorded Purchase Order in SQLite: {po_number} for {product_id}")
+        return {
+            "id": po.id,
+            "po_number": po.po_number,
+            "product_id": po.product_id,
+            "product_name": po.product_name,
+            "quantity": po.quantity,
+            "freight_mode": po.freight_mode,
+            "estimated_cost_usd": po.estimated_cost_usd,
+            "status": po.status,
+            "dispatched_at": po.dispatched_at.isoformat(),
+        }
+
+
+def list_purchase_orders() -> list[dict[str, Any]]:
+    """Retrieves all dispatched purchase orders from SQLite."""
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as session:
+        rows = session.query(PurchaseOrderModel).order_by(PurchaseOrderModel.dispatched_at.desc()).all()
+        return [
+            {
+                "id": r.id,
+                "po_number": r.po_number,
+                "product_id": r.product_id,
+                "product_name": r.product_name,
+                "quantity": r.quantity,
+                "freight_mode": r.freight_mode,
+                "estimated_cost_usd": r.estimated_cost_usd,
+                "status": r.status,
+                "dispatched_at": r.dispatched_at.isoformat(),
+            }
+            for r in rows
+        ]
 
 
 def get_inventory_summary() -> InventorySummaryResponse:
