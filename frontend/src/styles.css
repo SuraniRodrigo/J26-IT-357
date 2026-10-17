@@ -53,6 +53,7 @@ button { color: inherit; }
 .topbar-right { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 .system-indicator { color: #9ba9bc; font-size: 9px; font-weight: 600; letter-spacing: .06em; }
 .pulse-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 9px #10b98190; vertical-align: 1px; }
+.pulse-dot.offline { background: var(--red); box-shadow: 0 0 9px #ef444490; }
 .divider { padding: 0 8px; color: #3e4b5f; }
 .actions { display: flex; gap: 8px; }
 .button { min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 10px; font-weight: 700; transition: .18s ease; white-space: nowrap; }
