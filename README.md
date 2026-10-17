@@ -29,6 +29,19 @@ OPTICHAIN is an AI-driven supply chain disruption predictor and line optimizer d
 
 ## Setup
 
+### Run from VS Code
+
+Open the `J26-IT-357` folder (the project root) in VS Code, then choose
+`OPTICHAIN: Frontend + Backend` in **Run and Debug** and press **F5**. To run
+only one part, choose its Frontend or Backend configuration. The backend config
+uses the project `.venv`; install its requirements first if needed.
+
+The backend expects PostgreSQL at the URL configured by `DATABASE_URL`. The
+default Compose configuration uses the hostname `db`, so for a local VS Code
+run, start PostgreSQL and set `DATABASE_URL` in `backend/.env` to your local
+database connection string. The frontend runs at http://localhost:5173 and the
+backend at http://localhost:8000.
+
 ### Backend
 
 ```bash
