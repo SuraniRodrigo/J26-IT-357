@@ -41,7 +41,7 @@ export default function DisruptionInjectorModal({ lines, onClose, onSubmit }) {
           <div className="range-heading"><label className="field-label" htmlFor="severity">Impact severity</label><strong>{severity}%</strong></div>
           <input id="severity" className="severity-range" type="range" min="10" max="100" step="1" value={severity} onChange={(event) => setSeverity(Number(event.target.value))} />
           <div className="range-labels"><span>10% · Low impact</span><span>100% · Line stoppage</span></div>
-          <div className="simulation-note"><span>ⓘ</span> Simulation updates the active schedule and detection log locally.</div>
+          <div className="simulation-note"><span>ⓘ</span> The backend optimizer will recalculate the active schedule.</div>
           <div className="dialog-actions"><button type="button" className="button button-muted" onClick={onClose}>Cancel</button><button type="submit" className="button button-danger"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4m0 4h.01" /></svg> Trigger AI Self-Healing</button></div>
         </form>
       </section>
