@@ -97,17 +97,40 @@ def recalculate_schedule(event: DisruptionEvent) -> ScheduleResponse:
 
 
 def optimize_production(request: ProductionConstraintSchema) -> list[ProductionScheduleSchema]:
-    if request.production_capacity < 0:
-        raise ValueError("Production capacity cannot be negative.")
+    material_availability = (
+        max(
+            0.0,
+            (request.material_requirement - request.material_shortage)
+            / request.material_requirement,
+        )
+        if request.material_requirement > 0
+        else 1.0
+    )
+    if not request.material_availability_flag:
+        material_availability = 0.0
+
+    planned_quantity = round(
+        request.production_capacity
+        * request.machine_availability
+        * request.operator_skill_factor
+        * material_availability,
+        2,
+    )
+    production_line = max(_LINE_CAPACITY, key=_LINE_CAPACITY.get)
 
     return [
         ProductionScheduleSchema(
             product_id=request.product_id,
             schedule_date=date.today(),
-            planned_quantity=0.0,
-            production_line="not-assigned",
+            planned_quantity=planned_quantity,
+            production_line=production_line,
             due_date=date.today() + timedelta(days=1),
             priority_level=request.priority_level,
-            reschedule_required=request.disruption_flag,
+            reschedule_required=(
+                request.disruption_flag
+                or request.material_shortage > 0
+                or request.machine_availability < 1
+                or request.operator_skill_factor < 1
+            ),
         )
     ]
