@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DisruptionInjectorModal from './components/optimizer/DisruptionInjectorModal';
 import DetectionLogHeader from './components/optimizer/DetectionLogHeader';
 import LineActionDrawer from './components/optimizer/LineActionDrawer';
+import { getBackendHealth } from './services/apiClient';
+import { recalculateSchedule } from './services/productionService';
 import './styles.css';
 
 const initialLines = [
@@ -31,7 +33,7 @@ function Icon({ name, size = 18 }) {
   return <svg {...common}>{paths[name]}</svg>;
 }
 
-function Header({ onInject, onRecalculate, loading }) {
+function Header({ onInject, onRecalculate, loading, backendStatus }) {
   return (
     <header className="topbar">
       <div>
@@ -40,7 +42,7 @@ function Header({ onInject, onRecalculate, loading }) {
         <p className="page-subtitle">AI-powered production control &amp; schedule recovery</p>
       </div>
       <div className="topbar-right">
-        <div className="system-indicator"><span className="pulse-dot" /> SYSTEM ACTIVE <span className="divider">|</span> Subsystem ID: IT232174726</div>
+        <div className="system-indicator"><span className={`pulse-dot ${backendStatus === 'offline' ? 'offline' : ''}`} /> BACKEND {backendStatus.toUpperCase()} <span className="divider">|</span> Subsystem ID: IT232174726</div>
         <div className="actions">
           <button className="button button-outline" onClick={onInject}><Icon name="alert" size={16} /> Inject Disruption</button>
           <button className="button button-primary" onClick={onRecalculate} disabled={loading}><Icon name="refresh" size={16} /> {loading ? 'Recalculating…' : 'Force Recalculation'}</button>
@@ -145,34 +147,107 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [recovery, setRecovery] = useState(14);
   const [oee, setOee] = useState(94);
+  const [backendStatus, setBackendStatus] = useState('connecting');
+  const [backendError, setBackendError] = useState('');
+  const [activeDisruption, setActiveDisruption] = useState({
+    line_id: 'Line Beta',
+    disruption_type: 'Machine Failure',
+    severity_minutes: 46,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    getBackendHealth()
+      .then((health) => {
+        if (mounted && health.status === 'ok') setBackendStatus('connected');
+        else if (mounted) {
+          setBackendStatus('offline');
+          setBackendError('Health check returned an unexpected response.');
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setBackendStatus('offline');
+          setBackendError(error.message);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   function addLog(category, line, message, tone) {
     setLogs((current) => [{ id: Date.now() + Math.random(), time: new Date().toLocaleTimeString('en-GB', { hour12: false }), category, line, message, tone }, ...current]);
   }
 
-  function injectDisruption({ lineId, category, severity }) {
-    const line = lines.find((item) => item.id === lineId);
-    const reduction = Number(severity);
-    setLines((current) => current.map((item) => item.id === lineId
-      ? { ...item, output: Math.max(10, item.output - Math.round(reduction * 0.55)), status: 'Disrupted', color: 'red', elapsed: item.elapsed + 1, deficit: item.deficit + Math.round(reduction * 14), issue: category === 'Machine Failure / Loom Breakage' ? 'Loom failure' : category === 'Material Shortage / Dyeing Delay' ? 'Dye lot delay' : 'Operator shortage' }
-      : item));
-    addLog('Critical', line.name, `${category} injected · ${reduction}% throughput impact`, 'red');
-    addLog('Queued', line.name, 'AI self-healing sequence queued for regeneration', 'cyan');
-    setModalOpen(false);
+  function applyBackendSchedule(result) {
+    const statusByApiValue = {
+      disruption_detected: { status: 'Disrupted', color: 'red' },
+      absorbing_rerouted_work: { status: 'Recovering', color: 'amber' },
+      operational: { status: 'On Track', color: 'emerald' },
+    };
+    setLines((current) => current.map((line) => {
+      const sequence = result.updated_sequences.find(
+        (item) => item.line_id.toLowerCase() === line.name.toLowerCase(),
+      );
+      if (!sequence) return line;
+
+      const nextStatus = statusByApiValue[sequence.line_status];
+      return {
+        ...line,
+        ...nextStatus,
+        output: sequence.capacity_metrics.available_capacity_percent,
+        issue: sequence.line_status === 'disruption_detected'
+          ? line.issue || 'Production disruption'
+          : sequence.line_status === 'absorbing_rerouted_work'
+            ? `Rerouted from ${result.affected_line}`
+            : undefined,
+      };
+    }));
+    setRecovery(Math.max(1, Math.round(result.recovery_time_seconds / 60)));
   }
 
-  function recalculate() {
+  async function injectDisruption({ lineId, category, severity }) {
+    const line = lines.find((item) => item.id === lineId);
+    if (!line) return;
+
+    const disruption = {
+      line_id: line.name,
+      disruption_type: category,
+      severity_minutes: Number(severity),
+    };
+    setLoading(true);
+    setBackendError('');
+    try {
+      const result = await recalculateSchedule(disruption);
+      applyBackendSchedule(result);
+      setActiveDisruption(disruption);
+      addLog('Critical', line.name, `${category} injected · ${severity}% throughput impact`, 'red');
+      addLog('Rerouted', result.rerouted_target_line, `Backend optimizer rerouted production from ${result.affected_line}`, 'amber');
+      setModalOpen(false);
+      setBackendStatus('connected');
+    } catch (error) {
+      setBackendError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function recalculate() {
     if (loading) return;
     setLoading(true);
-    window.setTimeout(() => {
-      setLines((current) => current.map((line) => line.status === 'Disrupted'
-        ? { ...line, status: 'Recovering', color: 'amber', output: Math.min(88, line.output + 14) }
-        : { ...line, output: Math.min(100, line.output + 3) }));
-      setRecovery((value) => Math.max(6, value - 2));
-      setOee((value) => Math.min(99, value + 1));
-      addLog('Optimized', 'Production schedule', 'Sequence regenerated · throughput and recovery metrics recalculated', 'emerald');
+    setBackendError('');
+    try {
+      const result = await recalculateSchedule(activeDisruption);
+      applyBackendSchedule(result);
+      addLog('Optimized', 'Production schedule', `Backend regenerated the sequence · ${result.recovery_time_seconds}s recovery estimate`, 'emerald');
+      setBackendStatus('connected');
+    } catch (error) {
+      setBackendError(error.message);
+    } finally {
       setLoading(false);
-    }, 1500);
+    }
   }
 
   function executeAllocation({ lineId, destination, workers }) {
@@ -198,8 +273,9 @@ export default function App() {
         <div className="sidebar-bottom"><div className="factory-card"><span className="factory-avatar">SF</span><div><strong>Sri Lanka Factory</strong><small>Colombo · Plant 01</small></div><span className="online-mark" /></div><div className="sidebar-meta">Subsystem ID: IT232174726</div></div>
       </aside>
       <main className="main-content">
-        <Header onInject={() => setModalOpen(true)} onRecalculate={recalculate} loading={loading} />
+        <Header onInject={() => setModalOpen(true)} onRecalculate={recalculate} loading={loading} backendStatus={backendStatus} />
         <div className="content-wrap">
+          {backendError && <div className="api-error" role="alert">Backend unavailable: {backendError}</div>}
           <div className="metric-grid">
             <MetricCard label="Overall Equipment Effectiveness" value={`${oee}%`} detail="↑ 2.4% vs yesterday" tone="emerald" icon="activity" />
             <MetricCard label="Active Production Lines" value="03 / 03" detail="1 recovering · 1 disrupted" tone="cyan" icon="refresh" />
