@@ -146,17 +146,29 @@ function MiniSparkline({ data = [20, 24, 22, 28, 30, 38, 45], color = '#10B981',
   );
 }
 
+// ─── Real Supply Chain High-Res Imagery per Garment SKU ──────────────────────
+const SKU_IMAGES = {
+  'FAB-001': 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=600&auto=format&fit=crop&q=80', // Cotton Single Jersey
+  'DYE-008': 'https://images.unsplash.com/photo-1581093458791-9f3c3900df4b?w=600&auto=format&fit=crop&q=80', // Reactive Navy Dye
+  'TRM-015': 'https://images.unsplash.com/photo-1605518216938-7c31b7b14ad0?w=600&auto=format&fit=crop&q=80', // YKK Zippers & Trims
+  'YRN-042': 'https://images.unsplash.com/photo-1564419320461-6870880221ad?w=600&auto=format&fit=crop&q=80', // Combed Cotton Yarn
+  'FAB-002': 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?w=600&auto=format&fit=crop&q=80', // Poly-Spandex Rib
+  'TRM-022': 'https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?w=600&auto=format&fit=crop&q=80', // Snap Fasteners
+  'CHM-005': 'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=600&auto=format&fit=crop&q=80', // Silicone Softener
+  'YRN-018': 'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=600&auto=format&fit=crop&q=80', // Spun Polyester Thread
+};
+
 // ─── Material category image thumbnail (High contrast & Light Mode safe) ────
 function MaterialThumb({ category, isDark }) {
   const map = {
     'Fabrics': {
-      img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=96&h=96&fit=crop&q=80',
+      img: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=96&h=96&fit=crop&q=80',
       color: '#2563EB',
       emoji: '🧵',
       label: 'Fabric Roll'
     },
     'Dyes & Chemicals': {
-      img: 'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=96&h=96&fit=crop&q=80',
+      img: 'https://images.unsplash.com/photo-1581093458791-9f3c3900df4b?w=96&h=96&fit=crop&q=80',
       color: '#7C3AED',
       emoji: '🧪',
       label: 'Dye Compound'
@@ -167,6 +179,18 @@ function MaterialThumb({ category, isDark }) {
       emoji: '🔩',
       label: 'Fasteners'
     },
+    'Accessories': {
+      img: 'https://images.unsplash.com/photo-1605518216938-7c31b7b14ad0?w=96&h=96&fit=crop&q=80',
+      color: '#D97706',
+      emoji: '🔩',
+      label: 'Accessories'
+    },
+    'Packaging': {
+      img: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=96&h=96&fit=crop&q=80',
+      color: '#059669',
+      emoji: '📦',
+      label: 'Packaging'
+    },
     'Yarns & Threads': {
       img: 'https://images.unsplash.com/photo-1564419320461-6870880221ad?w=96&h=96&fit=crop&q=80',
       color: '#059669',
@@ -174,7 +198,7 @@ function MaterialThumb({ category, isDark }) {
       label: 'Spun Yarn'
     },
   };
-  const m = map[category] || { img: null, color: '#64748B', emoji: '📦', label: 'Material' };
+  const m = map[category] || { img: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=96&h=96&fit=crop&q=80', color: '#64748B', emoji: '📦', label: 'Material' };
   const [loaded, setLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -382,6 +406,40 @@ const LINE_METADATA = {
   'TRM-022': { line: 'Line 05 · Jackets & Hoodies', shortLine: 'Line 05', shift: 'Shift A (06:00)', shiftId: 'Shift A', order: 'WO-MAS-3312', rate: '510 pcs/hr', downtimeCost: 3100, category: 'Accessories' },
   'CHM-005': { line: 'Finishing & Wash Hub 01', shortLine: 'Wash 01', shift: 'Shift C (22:00)', shiftId: 'Shift C', order: 'WO-MAS-2245', rate: '1,500 L/hr', downtimeCost: 2400, category: 'Dyes & Chemicals' },
   'YRN-018': { line: 'Sewing Line 07 · Innerwear Basics', shortLine: 'Line 07', shift: 'Shift B (14:00)', shiftId: 'Shift B', order: 'WO-MAS-1198', rate: '1,100 pcs/hr', downtimeCost: 2600, category: 'Fabrics' },
+};
+
+// ─── Financial Impact & Cost-of-Inaction Calculation Helper ──────────────────
+const getProductUnitCost = (product) => {
+  if (!product) return 5.0;
+  if (product.category === 'Fabrics') return 8.5;
+  if (product.category === 'Dyes & Chemicals') return 24.0;
+  return 0.45; // Accessories / Trims
+};
+
+const calculateFinancialImpact = (product, roq, skuSS) => {
+  if (!product) return { unitCost: 5, reorderInvestment: 0, downtimeExposure: 0, netProtectedValue: 0, roiMultiplier: '1.0', meta: {}, outageHours: 8, isShortage: false };
+  const meta = LINE_METADATA[product.product_id] || { downtimeCost: 2500, line: 'Standard Garment Line', shortLine: 'Main Line', order: 'WO-MAS-GEN', shift: 'Shift A' };
+  const unitCost = getProductUnitCost(product);
+  const reorderInvestment = Math.round((roq || 0) * unitCost);
+  
+  const isShortage = (product.current_inventory || 0) < ((product.forecasted_demand || 1000) * 0.35);
+  const outageHours = isShortage ? 12 : Math.max(4, Math.round((product.disruption_probability || 0.3) * 16));
+  const downtimeExposure = Math.round(meta.downtimeCost * outageHours);
+  
+  const holdingCost = Math.round(reorderInvestment * 0.12);
+  const netProtectedValue = Math.max(0, downtimeExposure - holdingCost);
+  const roiMultiplier = reorderInvestment > 0 ? (downtimeExposure / Math.max(1, reorderInvestment)).toFixed(1) : '3.4';
+
+  return {
+    unitCost,
+    reorderInvestment,
+    downtimeExposure,
+    netProtectedValue,
+    roiMultiplier,
+    meta,
+    outageHours,
+    isShortage,
+  };
 };
 
 export default function InventoryOptimizationView() {
@@ -1209,8 +1267,14 @@ export default function InventoryOptimizationView() {
               </div>
             </div>
           </div>
-          <div style={{ fontSize:'10.5px', color:'#FCA5A5', fontWeight:700, background:'rgba(239,68,68,0.2)', padding:'4px 12px', borderRadius:'20px', border:'1px solid rgba(239,68,68,0.4)', whiteSpace:'nowrap' }}>
-            Proactive detection active
+          <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
+            <div style={{ fontSize:'11px', color:'#FCA5A5', fontWeight:800, background:'rgba(239,68,68,0.25)', padding:'5px 12px', borderRadius:'20px', border:'1px solid rgba(239,68,68,0.5)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'5px' }}>
+              <span>⚠️ Inaction Risk:</span>
+              <span>${criticalSkus.reduce((acc, s) => acc + calculateFinancialImpact(s, 1000, 500).downtimeExposure, 0).toLocaleString()}</span>
+            </div>
+            <div style={{ fontSize:'11px', color:'#34D399', fontWeight:800, background:'rgba(16,185,129,0.2)', padding:'5px 12px', borderRadius:'20px', border:'1px solid rgba(16,185,129,0.4)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'5px' }}>
+              <span>🛡️ ROI: 3.4× Cost Avoidance</span>
+            </div>
           </div>
         </div>
       )}
@@ -1353,7 +1417,15 @@ export default function InventoryOptimizationView() {
                     <div style={styles.cardSub}>Live animated freight routes · 4 sourcing hubs · MAS Holdings Colombo Factory</div>
                   </div>
                 </div>
-                <div style={{ display:'flex', gap:'8px' }}>
+                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'6px', background: isDark?'rgba(255,255,255,0.06)':'#E2E8F0', padding:'3px 9px', borderRadius:'10px', border:`1px solid ${c.tagBorder}` }}>
+                    <img
+                      src="https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=64&h=64&fit=crop&q=80"
+                      alt="Port of Colombo"
+                      style={{ width:'20px', height:'20px', borderRadius:'5px', objectFit:'cover' }}
+                    />
+                    <span style={{ fontSize:'10.5px', fontWeight:800, color:c.title }}>Port of Colombo (CICT)</span>
+                  </div>
                   {[{c:'#F59E0B',l:'🇨🇳 CN'},{c:'#EF4444',l:'🇧🇩 BD'},{c:'#10B981',l:'🇮🇳 IN'},{c:'#60A5FA',l:'🇻🇳 VN'}].map((x,i)=>(
                     <span key={i} style={{ fontSize:'10.5px', fontWeight:700, color:x.c, background:`${x.c}18`, border:`1px solid ${x.c}40`, padding:'3px 8px', borderRadius:'20px' }}>{x.l}</span>
                   ))}
@@ -1559,6 +1631,7 @@ export default function InventoryOptimizationView() {
                   const healthPct = Math.min(1, item.current_inventory / Math.max(1, skuSS));
                   const healthColor = healthPct < 0.5 ? '#EF4444' : healthPct < 0.8 ? '#F59E0B' : '#10B981';
                   const roq = Math.round(item.forecasted_demand * 7 * (1 + item.disruption_probability));
+                  const finImpact = calculateFinancialImpact(item, roq, skuSS);
 
                   const binLoc = item.product_id.startsWith('FAB') ? 'MAS Colombo · Bay 02 · Rack 14'
                     : item.product_id.startsWith('DYE') ? 'MAS Colombo · Chemical Safe Vault 08'
@@ -1602,31 +1675,109 @@ export default function InventoryOptimizationView() {
                           : 'linear-gradient(to right, #10B981, #059669)',
                       }} />
 
-                      {/* Header: Thumbnail + SKU + Category */}
+                      {/* Header: High-Res Photo Banner + SKU + Category */}
                       <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <MaterialThumb category={item.category} isDark={isDark} />
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontWeight: 800, color: isDark ? '#60A5FA' : '#2563EB', fontSize: '14px', letterSpacing: '.02em' }}>
-                                  {item.product_id}
-                                </span>
-                                <span style={{ fontSize: '9.5px', color: c.sub, background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', border: `1px solid ${c.tagBorder}`, padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                                  Inspect ↗
-                                </span>
-                              </div>
-                              <div style={{ fontSize: '13px', fontWeight: 700, color: c.title, marginTop: '2px', lineHeight: 1.3 }}>
-                                {item.product_name}
-                              </div>
+                        {/* Material High-Res Cover Photo Banner */}
+                        <div style={{
+                          position: 'relative',
+                          height: '110px',
+                          borderRadius: '12px',
+                          overflow: 'hidden',
+                          marginBottom: '12px',
+                          border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1'}`,
+                          boxShadow: isDark ? 'inset 0 0 20px rgba(0,0,0,0.5)' : '0 2px 8px rgba(15,23,42,0.06)',
+                        }}>
+                          <img
+                            src={SKU_IMAGES[item.product_id] || 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=500&auto=format&fit=crop&q=80'}
+                            alt={item.product_name}
+                            referrerPolicy="no-referrer"
+                            loading="lazy"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                            }}
+                          />
+                          {/* Gradient shade overlay for 100% contrast in light and dark mode */}
+                          <div style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'linear-gradient(to top, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.3) 50%, rgba(0,0,0,0.5) 100%)',
+                          }} />
+
+                          {/* Top Badges over image */}
+                          <div style={{ position: 'absolute', top: '8px', left: '8px', display: 'flex', gap: '6px' }}>
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              background: 'rgba(15,23,42,0.85)',
+                              backdropFilter: 'blur(6px)',
+                              color: '#93C5FD',
+                              border: '1px solid rgba(147,197,253,0.4)',
+                              letterSpacing: '.02em',
+                            }}>
+                              {item.category}
+                            </span>
+                          </div>
+
+                          <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              padding: '3px 9px',
+                              borderRadius: '6px',
+                              background: rp >= 0.7 ? '#EF4444' : rp >= 0.35 ? '#F59E0B' : '#10B981',
+                              color: '#FFFFFF',
+                              boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                            }}>
+                              P(risk) = {(rp * 100).toFixed(0)}%
+                            </span>
+                          </div>
+
+                          {/* Bottom overlay inside image: SKU ID + MAS Production Line */}
+                          <div style={{ position: 'absolute', bottom: '8px', left: '10px', right: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{
+                                fontWeight: 900,
+                                color: '#FFFFFF',
+                                fontSize: '14px',
+                                letterSpacing: '.03em',
+                                textShadow: '0 2px 4px rgba(0,0,0,0.9)',
+                              }}>
+                                {item.product_id}
+                              </span>
+                              <span style={{
+                                fontSize: '9.5px',
+                                color: '#CBD5E1',
+                                background: 'rgba(255,255,255,0.18)',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                fontWeight: 700,
+                              }}>
+                                Inspect ↗
+                              </span>
                             </div>
+                            <span style={{
+                              fontSize: '9.5px',
+                              fontWeight: 700,
+                              color: '#6EE7B7',
+                              textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                            }}>
+                              📍 {finImpact.meta.shortLine || 'MAS Factory'}
+                            </span>
                           </div>
                         </div>
 
-                        {/* Category & MAS Location */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10.5px', color: c.sub, marginBottom: '12px' }}>
-                          <span style={styles.categoryChip}>{item.category}</span>
-                          <span style={{ fontSize: '10px', color: c.sub }}>📍 {binLoc}</span>
+                        {/* Product Name & Location */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontSize: '14px', fontWeight: 800, color: c.title, lineHeight: 1.3 }}>
+                            {item.product_name}
+                          </div>
+                          <div style={{ fontSize: '10.5px', color: c.sub, marginTop: '3px' }}>
+                            📍 {binLoc}
+                          </div>
                         </div>
 
                         {/* Availability & Deficit Banner */}
@@ -1716,6 +1867,31 @@ export default function InventoryOptimizationView() {
                             <div style={{ fontSize: '8.5px', color: c.sub }}>{item.unit}</div>
                           </div>
                         </div>
+
+                        {/* Financial Impact & Inaction Risk Tag */}
+                        <div style={{
+                          marginTop: '10px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '7px 11px',
+                          borderRadius: '8px',
+                          background: hasShortage
+                            ? (isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2')
+                            : (isDark ? 'rgba(16,185,129,0.09)' : '#F0FDF4'),
+                          border: `1px solid ${hasShortage
+                            ? (isDark ? 'rgba(239,68,68,0.25)' : '#FECACA')
+                            : (isDark ? 'rgba(16,185,129,0.25)' : '#BBF7D0')}`,
+                          fontSize: '10.5px',
+                        }}>
+                          <span style={{ color: hasShortage ? (isDark ? '#FCA5A5' : '#B91C1C') : (isDark ? '#86EFAC' : '#15803D'), display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 700 }}>
+                            <span>{hasShortage ? '⚡ Inaction Risk:' : '🛡️ Value Guarded:'}</span>
+                          </span>
+                          <span style={{ fontWeight: 800, color: hasShortage ? '#EF4444' : '#10B981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {hasShortage ? `-$${finImpact.downtimeExposure.toLocaleString()} idle` : `+$${finImpact.netProtectedValue.toLocaleString()}`}
+                            <span style={{ fontSize: '9px', opacity: 0.8, color: c.sub }}>({finImpact.meta.shortLine})</span>
+                          </span>
+                        </div>
                       </div>
 
                       {/* Action Footer Toolbar */}
@@ -1794,7 +1970,7 @@ export default function InventoryOptimizationView() {
                       <th className="th-sort" style={styles.thCenter} onClick={()=>handleSort('disruption_probability')}>Risk <SortIcon col="disruption_probability"/></th>
                       <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('safety_stock')}>Safety Stock <SortIcon col="safety_stock"/></th>
                       <th style={styles.thRight}>ROP</th>
-                      <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('roq')}>ROQ <SortIcon col="roq"/></th>
+                      <th className="th-sort" style={styles.thRight} onClick={()=>handleSort('roq')}>ROQ & Protected Value <SortIcon col="roq"/></th>
                       <th style={{ ...styles.thCenter, minWidth:'150px' }}>Actions</th>
                     </tr>
                   </thead>
@@ -1807,6 +1983,8 @@ export default function InventoryOptimizationView() {
                       const skuSS = Math.round(item.forecasted_demand * 0.35);
                       const healthPct = Math.min(1, item.current_inventory / Math.max(1, skuSS));
                       const healthColor = healthPct < 0.5 ? '#EF4444' : healthPct < 0.8 ? '#F59E0B' : '#10B981';
+                      const roq = Math.round(item.forecasted_demand * 7 * (1 + item.disruption_probability));
+                      const finImpact = calculateFinancialImpact(item, roq, skuSS);
                       const rowBg = isSelected
                         ? (isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF')
                         : (isDark ? (idx%2===0?'#0F172A':'#0B1526') : (idx%2===0?'#FFFFFF':'#F8FAFC'));
@@ -1886,8 +2064,12 @@ export default function InventoryOptimizationView() {
                           </td>
                           <td style={styles.tdRight}><span style={{ color:c.title, fontWeight:600 }}>{Math.round(item.forecasted_demand*1.2).toLocaleString()}</span></td>
                           <td style={styles.tdRight}>
-                            <span style={{ color: isDark?'#6EE7B7':'#059669', fontWeight:700 }}>{Math.round(item.forecasted_demand*7*(1+item.disruption_probability)).toLocaleString()}</span>
+                            <span style={{ color: isDark?'#6EE7B7':'#059669', fontWeight:700 }}>{roq.toLocaleString()}</span>
                             <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
+                            <div style={{ fontSize:'9.5px', fontWeight:700, color: hasShortage ? '#EF4444' : '#10B981', marginTop:'2px', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'3px' }}>
+                              <span>{hasShortage ? '⚡' : '🛡️'}</span>
+                              <span>{hasShortage ? `-$${Math.round(finImpact.downtimeExposure/1000)}k risk` : `+$${Math.round(finImpact.netProtectedValue/1000)}k saved`}</span>
+                            </div>
                           </td>
                           <td style={{ ...styles.tdCenter, minWidth:'150px' }}>
                             <div style={{ display:'flex', gap:'5px', justifyContent:'center', alignItems:'center' }}>
@@ -1923,14 +2105,36 @@ export default function InventoryOptimizationView() {
                   <div style={styles.cardSub}>Drag sliders to instantly recalculate — before/after comparison shown below</div>
                 </div>
               </div>
-              <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
                 {[
-                  { id:'baseline',      label:'🟢 Baseline',     color:'#10B981' },
-                  { id:'port_crisis',   label:'🔴 Port Crisis',   color:'#EF4444' },
-                  { id:'demand_spike',  label:'⚡ Demand Surge',  color:'#F59E0B' },
-                  { id:'force_majeure', label:'🌪️ Force Majeure', color:'#8B5CF6' },
+                  { id:'baseline',      label:'Baseline Ops',     color:'#10B981', img:'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=80&h=80&fit=crop&q=80' },
+                  { id:'port_crisis',   label:'Port Crisis',   color:'#EF4444', img:'https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=80&h=80&fit=crop&q=80' },
+                  { id:'demand_spike',  label:'Demand Surge',  color:'#F59E0B', img:'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=80&h=80&fit=crop&q=80' },
+                  { id:'force_majeure', label:'Force Majeure', color:'#8B5CF6', img:'https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?w=80&h=80&fit=crop&q=80' },
                 ].map(p=>(
-                  <button key={p.id} className="btn-hover" onClick={()=>applyPreset(p.id)} style={{ ...styles.presetBtn, background: activePreset===p.id?p.color:(isDark?'#1E293B':'#F1F5F9'), color: activePreset===p.id?'#fff':c.sub, border:`1px solid ${activePreset===p.id?p.color:c.tagBorder}`, boxShadow: activePreset===p.id?`0 0 14px ${p.color}55`:'none' }}>{p.label}</button>
+                  <button
+                    key={p.id}
+                    className="btn-hover"
+                    onClick={()=>applyPreset(p.id)}
+                    style={{
+                      ...styles.presetBtn,
+                      display:'flex',
+                      alignItems:'center',
+                      gap:'8px',
+                      padding:'6px 12px',
+                      background: activePreset===p.id?p.color:(isDark?'#1E293B':'#FFFFFF'),
+                      color: activePreset===p.id?'#FFFFFF':c.title,
+                      border: `1.5px solid ${activePreset===p.id?p.color:c.tagBorder}`,
+                      boxShadow: activePreset===p.id?`0 4px 14px ${p.color}55`:'0 1px 4px rgba(0,0,0,0.05)',
+                    }}
+                  >
+                    <img
+                      src={p.img}
+                      alt={p.label}
+                      style={{ width:'22px', height:'22px', borderRadius:'6px', objectFit:'cover' }}
+                    />
+                    <span style={{ fontWeight: 800 }}>{p.label}</span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -3579,6 +3783,39 @@ export default function InventoryOptimizationView() {
                   ))}
                 </div>
               </div>
+
+              {/* Financial Inaction Protection Preview */}
+              {(() => {
+                const poFin = calculateFinancialImpact(poModalItem, poModalItem.reorder_quantity, Math.round(poModalItem.forecasted_demand * 0.35));
+                const totalEstimatedCost = Math.round(poModalItem.reorder_quantity * poFin.unitCost * (freightMode === 'air' ? 2.4 : 1.0));
+                return (
+                  <div style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: isDark ? 'rgba(16,185,129,0.08)' : '#F0FDF4',
+                    border: `1px solid ${isDark ? 'rgba(16,185,129,0.3)' : '#BBF7D0'}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '11px',
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#10B981', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span>🛡️</span> Estimated PO Value: <strong>${totalEstimatedCost.toLocaleString()}</strong>
+                      </div>
+                      <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>
+                        Protects {poFin.meta.line} (${poFin.meta.downtimeCost}/hr rate)
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 900, color: '#10B981' }}>
+                        +${poFin.netProtectedValue.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: '9px', color: c.sub }}>Value Guarded</div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'20px' }}>
               <button onClick={()=>setPoModalItem(null)} style={styles.cancelBtn}>Cancel</button>
@@ -3600,6 +3837,7 @@ export default function InventoryOptimizationView() {
         const healthPct = Math.min(1, item.current_inventory / Math.max(1, skuSS));
         const healthColor = healthPct < 0.5 ? '#EF4444' : healthPct < 0.8 ? '#F59E0B' : '#10B981';
         const isDispatched = Boolean(dispatchedPOs[item.product_id]);
+        const finImpact = calculateFinancialImpact(item, roq, skuSS);
 
         const coverImg = item.category === 'Fabrics'
           ? 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=800&auto=format&fit=crop&q=80'
@@ -3958,6 +4196,91 @@ export default function InventoryOptimizationView() {
                   </div>
                 </div>
 
+                {/* 3.1 Financial Impact & Cost-of-Inaction ($ vs. Risk) */}
+                <div style={{
+                  background: isDark ? 'linear-gradient(135deg,rgba(16,185,129,0.08),rgba(6,95,70,0.12))' : 'linear-gradient(135deg,#F0FDF4,#DCFCE7)',
+                  border: `1.5px solid ${isDark ? 'rgba(16,185,129,0.35)' : '#86EFAC'}`,
+                  borderRadius: '14px',
+                  padding: '16px 18px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '18px' }}>💰</span>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '13px', color: isDark ? '#6EE7B7' : '#15803D' }}>
+                          Financial Impact & Cost-of-Inaction ($ vs. Risk)
+                        </div>
+                        <div style={{ fontSize: '10px', color: c.sub, marginTop: '1px' }}>
+                          Factory line protection economics · MAS Line Contract ROI
+                        </div>
+                      </div>
+                    </div>
+                    <span style={{
+                      padding: '3px 9px',
+                      borderRadius: '20px',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      background: hasShortage ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)',
+                      color: hasShortage ? '#EF4444' : '#10B981',
+                      border: `1px solid ${hasShortage ? '#EF4444' : '#10B981'}40`,
+                    }}>
+                      {hasShortage ? '⚠️ CRITICAL EXPOSURE' : '🛡️ VALUE PROTECTED'}
+                    </span>
+                  </div>
+
+                  {/* 3 Comparative Financial Tiles */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', textAlign: 'center', marginBottom: '12px' }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.35)' : '#FFFFFF', padding: '10px 8px', borderRadius: '10px', border: `1px solid ${c.cardBorder}` }}>
+                      <div style={{ fontSize: '9.5px', color: c.sub, fontWeight: 700 }}>REORDER OUTLAY</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: c.title, marginTop: '3px' }}>
+                        ${finImpact.reorderInvestment.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: '9px', color: c.sub, marginTop: '1px' }}>
+                        @ ${finImpact.unitCost.toFixed(2)} / {item.unit}
+                      </div>
+                    </div>
+
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.35)' : '#FFFFFF', padding: '10px 8px', borderRadius: '10px', border: `1px solid ${c.cardBorder}` }}>
+                      <div style={{ fontSize: '9.5px', color: hasShortage ? '#EF4444' : c.sub, fontWeight: 700 }}>INACTION DOWNTIME</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: hasShortage ? '#EF4444' : '#F59E0B', marginTop: '3px' }}>
+                        ${finImpact.downtimeExposure.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: '9px', color: c.sub, marginTop: '1px' }}>
+                        {finImpact.outageHours}h @ ${finImpact.meta.downtimeCost}/hr
+                      </div>
+                    </div>
+
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.35)' : '#FFFFFF', padding: '10px 8px', borderRadius: '10px', border: `1px solid ${c.cardBorder}` }}>
+                      <div style={{ fontSize: '9.5px', color: '#10B981', fontWeight: 700 }}>PROTECTED ROI</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900, color: '#10B981', marginTop: '3px' }}>
+                        {finImpact.roiMultiplier}x
+                      </div>
+                      <div style={{ fontSize: '9px', color: '#10B981', marginTop: '1px' }}>
+                        +${finImpact.netProtectedValue.toLocaleString()} net
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Executive Prescriptive Narrative Banner */}
+                  <div style={{
+                    background: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)',
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+                    fontSize: '11px',
+                    lineHeight: 1.5,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: isDark ? '#E2E8F0' : '#1E293B', marginBottom: '3px' }}>
+                      <span>📌</span> Executive Justification:
+                    </div>
+                    <div style={{ color: c.sub }}>
+                      {hasShortage
+                        ? `Ordering ${roq.toLocaleString()} ${item.unit} immediately mitigates an impending $${finImpact.downtimeExposure.toLocaleString()} line stoppage penalty on ${finImpact.meta.line} (${finImpact.meta.order}). Inventory carrying costs are ${Math.round((1 - finImpact.reorderInvestment / Math.max(1, finImpact.downtimeExposure)) * 100)}% lower than manufacturing idle time.`
+                        : `Maintaining this safety buffer protects ${finImpact.meta.line} against disruption variance. Current buffer guards $${finImpact.netProtectedValue.toLocaleString()} in committed production capacity without triggering excess dead stock.`}
+                    </div>
+                  </div>
+                </div>
+
                 {/* 4. Action Shortcuts & What-If Simulator Jump */}
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
@@ -4059,22 +4382,22 @@ export default function InventoryOptimizationView() {
 function getThemeColors(isDark) {
   return {
     isDark,
-    bg:            isDark ? '#060C17' : '#EFF2F7',
+    bg:            isDark ? '#060C17' : '#EEF2F6',
     card:          isDark ? '#0D1B2E' : '#FFFFFF',
-    cardBorder:    isDark ? '#182B44' : '#E2E8F0',
-    title:         isDark ? '#F1F5F9' : '#0B1F3A',
-    sub:           isDark ? '#7A9EC0' : '#475569',
+    cardBorder:    isDark ? '#182B44' : '#CBD5E1',
+    title:         isDark ? '#F1F5F9' : '#0F172A',
+    sub:           isDark ? '#7A9EC0' : '#334155',
     subCard:       isDark ? '#0A1626' : '#F8FAFC',
-    subCardBorder: isDark ? '#182B44' : '#E2E8F0',
-    tableHead:     isDark ? '#0A1626' : '#F1F5F9',
-    tableBorder:   isDark ? '#182B44' : '#E9EEF4',
+    subCardBorder: isDark ? '#182B44' : '#CBD5E1',
+    tableHead:     isDark ? '#0A1626' : '#E2E8F0',
+    tableBorder:   isDark ? '#182B44' : '#CBD5E1',
     inputBg:       isDark ? '#0D1B2E' : '#FFFFFF',
-    inputBorder:   isDark ? '#2A3F5F' : '#CBD5E1',
+    inputBorder:   isDark ? '#2A3F5F' : '#94A3B8',
     inputText:     isDark ? '#F1F5F9' : '#0F172A',
     modalBg:       isDark ? '#0D1B2E' : '#FFFFFF',
-    tagBg:         isDark ? '#182B44' : '#F1F5F9',
-    tagText:       isDark ? '#94A3B8' : '#334155',
-    tagBorder:     isDark ? '#2A3F5F' : '#CBD5E1',
+    tagBg:         isDark ? '#182B44' : '#E2E8F0',
+    tagText:       isDark ? '#94A3B8' : '#0F172A',
+    tagBorder:     isDark ? '#2A3F5F' : '#94A3B8',
   };
 }
 
@@ -4142,15 +4465,15 @@ function getStyles(c) {
     searchInput: { padding:'9px 12px', borderRadius:'10px', border:`1.5px solid ${c.inputBorder}`, fontSize:'12.5px', backgroundColor:c.inputBg, color:c.inputText, outline:'none', transition:'all .2s' },
     tableWrapper: { overflowX:'auto', borderRadius:'12px', border:`1px solid ${c.tableBorder}`, position:'relative' },
     table: { width:'100%', minWidth:'1320px', borderCollapse:'collapse', fontSize:'12.5px' },
-    theadRow: { background: c.isDark?'#0A1626':'#F1F5F9', borderBottom:`2px solid ${c.tableBorder}` },
-    th:      { textAlign:'left',   padding:'12px 14px', color:c.sub, fontWeight:800, fontSize:'10.5px', letterSpacing:'.05em', whiteSpace:'nowrap' },
-    thRight: { textAlign:'right',  padding:'12px 14px', color:c.sub, fontWeight:800, fontSize:'10.5px', letterSpacing:'.05em', whiteSpace:'nowrap' },
-    thCenter:{ textAlign:'center', padding:'12px 14px', color:c.sub, fontWeight:800, fontSize:'10.5px', letterSpacing:'.05em', whiteSpace:'nowrap' },
+    theadRow: { background: c.isDark?'#0A1626':'#E2E8F0', borderBottom:`2px solid ${c.tableBorder}` },
+    th:      { textAlign:'left',   padding:'12px 14px', color: c.isDark ? c.sub : '#0F172A', fontWeight:800, fontSize:'11px', letterSpacing:'.05em', whiteSpace:'nowrap' },
+    thRight: { textAlign:'right',  padding:'12px 14px', color: c.isDark ? c.sub : '#0F172A', fontWeight:800, fontSize:'11px', letterSpacing:'.05em', whiteSpace:'nowrap' },
+    thCenter:{ textAlign:'center', padding:'12px 14px', color: c.isDark ? c.sub : '#0F172A', fontWeight:800, fontSize:'11px', letterSpacing:'.05em', whiteSpace:'nowrap' },
     tr: { borderBottom:`1px solid ${c.tableBorder}`, transition:'background-color .15s ease' },
     td:      { padding:'13px 14px', color:c.inputText, verticalAlign:'middle' },
     tdRight: { padding:'13px 14px', textAlign:'right',  color:c.inputText, verticalAlign:'middle' },
     tdCenter:{ padding:'13px 14px', textAlign:'center', color:c.inputText, verticalAlign:'middle' },
-    categoryChip: { background: c.isDark?'rgba(255,255,255,.05)':'#F1F5F9', border:`1px solid ${c.tagBorder}`, padding:'3px 10px', borderRadius:'8px', fontSize:'10.5px', color:c.sub, fontWeight:600, whiteSpace:'nowrap' },
+    categoryChip: { background: c.isDark?'rgba(255,255,255,.05)':'#E2E8F0', border:`1px solid ${c.tagBorder}`, padding:'3px 10px', borderRadius:'8px', fontSize:'10.5px', color: c.isDark ? c.sub : '#0F172A', fontWeight:700, whiteSpace:'nowrap' },
     badge: { display:'inline-block', padding:'3px 9px', borderRadius:'20px', fontSize:'10.5px', fontWeight:700, whiteSpace:'nowrap' },
     addBtn: { background:'linear-gradient(135deg,#1E40AF,#2563EB)', border:'none', color:'#FFFFFF', borderRadius:'10px', padding:'9px 16px', fontSize:'12px', fontWeight:800, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'6px', boxShadow:'0 4px 14px rgba(37,99,235,.35)', whiteSpace:'nowrap' },
     editBtn: { background: c.isDark?'rgba(59,130,246,.12)':'#EFF6FF', border:`1px solid ${c.isDark?'rgba(59,130,246,.3)':'#BFDBFE'}`, color: c.isDark?'#93C5FD':'#1E40AF', borderRadius:'8px', padding:'6px 9px', fontSize:'12px', fontWeight:600, cursor:'pointer', transition:'all .2s' },
@@ -4159,8 +4482,8 @@ function getStyles(c) {
     poBtn:  { border:'none', color:'#FFFFFF', borderRadius:'8px', padding:'6px 10px', fontSize:'11px', fontWeight:700, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' },
     // Simulator
     sliderGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'16px', marginTop:'4px' },
-    sliderCard: { background: c.isDark?'rgba(255,255,255,.02)':'#F8FAFC', border:`1px solid ${c.subCardBorder}`, borderRadius:'14px', padding:'18px' },
-    presetBtn: { border:'1px solid', borderRadius:'10px', padding:'7px 14px', fontSize:'11.5px', fontWeight:700, cursor:'pointer', transition:'all .2s' },
+    sliderCard: { background: c.isDark?'rgba(255,255,255,.02)':'#FFFFFF', border:`1.5px solid ${c.subCardBorder}`, borderRadius:'14px', padding:'18px', boxShadow: c.isDark?'none':'0 2px 10px rgba(15,23,42,0.06)' },
+    presetBtn: { border:'1.5px solid', borderRadius:'10px', padding:'7px 14px', fontSize:'11.5px', fontWeight:800, cursor:'pointer', transition:'all .2s' },
     // API Tester
     execBtn: { background:'linear-gradient(135deg,#1E40AF,#2563EB)', border:'none', color:'#FFFFFF', borderRadius:'10px', padding:'10px 20px', fontSize:'12.5px', fontWeight:800, cursor:'pointer', transition:'all .2s', boxShadow:'0 4px 14px rgba(37,99,235,.35)', whiteSpace:'nowrap' },
     inputGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:'16px', marginTop:'4px' },
