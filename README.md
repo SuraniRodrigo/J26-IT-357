@@ -7,7 +7,7 @@ OPTICHAIN is an AI-driven supply chain disruption predictor and line optimizer d
 - Frontend: React dashboard and UI
 - Backend: FastAPI application with business logic, orchestration, and ML inference
 - Research: notebooks, datasets, experimentation, and model-development artifacts
-- Database: PostgreSQL-backed persistence via SQLAlchemy
+- Database: SQLite persistence via SQLAlchemy
 - Model artifacts: production inference assets stored in backend/models_artifacts
 
 ## Core modules
