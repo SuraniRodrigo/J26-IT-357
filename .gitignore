@@ -27,3 +27,8 @@ Thumbs.db
 
 # Database
 *.sqlite3
+*.db
+
+# Demand Forecasting CSV datasets
+**/Demand Forecasting/**/*.csv
+**/Demand Forecasting/*.csv
