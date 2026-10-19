@@ -56,6 +56,39 @@ def test_optimizer_recalculate_rejects_negative_severity():
     assert response.status_code == 422
 
 
+def test_production_schedule_endpoint_returns_gantt_schedule():
+    response = client.post(
+        "/api/production/schedule",
+        json={
+            "orders": [
+                {
+                    "order_id": "ORDER-1",
+                    "product_id": "SKU-001",
+                    "product_family": "shirt",
+                    "cutting_minutes": 10,
+                    "sewing_minutes": 20,
+                    "finishing_minutes": 5,
+                    "due_time_minutes": 60,
+                }
+            ],
+            "sewing_lines": ["Line Alpha", "Line Beta"],
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["healing_triggered"] is False
+    assert result["sewing_line_assignments"]["ORDER-1"] in {
+        "Line Alpha",
+        "Line Beta",
+    }
+    assert [operation["stage"] for operation in result["gantt_schedule"]] == [
+        "cutting",
+        "sewing",
+        "finishing",
+    ]
+
+
 def test_optimizer_endpoint_allows_vite_frontend_cors():
     response = client.options(
         '/api/v1/optimizer/recalculate',
