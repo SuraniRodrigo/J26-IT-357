@@ -10,8 +10,12 @@ export async function apiRequest(path, options = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw new Error(`Backend request failed (${response.status} ${response.statusText}).`);
   }
 
   return response.json();
+}
+
+export function getBackendHealth() {
+  return apiRequest('/health');
 }
