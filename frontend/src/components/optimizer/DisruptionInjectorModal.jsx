@@ -1,19 +1,13 @@
 import { useState } from 'react';
 
-const categories = [
-  { value: 'Operator Absenteeism', description: 'Unplanned staffing shortage' },
-  { value: 'Machine Failure / Loom Breakage', description: 'Equipment downtime or failure' },
-  { value: 'Material Shortage / Dyeing Delay', description: 'Late or unavailable materials' },
-];
-
 export default function DisruptionInjectorModal({ lines, onClose, onSubmit }) {
   const [lineId, setLineId] = useState('beta');
-  const [category, setCategory] = useState(categories[1].value);
+  const [disruptionDescription, setDisruptionDescription] = useState('');
   const [severity, setSeverity] = useState(46);
 
   function submit(event) {
     event.preventDefault();
-    onSubmit({ lineId, category, severity });
+    onSubmit({ lineId, disruptionDescription: disruptionDescription.trim(), severity });
   }
 
   return (
@@ -29,15 +23,17 @@ export default function DisruptionInjectorModal({ lines, onClose, onSubmit }) {
           <select id="production-line" value={lineId} onChange={(event) => setLineId(event.target.value)}>
             {lines.map((line) => <option key={line.id} value={line.id}>{line.name}</option>)}
           </select>
-          <fieldset className="category-field">
-            <legend className="field-label">Disruption category</legend>
-            <div className="category-options">{categories.map((item) => (
-              <label key={item.value} className={`category-option ${category === item.value ? 'selected' : ''}`}>
-                <input type="radio" name="disruption-category" value={item.value} checked={category === item.value} onChange={() => setCategory(item.value)} />
-                <span className="radio-indicator" /><span className="category-copy"><strong>{item.value}</strong><small>{item.description}</small></span>
-              </label>
-            ))}</div>
-          </fieldset>
+          <div className="disruption-description-field">
+            <label className="field-label" htmlFor="disruption-description">Describe the disruption occurring on this production line</label>
+            <textarea
+              id="disruption-description"
+              value={disruptionDescription}
+              onChange={(event) => setDisruptionDescription(event.target.value)}
+              placeholder="For example: Loom 4 needle breakage, operators absent on Line Beta, or fabric delivery delayed."
+              rows={3}
+              required
+            />
+          </div>
           <div className="range-heading"><label className="field-label" htmlFor="severity">Impact severity</label><strong>{severity}%</strong></div>
           <input id="severity" className="severity-range" type="range" min="10" max="100" step="1" value={severity} onChange={(event) => setSeverity(Number(event.target.value))} />
           <div className="range-labels"><span>10% · Low impact</span><span>100% · Line stoppage</span></div>
