@@ -1,9 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { getLatestSupplyRisk } from '../../services/inventoryService';
+import { downloadSupplyRiskReport } from '../../services/supplyService';
 
 export default function InventoryOptimizationView() {
   const [supplyRisk, setSupplyRisk] = useState(null);
   const [loadingRisk, setLoadingRisk] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
+
+  async function handleExportReport() {
+    setIsExporting(true);
+    setExportStatus('');
+    try {
+      await downloadSupplyRiskReport();
+      setExportStatus('Report downloaded successfully');
+      setTimeout(() => setExportStatus(''), 4000);
+    } catch (error) {
+      setExportStatus(
+        error instanceof Error ? `Export failed: ${error.message}` : 'Export failed'
+      );
+      setTimeout(() => setExportStatus(''), 5000);
+    } finally {
+      setIsExporting(false);
+    }
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -395,24 +415,62 @@ export default function InventoryOptimizationView() {
             </div>
           </div>
 
-          <div style={styles.feedStatusBadge}>
-            <span
+          <div style={styles.upstreamActions}>
+            <div style={styles.feedStatusBadge}>
+              <span
+                style={{
+                  ...styles.liveDot,
+                  backgroundColor: loadingRisk ? '#94a3b8' : riskLevelColor,
+                  boxShadow: `0 0 10px ${loadingRisk ? '#94a3b8' : riskLevelColor}`,
+                }}
+                className={supplyRisk?.early_warning_alert ? 'pulse-dot-red' : ''}
+              />
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#e2e8f0', letterSpacing: '0.04em' }}>
+                {loadingRisk
+                  ? 'SYNCING LIVE FEED…'
+                  : supplyRisk?.early_warning_alert
+                  ? 'EARLY WARNING DISRUPTION SIGNAL'
+                  : 'UPSTREAM SYNC ACTIVE'}
+              </span>
+            </div>
+
+            <button
+              onClick={handleExportReport}
+              disabled={isExporting}
               style={{
-                ...styles.liveDot,
-                backgroundColor: loadingRisk ? '#94a3b8' : riskLevelColor,
-                boxShadow: `0 0 10px ${loadingRisk ? '#94a3b8' : riskLevelColor}`,
+                ...styles.exportBtn,
+                opacity: isExporting ? 0.7 : 1,
+                cursor: isExporting ? 'wait' : 'pointer',
               }}
-              className={supplyRisk?.early_warning_alert ? 'pulse-dot-red' : ''}
-            />
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#e2e8f0', letterSpacing: '0.04em' }}>
-              {loadingRisk
-                ? 'SYNCING LIVE FEED…'
-                : supplyRisk?.early_warning_alert
-                ? 'EARLY WARNING DISRUPTION SIGNAL'
-                : 'UPSTREAM SYNC ACTIVE'}
-            </span>
+              title="Download supplier risk audit report (CSV)"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              {isExporting ? 'Exporting…' : 'Export Risk Report'}
+            </button>
           </div>
         </div>
+
+        {exportStatus && (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '11px',
+            fontWeight: 600,
+            padding: '6px 12px',
+            borderRadius: '6px',
+            backgroundColor: exportStatus.includes('failed') ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+            border: `1px solid ${exportStatus.includes('failed') ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+            color: exportStatus.includes('failed') ? '#f87171' : '#34d399',
+            alignSelf: 'flex-start',
+          }}>
+            <span>{exportStatus}</span>
+          </div>
+        )}
 
         {/* 3 Metric Summary Grid */}
         <div style={styles.upstreamMetricsGrid}>
@@ -974,5 +1032,25 @@ const styles = {
     alignItems: 'center',
     gap: '8px',
   },
+  upstreamActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    flexWrap: 'wrap',
+  },
+  exportBtn: {
+    background: '#1e293b',
+    border: '1px solid rgba(56, 189, 248, 0.28)',
+    borderRadius: '8px',
+    color: '#f0f9ff',
+    padding: '7px 14px',
+    fontSize: '12px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    transition: 'all 0.2s',
+  },
 };
+
 
