@@ -1,6 +1,6 @@
-from __future__ import annotations
+from datetime import datetime, timezone
 
-from sqlalchemy import Column, Date, Float, Integer, String, Text
+from sqlalchemy import Column, Date, DateTime, Float, Integer, String, Text, func
 
 from app.database.connection import Base
 
@@ -25,6 +25,13 @@ class SupplyRiskRecord(Base):
     disruption_probability = Column(Float, nullable=False)
     risk_level = Column(String, nullable=False)
     model_version = Column(String, nullable=False)
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=True,
+    )
+
 
 
 class InventoryPolicyRecord(Base):

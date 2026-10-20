@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { predictSupplyRisk } from '../../services/supplyService';
+import { predictSupplyRisk, downloadSupplyRiskReport } from '../../services/supplyService';
 
 export default function SupplyDisruptionView() {
   const [filterMode, setFilterMode] = useState('all'); // 'all' or 'highRisk'
@@ -14,6 +14,24 @@ export default function SupplyDisruptionView() {
   const [prediction, setPrediction] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
   const [predictionError, setPredictionError] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
+
+  async function handleExportReport() {
+    setIsExporting(true);
+    setExportStatus('');
+    try {
+      await downloadSupplyRiskReport();
+      setExportStatus('Report downloaded successfully');
+      setTimeout(() => setExportStatus(''), 4000);
+    } catch (error) {
+      setExportStatus(
+        error instanceof Error ? `Export failed: ${error.message}` : 'Export failed'
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  }
 
   async function handlePredictionSubmit(event) {
     event.preventDefault();
@@ -415,14 +433,30 @@ export default function SupplyDisruptionView() {
             <h2 style={styles.frameworkTitle}>Supplier Risk Profiling Framework</h2>
             <p style={styles.frameworkSubtitle}>Continuous evaluation matrix for key vendor reliability metrics.</p>
           </div>
-          <button style={styles.exportBtn}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            Export Report
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {exportStatus && (
+              <span style={{ fontSize: '11px', color: exportStatus.includes('failed') ? '#f87171' : '#34d399' }}>
+                {exportStatus}
+              </span>
+            )}
+            <button
+              onClick={handleExportReport}
+              disabled={isExporting}
+              style={{
+                ...styles.exportBtn,
+                opacity: isExporting ? 0.7 : 1,
+                cursor: isExporting ? 'wait' : 'pointer',
+              }}
+              title="Download supplier risk audit report (CSV)"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              {isExporting ? 'Exporting…' : 'Export Report'}
+            </button>
+          </div>
         </div>
 
         <div style={styles.frameworkGrid}>

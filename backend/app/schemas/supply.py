@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -50,4 +52,24 @@ class SupplyRiskHistoryItem(BaseModel):
     disruption_probability: float
     risk_level: str
     model_version: str
+    created_at: datetime | str | None = None
+
+
+class LatestSupplyRiskResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    supplier_id: str | None = Field(default=None, description="Observed supplier identifier")
+    vendor_id: str | None = Field(default=None, description="Observed vendor identifier")
+    disruption_probability: float = Field(..., ge=0, le=1, description="Disruption risk factor [0, 1]")
+    disruption_probability_percent: float = Field(..., ge=0, le=100, description="Disruption probability percent")
+    supplier_trust_score: float = Field(..., ge=0, le=100, description="Supplier trust score [0, 100]")
+    risk_level: str = Field(..., description="Risk level: low, medium, high")
+    early_warning_alert: bool = Field(..., description="Alert flag when disruption probability >= 50%")
+    model_version: str = Field(default="xgboost-v1.0")
+    valid_upstream_risk_signal: bool = Field(
+        default=True,
+        description="Flag indicating an active upstream risk signal for Inventory Guardian",
+    )
+    created_at: datetime | str | None = Field(default=None, description="Inference timestamp")
+
 

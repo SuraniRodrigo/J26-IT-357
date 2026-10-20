@@ -28,3 +28,22 @@ class SupplyRepository:
             )
         return list(reversed(self.records))[:limit]
 
+    def list_all(self) -> Sequence[SupplyRiskRecord]:
+        if self.db is not None:
+            return (
+                self.db.query(SupplyRiskRecord)
+                .order_by(SupplyRiskRecord.id.desc())
+                .all()
+            )
+        return list(reversed(self.records))
+
+    def get_latest(self) -> SupplyRiskRecord | None:
+        if self.db is not None:
+            return (
+                self.db.query(SupplyRiskRecord)
+                .order_by(SupplyRiskRecord.id.desc())
+                .first()
+            )
+        return self.records[-1] if self.records else None
+
+
