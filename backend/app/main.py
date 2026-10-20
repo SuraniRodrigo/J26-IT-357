@@ -6,6 +6,7 @@ from app.api.routes.demand import router as demand_router
 from app.api.routes.supply import router as supply_router
 from app.api.routes.inventory import router as inventory_router
 from app.api.routes.production import router as production_router
+from app.api.routes.production_ui import router as production_ui_router
 from app.api.routes.optichain import router as optichain_router
 from app.core.config import settings
 
@@ -30,6 +31,7 @@ app.include_router(demand_router, prefix="/api")
 app.include_router(supply_router, prefix="/api")
 app.include_router(inventory_router, prefix="/api")
 app.include_router(production_router, prefix="/api")
+app.include_router(production_ui_router, prefix="/api")
 app.include_router(optichain_router, prefix="/api")
 
 

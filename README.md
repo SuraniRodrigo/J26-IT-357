@@ -73,6 +73,28 @@ After starting the backend, open:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
+### Production UI API
+
+The production screens have a demo API under `/api/production-ui`:
+
+- `GET /dashboard` — overview KPIs, line status, output trend, and recent events.
+- `GET` / `POST /disruptions` — list and record disruption events;
+  `POST /disruptions/{id}/resolve` resolves an active event.
+- `GET` / `POST /simulations` — list sandbox runs and submit a simulation.
+  Simulations do not mutate the live schedule.
+- `POST /recovery-plans` — create a proposal. Optionally provide a
+  `disruption_id`, `objective` (`balanced`, `delay`, or `overtime`),
+  `allow_overtime`, and `protect_priority_orders`.
+- `GET /recovery-plans/{id}` and `POST /recovery-plans/{id}/apply` — inspect
+  and apply a proposal to the in-memory schedule.
+- `GET /schedule` and `POST /schedule/rollback` — read the current schedule,
+  activity log, and execution status; rollback the latest applied proposal.
+
+This UI API currently uses process-local in-memory demo data. Data resets when
+the backend restarts and is not shared between multiple backend workers. The
+existing `/api/production/schedule` and `/api/v1/optimizer/recalculate`
+endpoints remain available for the production scheduling algorithms.
+
 ## Testing
 
 ```bash
