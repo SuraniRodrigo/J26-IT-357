@@ -6,3 +6,8 @@ export async function optimizeInventory(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function getLatestSupplyRisk() {
+  return apiRequest('/api/supply/latest-risk');
+}
+
