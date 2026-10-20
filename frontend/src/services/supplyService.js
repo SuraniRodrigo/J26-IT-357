@@ -13,6 +13,10 @@ export async function getLatestSupplyRisk() {
   return apiRequest('/api/supply/latest-risk');
 }
 
+export async function getWeatherRouteRisk() {
+  return apiRequest('/api/supply/weather-risk');
+}
+
 export async function downloadSupplyRiskReport() {
   const response = await fetch(`${API_BASE_URL}/api/supply/export`);
   if (!response.ok) {

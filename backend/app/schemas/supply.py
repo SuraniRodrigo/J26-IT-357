@@ -73,3 +73,21 @@ class LatestSupplyRiskResponse(BaseModel):
     created_at: datetime | str | None = Field(default=None, description="Inference timestamp")
 
 
+class PortWeatherRisk(BaseModel):
+    """Telemetry snapshot for a single shipping port / trade lane."""
+
+    port_name: str
+    country: str
+    weather_condition: str
+    typhoon_monsoon_risk_score: int = Field(ge=0, le=100, description="Composite weather hazard score 0-100")
+    port_congestion_level: str = Field(description="Low / Medium / High")
+    estimated_delay_hours: int = Field(ge=0)
+    status_badge: str = Field(description="Operational status label, e.g. DISRUPTED / WATCH / CLEAR")
+
+
+class RouteWeatherRiskResponse(BaseModel):
+    """Aggregated real-time shipping route weather risk payload."""
+
+    generated_at: datetime
+    overall_risk_level: str = Field(description="Worst-case level across all ports: LOW / MEDIUM / HIGH")
+    ports: list[PortWeatherRisk]

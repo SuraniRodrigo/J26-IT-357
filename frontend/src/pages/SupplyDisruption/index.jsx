@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { predictSupplyRisk, downloadSupplyRiskReport } from '../../services/supplyService';
+import React, { useEffect, useState } from 'react';
+import { downloadSupplyRiskReport, getWeatherRouteRisk, predictSupplyRisk } from '../../services/supplyService';
 
 export default function SupplyDisruptionView() {
   const [filterMode, setFilterMode] = useState('all'); // 'all' or 'highRisk'
@@ -16,6 +16,27 @@ export default function SupplyDisruptionView() {
   const [predictionError, setPredictionError] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
+  const [weatherRisk, setWeatherRisk] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [weatherError, setWeatherError] = useState('');
+
+  useEffect(() => {
+    async function fetchWeather() {
+      setWeatherLoading(true);
+      setWeatherError('');
+      try {
+        const data = await getWeatherRouteRisk();
+        setWeatherRisk(data);
+      } catch (err) {
+        setWeatherError('Unable to load weather telemetry. Backend may be offline.');
+      } finally {
+        setWeatherLoading(false);
+      }
+    }
+    fetchWeather();
+    const interval = setInterval(fetchWeather, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function handleExportReport() {
     setIsExporting(true);
@@ -497,6 +518,116 @@ export default function SupplyDisruptionView() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Weather & Port Risk Telemetry Widget */}
+      <div style={styles.weatherCard}>
+        <div style={styles.weatherCardHeader}>
+          <div>
+            <div style={styles.weatherCardTitle}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" style={{ marginRight: '8px', flexShrink: 0 }}>
+                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
+              </svg>
+              Shipping Route &amp; Port Weather Risk Telemetry
+            </div>
+            <div style={styles.weatherCardSubtitle}>
+              Real-time risk telemetry for key apparel trade lanes — updates every hour.
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {weatherRisk && (
+              <span style={{
+                ...styles.weatherOverallBadge,
+                ...(weatherRisk.overall_risk_level === 'HIGH'
+                  ? styles.weatherBadgeHigh
+                  : weatherRisk.overall_risk_level === 'MEDIUM'
+                  ? styles.weatherBadgeMedium
+                  : styles.weatherBadgeLow),
+              }}>
+                OVERALL: {weatherRisk.overall_risk_level}
+              </span>
+            )}
+            {weatherLoading && (
+              <span style={{ fontSize: '11px', color: '#64748b' }}>Refreshing…</span>
+            )}
+          </div>
+        </div>
+
+        {weatherError && (
+          <div role="alert" style={styles.weatherErrorBanner}>{weatherError}</div>
+        )}
+
+        {!weatherError && (
+          <div style={styles.weatherPortGrid}>
+            {weatherLoading && !weatherRisk
+              ? [1, 2, 3, 4].map((n) => (
+                  <div key={n} style={styles.weatherPortCard}>
+                    <div style={styles.weatherPortSkeleton} />
+                  </div>
+                ))
+              : (weatherRisk?.ports ?? []).map((port) => {
+                  const isHigh = port.status_badge === 'DISRUPTED';
+                  const isWatch = port.status_badge === 'WATCH';
+                  const accentColor = isHigh ? '#ef4444' : isWatch ? '#f59e0b' : '#10b981';
+                  return (
+                    <div key={port.port_name} style={{
+                      ...styles.weatherPortCard,
+                      borderTopColor: accentColor,
+                    }}>
+                      <div style={styles.weatherPortTop}>
+                        <div>
+                          <div style={styles.weatherPortName}>{port.port_name}</div>
+                          <div style={styles.weatherPortCountry}>{port.country}</div>
+                        </div>
+                        <span style={{
+                          ...styles.weatherStatusBadge,
+                          background: isHigh ? 'rgba(239,68,68,0.14)' : isWatch ? 'rgba(245,158,11,0.14)' : 'rgba(16,185,129,0.14)',
+                          color: accentColor,
+                          borderColor: `${accentColor}55`,
+                        }}>
+                          {port.status_badge}
+                        </span>
+                      </div>
+
+                      <div style={styles.weatherConditionRow}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2">
+                          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z" />
+                        </svg>
+                        <span style={styles.weatherConditionText}>{port.weather_condition}</span>
+                      </div>
+
+                      <div style={styles.weatherMetricGrid}>
+                        <div style={styles.weatherMetric}>
+                          <div style={styles.weatherMetricLabel}>TYPHOON / MONSOON RISK</div>
+                          <div style={{ ...styles.weatherMetricValue, color: accentColor }}>
+                            {port.typhoon_monsoon_risk_score}
+                            <span style={{ fontSize: '10px', fontWeight: 400, color: '#64748b' }}>&nbsp;/ 100</span>
+                          </div>
+                        </div>
+                        <div style={styles.weatherMetric}>
+                          <div style={styles.weatherMetricLabel}>PORT CONGESTION</div>
+                          <div style={styles.weatherMetricValue}>{port.port_congestion_level}</div>
+                        </div>
+                        <div style={styles.weatherMetric}>
+                          <div style={styles.weatherMetricLabel}>EST. DELAY</div>
+                          <div style={styles.weatherMetricValue}>
+                            {port.estimated_delay_hours}
+                            <span style={{ fontSize: '10px', fontWeight: 400, color: '#64748b' }}>&nbsp;hrs</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+            }
+          </div>
+        )}
+
+        {weatherRisk && (
+          <div style={styles.weatherFooter}>
+            Last refreshed: {new Date(weatherRisk.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1005,5 +1136,161 @@ const styles = {
     fontSize: '11px',
     color: '#cbd5e1',
     lineHeight: 1.6,
+  },
+
+  // ── Weather & Port Risk Telemetry Widget ───────────────────────────────────
+  weatherCard: {
+    background: '#0d1322',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '16px',
+    padding: '24px',
+  },
+  weatherCardHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: '16px',
+    flexWrap: 'wrap',
+    paddingBottom: '16px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+    marginBottom: '20px',
+  },
+  weatherCardTitle: {
+    fontSize: '16px',
+    fontWeight: 700,
+    fontFamily: 'Outfit, sans-serif',
+    color: '#f1f5f9',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  weatherCardSubtitle: {
+    fontSize: '12px',
+    color: '#64748b',
+    marginTop: '4px',
+  },
+  weatherOverallBadge: {
+    borderRadius: '6px',
+    padding: '5px 10px',
+    fontSize: '10px',
+    fontWeight: 700,
+    letterSpacing: '0.06em',
+    border: '1px solid transparent',
+  },
+  weatherBadgeHigh: {
+    background: 'rgba(239, 68, 68, 0.14)',
+    color: '#f87171',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
+  },
+  weatherBadgeMedium: {
+    background: 'rgba(245, 158, 11, 0.14)',
+    color: '#fbbf24',
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  weatherBadgeLow: {
+    background: 'rgba(16, 185, 129, 0.14)',
+    color: '#34d399',
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  weatherErrorBanner: {
+    padding: '10px 14px',
+    background: 'rgba(127, 29, 29, 0.2)',
+    border: '1px solid rgba(248, 113, 113, 0.3)',
+    borderRadius: '8px',
+    color: '#fca5a5',
+    fontSize: '12px',
+    marginBottom: '16px',
+  },
+  weatherPortGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '16px',
+  },
+  weatherPortCard: {
+    background: 'rgba(15, 23, 42, 0.55)',
+    border: '1px solid rgba(255, 255, 255, 0.07)',
+    borderTop: '3px solid #38bdf8',
+    borderRadius: '10px',
+    padding: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  weatherPortSkeleton: {
+    height: '120px',
+    borderRadius: '6px',
+    background: 'linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.4s infinite',
+  },
+  weatherPortTop: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: '8px',
+  },
+  weatherPortName: {
+    fontSize: '13px',
+    fontWeight: 700,
+    color: '#f1f5f9',
+  },
+  weatherPortCountry: {
+    fontSize: '10px',
+    color: '#64748b',
+    marginTop: '2px',
+  },
+  weatherStatusBadge: {
+    borderRadius: '5px',
+    padding: '3px 7px',
+    fontSize: '9px',
+    fontWeight: 800,
+    letterSpacing: '0.06em',
+    border: '1px solid transparent',
+    flexShrink: 0,
+  },
+  weatherConditionRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    background: 'rgba(255, 255, 255, 0.03)',
+    border: '1px solid rgba(255, 255, 255, 0.05)',
+    borderRadius: '6px',
+    padding: '6px 8px',
+  },
+  weatherConditionText: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
+  weatherMetricGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '6px',
+  },
+  weatherMetric: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '3px',
+    padding: '8px 6px',
+    background: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: '6px',
+    textAlign: 'center',
+  },
+  weatherMetricLabel: {
+    fontSize: '8px',
+    fontWeight: 700,
+    letterSpacing: '0.04em',
+    color: '#475569',
+    textTransform: 'uppercase',
+  },
+  weatherMetricValue: {
+    fontSize: '16px',
+    fontWeight: 700,
+    color: '#f8fafc',
+  },
+  weatherFooter: {
+    marginTop: '14px',
+    fontSize: '10px',
+    color: '#475569',
+    textAlign: 'right',
   },
 };

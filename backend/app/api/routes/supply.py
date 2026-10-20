@@ -1,5 +1,7 @@
 import csv
 import io
+import random
+from datetime import datetime, timezone
 from typing import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -10,6 +12,8 @@ from app.database.session import get_db
 from app.repositories.supply_repository import SupplyRepository
 from app.schemas.supply import (
     LatestSupplyRiskResponse,
+    PortWeatherRisk,
+    RouteWeatherRiskResponse,
     SupplyPredictionRequest,
     SupplyPredictionResponse,
     SupplyRiskHistoryItem,
@@ -139,4 +143,95 @@ def supply_latest_risk(
         created_at=None,
     )
 
+
+_PORT_TEMPLATES = [
+    {
+        "port_name": "Colombo Port",
+        "country": "Sri Lanka",
+        "conditions": [
+            ("Monsoon – Heavy Rainfall", 72, "High", 36, "DISRUPTED"),
+            ("Intermittent Showers", 48, "Medium", 12, "WATCH"),
+            ("Clear Skies", 10, "Low", 0, "CLEAR"),
+        ],
+    },
+    {
+        "port_name": "Shanghai Port",
+        "country": "China",
+        "conditions": [
+            ("Typhoon Warning", 91, "High", 72, "DISRUPTED"),
+            ("Strong Winds", 55, "Medium", 18, "WATCH"),
+            ("Partly Cloudy", 14, "Low", 2, "CLEAR"),
+        ],
+    },
+    {
+        "port_name": "Ningbo-Zhoushan",
+        "country": "China",
+        "conditions": [
+            ("Fog & Reduced Visibility", 63, "High", 24, "DISRUPTED"),
+            ("Overcast", 37, "Medium", 8, "WATCH"),
+            ("Clear & Calm", 8, "Low", 0, "CLEAR"),
+        ],
+    },
+    {
+        "port_name": "Chittagong Port",
+        "country": "Bangladesh",
+        "conditions": [
+            ("Cyclone Advisory", 84, "High", 48, "DISRUPTED"),
+            ("Pre-monsoon Squalls", 52, "Medium", 16, "WATCH"),
+            ("Humid but Clear", 18, "Low", 1, "CLEAR"),
+        ],
+    },
+]
+
+
+@router.get("/supply/weather-risk", response_model=RouteWeatherRiskResponse)
+def supply_weather_risk() -> RouteWeatherRiskResponse:
+    """Return real-time-style shipping route & port weather risk telemetry.
+
+    The response is deterministically seeded by the current UTC hour so
+    values visibly rotate throughout the day without any external API
+    dependencies.
+    """
+    now_utc = datetime.now(timezone.utc)
+    seed = now_utc.year * 1_000_000 + now_utc.month * 10_000 + now_utc.day * 100 + now_utc.hour
+    rng = random.Random(seed)
+
+    ports: list[PortWeatherRisk] = []
+    worst_score = 0
+
+    for template in _PORT_TEMPLATES:
+        # Each hour pick one of the three condition tiers at weighted probability
+        condition = rng.choices(
+            template["conditions"],
+            weights=[20, 35, 45],  # DISRUPTED / WATCH / CLEAR probabilities
+            k=1,
+        )[0]
+        weather_condition, typhoon_score, congestion, delay_hours, status_badge = condition
+
+        ports.append(
+            PortWeatherRisk(
+                port_name=template["port_name"],
+                country=template["country"],
+                weather_condition=weather_condition,
+                typhoon_monsoon_risk_score=typhoon_score,
+                port_congestion_level=congestion,
+                estimated_delay_hours=delay_hours,
+                status_badge=status_badge,
+            )
+        )
+        if typhoon_score > worst_score:
+            worst_score = typhoon_score
+
+    if worst_score >= 60:
+        overall = "HIGH"
+    elif worst_score >= 35:
+        overall = "MEDIUM"
+    else:
+        overall = "LOW"
+
+    return RouteWeatherRiskResponse(
+        generated_at=now_utc,
+        overall_risk_level=overall,
+        ports=ports,
+    )
 
