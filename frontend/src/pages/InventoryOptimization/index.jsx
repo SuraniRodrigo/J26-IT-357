@@ -69,15 +69,157 @@ function PolicyBarChart({ isDark }) {
   );
 }
 
+function PolicyComparisonChart({ baseline, current, unit, isDark }) {
+  const metrics = [
+    { label: 'Safety Stock', baseline: baseline?.ss, current: current.ss },
+    { label: 'Reorder Point', baseline: baseline?.rop, current: current.rop },
+    { label: 'Reorder Qty', baseline: baseline?.roq, current: current.roq },
+  ];
+  const maxValue = Math.max(...metrics.flatMap(metric => [metric.baseline || 0, metric.current]), 1);
+  const plot = { left: 58, top: 20, width: 644, height: 142 };
+  const chartBottom = plot.top + plot.height;
+  const textColor = isDark ? '#94A3B8' : '#475569';
+  const gridColor = isDark ? '#334155' : '#CBD5E1';
+  const formatCompact = value => new Intl.NumberFormat('en', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+  const formatValue = value => new Intl.NumberFormat('en', {
+    maximumFractionDigits: 0,
+  }).format(value);
+
+  return (
+    <div style={{
+      gridColumn: '1 / -1',
+      padding: '12px 16px 8px',
+      border: `1px solid ${isDark ? 'rgba(59,130,246,.25)' : '#D7E3F4'}`,
+      borderRadius: '12px',
+      background: isDark ? 'rgba(15,23,42,.55)' : '#FFFFFF',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: 800, color: isDark ? '#E2E8F0' : '#1E293B' }}>
+            Baseline vs. Live Policy Metrics
+          </div>
+          <div style={{ fontSize: '10px', color: textColor, marginTop: '2px' }}>
+            Inventory quantities ({unit})
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '10px', color: textColor }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '9px', height: '9px', borderRadius: '3px', background: '#60A5FA' }} />
+            Baseline{baseline ? '' : ' (select a preset)'}
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '9px', height: '9px', borderRadius: '3px', background: '#10B981' }} />
+            Live Output
+          </span>
+        </div>
+      </div>
+
+      <svg
+        role="img"
+        aria-label={`Chart comparing baseline and live safety stock, reorder point, and reorder quantity in ${unit}`}
+        viewBox="0 0 720 212"
+        style={{ width: '100%', height: 'auto', display: 'block', marginTop: '6px' }}
+      >
+        {[0, 0.25, 0.5, 0.75, 1].map(tick => {
+          const y = chartBottom - tick * plot.height;
+          return (
+            <g key={tick}>
+              <line
+                x1={plot.left}
+                y1={y}
+                x2={plot.left + plot.width}
+                y2={y}
+                stroke={gridColor}
+                strokeDasharray={tick === 0 ? undefined : '3 4'}
+                strokeWidth="1"
+              />
+              <text x={plot.left - 8} y={y + 3} fill={textColor} fontSize="9" textAnchor="end">
+                {formatCompact(maxValue * tick)}
+              </text>
+            </g>
+          );
+        })}
+        {metrics.map((metric, index) => {
+          const center = plot.left + plot.width * (index + 0.5) / metrics.length;
+          const hasBaseline = typeof metric.baseline === 'number';
+          const bars = [
+            ...(hasBaseline ? [{ key: 'baseline', value: metric.baseline, color: '#60A5FA', x: center - 52 }] : []),
+            { key: 'current', value: metric.current, color: '#10B981', x: center + (hasBaseline ? 4 : -24) },
+          ];
+
+          return (
+            <g key={metric.label}>
+              {bars.map(bar => {
+                const barHeight = (bar.value / maxValue) * plot.height;
+                const y = chartBottom - barHeight;
+                return (
+                  <g key={bar.key}>
+                    <title>{`${metric.label} — ${bar.key === 'baseline' ? 'Baseline' : 'Live Output'}: ${formatValue(bar.value)} ${unit}`}</title>
+                    <rect
+                      x={bar.x}
+                      y={y}
+                      width="48"
+                      height={barHeight}
+                      rx="5"
+                      fill={bar.color}
+                      opacity="0.88"
+                    />
+                    <text
+                      x={bar.x + 24}
+                      y={Math.max(plot.top - 2, y - 5)}
+                      fill={bar.color}
+                      fontSize="9"
+                      fontWeight="700"
+                      textAnchor="middle"
+                    >
+                      {formatCompact(bar.value)}
+                    </text>
+                  </g>
+                );
+              })}
+              <text
+                x={center}
+                y={chartBottom + 20}
+                fill={textColor}
+                fontSize="10"
+                fontWeight="600"
+                textAnchor="middle"
+              >
+                {metric.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 // ─── Circular gauge ─────────────────────────────────────────────────────────
-function StockGauge({ pct, label, color }) {
-  const r = 36, cx = 44, cy = 44, stroke = 8;
+function StockGauge({
+  pct,
+  label,
+  color,
+  size = 88,
+  precision = 0,
+  trackColor = 'rgba(255,255,255,0.06)',
+}) {
+  const cx = size / 2, cy = size / 2, r = size * 0.41, stroke = size * 0.09;
   const circ = 2 * Math.PI * r;
   const dash = Math.max(0, Math.min(1, pct)) * circ;
   return (
     <div style={{ textAlign: 'center' }}>
-      <svg width="88" height="88" viewBox="0 0 88 88">
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
+      <svg
+        role="img"
+        aria-label={`${label}: ${(pct * 100).toFixed(precision)}%`}
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+      >
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
         <circle
           cx={cx} cy={cy} r={r} fill="none"
           stroke={color} strokeWidth={stroke}
@@ -86,10 +228,10 @@ function StockGauge({ pct, label, color }) {
           transform={`rotate(-90 ${cx} ${cy})`}
           style={{ transition: 'stroke-dasharray 0.6s ease' }}
         />
-        <text x={cx} y={cy - 4} textAnchor="middle" fontSize="12" fontWeight="800" fill={color}>
-          {Math.round(pct * 100)}%
+        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={size * 0.14} fontWeight="800" fill={color}>
+          {(pct * 100).toFixed(precision)}%
         </text>
-        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="8" fill="#94A3B8">
+        <text x={cx} y={cy + size * 0.12} textAnchor="middle" fontSize={size * 0.09} fill="#94A3B8">
           {label}
         </text>
       </svg>
@@ -1088,6 +1230,7 @@ export default function InventoryOptimizationView() {
   const [activeControllerTab, setActiveControllerTab] = useState('ALL');
   const [showOptimizerModal, setShowOptimizerModal] = useState(false);
   const [computedPolicies, setComputedPolicies] = useState([]);
+  const [showInventoryPicker, setShowInventoryPicker] = useState(false);
 
   // ── Toast system ──────────────────────────────────────────────────────────
   const showToast = useCallback((msg, type = 'success') => {
@@ -4930,23 +5073,24 @@ export default function InventoryOptimizationView() {
               <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
                 <button
                   className="btn-hover"
-                  onClick={() => setDrawerItem(currentProduct)}
+                  onClick={() => setShowInventoryPicker(true)}
                   style={{
                     padding: '9px 18px',
                     borderRadius: '10px',
                     border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.5)' : '#BFDBFE'}`,
-                    background: isDark ? 'rgba(59,130,246,0.12)' : '#EFF6FF',
+                    background: isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF',
                     color: isDark ? '#93C5FD' : '#1D4ED8',
                     fontSize: '12.5px',
-                    fontWeight: 700,
+                    fontWeight: 800,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '7px',
+                    boxShadow: '0 2px 8px rgba(37,99,235,0.15)',
                   }}
-                  title="Configure warehouse stock, lead time, and policy settings"
+                  title="Open catalog to pick a material"
                 >
-                  <span>⚙️</span> Edit Parameters &amp; Levers
+                  <span>📋</span> View Inventory ({productsList.length} SKUs)
                 </button>
 
                 <button
@@ -4982,105 +5126,268 @@ export default function InventoryOptimizationView() {
               </div>
             </div>
 
-            {/* ═══ INTERACTIVE MATERIAL SELECTOR STRIP ═══ */}
-            <div style={{
-              marginTop: '18px',
-              padding: '14px 16px',
-              background: isDark ? 'rgba(0,0,0,0.25)' : '#F8FAFC',
-              borderRadius: '14px',
-              border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: c.sub, textTransform: 'uppercase', letterSpacing: '.06em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>📦</span> Click any Raw Material to Inspect &amp; Auto-Compute Adaptive Policy:
-                </div>
-                <div style={{ fontSize: '11px', color: '#2563EB', fontWeight: 700 }}>
-                  Selected: <strong>{directParams.product_id}</strong>
-                </div>
-              </div>
-
-              {/* Material Chips Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '8px' }}>
-                {productsList.map(item => {
-                  const isSelected = item.product_id === directParams.product_id;
-                  const isRiskHigh = item.disruption_probability >= 0.7;
-                  const riskColor = isRiskHigh ? '#EF4444' : item.disruption_probability >= 0.35 ? '#F59E0B' : '#10B981';
-                  return (
-                    <div
-                      key={item.product_id}
-                      className="btn-hover"
-                      onClick={async () => {
-                        // Switch active material
-                        setSelectedSku(item.product_id);
-                        const newParams = {
-                          ...directParams,
-                          product_id: item.product_id,
-                          current_inventory: item.current_inventory,
-                          forecasted_demand: item.forecasted_demand,
-                          average_lead_time: item.average_lead_time,
-                          lead_time_std_dev: item.lead_time_std_dev,
-                          demand_std_dev: item.demand_std_dev,
-                          disruption_probability: item.disruption_probability,
-                          supplier_trust_score: item.supplier_trust_score,
-                        };
-                        setDirectParams(newParams);
-
-                        // Auto-run optimization for the clicked SKU
-                        setIsExecutingDirectApi(true);
-                        try {
-                          const r = await optimizeInventoryDetailed(newParams);
-                          setDirectApiResult(r);
-                          setComputedPolicies(prev => [{ ...r, _computedAt: new Date().toISOString() }, ...prev]);
-                          showToast(`✓ Switched to ${item.product_id} · Policy computed`);
-                        } catch(e) {
-                          showToast(`Error: ${e.message || 'Optimization failed'}`, 'error');
-                        } finally {
-                          setIsExecutingDirectApi(false);
-                        }
-                      }}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '10px',
-                        border: `1.5px solid ${isSelected ? '#2563EB' : isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
-                        background: isSelected
-                          ? (isDark ? 'rgba(37,99,235,0.22)' : '#EFF6FF')
-                          : (isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF'),
-                        cursor: 'pointer',
-                        transition: 'all 0.18s ease',
-                        boxShadow: isSelected ? '0 4px 12px rgba(37,99,235,0.25)' : 'none',
-                        position: 'relative',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 900, fontSize: '12px', color: isSelected ? '#2563EB' : c.title }}>
-                          {item.product_id}
-                        </span>
-                        <span style={{
-                          fontSize: '9px',
-                          fontWeight: 800,
-                          padding: '1px 5px',
-                          borderRadius: '4px',
-                          background: `${riskColor}18`,
-                          color: riskColor,
-                          border: `1px solid ${riskColor}40`,
-                        }}>
-                          {(item.disruption_probability * 100).toFixed(0)}% risk
-                        </span>
+            {/* ═══ MODAL: COMPACT INVENTORY CATALOG PICKER ═══ */}
+            {showInventoryPicker && (
+              <div style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.65)',
+                backdropFilter: 'blur(6px)',
+                zIndex: 99999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px',
+                animation: 'content-fade-in 0.2s ease',
+              }}>
+                <div style={{
+                  background: isDark ? '#0F172A' : '#FFFFFF',
+                  border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`,
+                  borderRadius: '18px',
+                  width: '100%',
+                  maxWidth: '1000px',
+                  maxHeight: '90vh',
+                  boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
+                  overflow: 'hidden',
+                }}>
+                  {/* Modal Header */}
+                  <div style={{
+                    padding: '16px 22px',
+                    background: isDark ? 'rgba(0,0,0,0.35)' : '#F8FAFC',
+                    borderBottom: `1px solid ${c.tableBorder}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 900, fontSize: '15px', color: c.title, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>📋</span> Select Raw Material to Inspect
                       </div>
-                      <div style={{ fontSize: '10px', color: c.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '4px' }}>
-                        {item.product_name}
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5px', color: c.sub, borderTop: `1px dashed ${c.tableBorder}`, paddingTop: '4px' }}>
-                        <span>Stock: <strong>{item.current_inventory.toLocaleString()}</strong></span>
-                        <span style={{ color: isSelected ? '#2563EB' : c.sub, fontWeight: isSelected ? 800 : 400 }}>
-                          {isSelected ? '● ACTIVE' : 'Select ➔'}
-                        </span>
+                      <div style={{ fontSize: '11px', color: c.sub, marginTop: '2px' }}>
+                        Choose a material to view its inventory details and run optimization.
                       </div>
                     </div>
-                  );
-                })}
+                    <button
+                      onClick={() => setShowInventoryPicker(false)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        fontSize: '20px',
+                        cursor: 'pointer',
+                        color: c.sub,
+                        padding: '4px 8px',
+                        lineHeight: 1,
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Compact Inventory List */}
+                  <div style={{ maxHeight: 'min(260px, 30vh)', overflowY: 'auto', padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {productsList.map(item => {
+                      const isSelected = item.product_id === directParams.product_id;
+                      const isRiskHigh = item.disruption_probability >= 0.7;
+                      const riskColor = isRiskHigh ? '#EF4444' : item.disruption_probability >= 0.35 ? '#F59E0B' : '#10B981';
+                      return (
+                        <div
+                          key={item.product_id}
+                          className="btn-hover"
+                          onClick={() => {
+                            // Update active parameters with selected item
+                            setSelectedSku(item.product_id);
+                            setDirectParams({
+                              ...directParams,
+                              product_id: item.product_id,
+                              current_inventory: item.current_inventory,
+                              forecasted_demand: item.forecasted_demand,
+                              average_lead_time: item.average_lead_time,
+                              lead_time_std_dev: item.lead_time_std_dev,
+                              demand_std_dev: item.demand_std_dev,
+                              disruption_probability: item.disruption_probability,
+                              supplier_trust_score: item.supplier_trust_score,
+                            });
+                            setDirectApiResult(null);
+                            showToast(`Selected ${item.product_id} (${item.product_name})`);
+                          }}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '12px 16px',
+                            borderRadius: '12px',
+                            border: `1.5px solid ${isSelected ? '#2563EB' : isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+                            background: isSelected
+                              ? (isDark ? 'rgba(37,99,235,0.18)' : '#EFF6FF')
+                              : (isDark ? 'rgba(255,255,255,0.02)' : '#FFFFFF'),
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                              width: '38px',
+                              height: '38px',
+                              borderRadius: '10px',
+                              background: isDark ? 'rgba(59,130,246,0.15)' : '#F1F5F9',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 900,
+                              fontSize: '11px',
+                              color: '#2563EB',
+                            }}>
+                              {item.product_id.split('-')[0]}
+                            </div>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontWeight: 900, fontSize: '13px', color: isSelected ? '#2563EB' : c.title }}>
+                                  {item.product_id}
+                                </span>
+                                <span style={{ fontSize: '11px', color: c.sub, fontWeight: 600 }}>
+                                  · {item.product_name}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '10.5px', color: c.sub, marginTop: '2px' }}>
+                                Category: <strong>{item.category || 'Apparel Raw Material'}</strong> · Lead Time: <strong>{item.average_lead_time} days</strong>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '12.5px', fontWeight: 800, color: c.title }}>
+                                {item.current_inventory.toLocaleString()} units
+                              </div>
+                              <div style={{ fontSize: '10px', color: c.sub }}>
+                                Warehouse Stock
+                              </div>
+                            </div>
+
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              padding: '3px 9px',
+                              borderRadius: '6px',
+                              background: `${riskColor}18`,
+                              color: riskColor,
+                              border: `1px solid ${riskColor}40`,
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {(item.disruption_probability * 100).toFixed(0)}% Risk
+                            </span>
+
+                            <button
+                              style={{
+                                padding: '6px 14px',
+                                borderRadius: '8px',
+                                border: 'none',
+                                background: isSelected ? '#2563EB' : isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
+                                color: isSelected ? '#FFFFFF' : c.title,
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {isSelected ? '✓ Selected' : 'Select ➔'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{
+                    margin: '0 18px 18px',
+                    padding: '16px',
+                    background: isDark ? 'rgba(0,0,0,0.32)' : '#F0F9FF',
+                    borderRadius: '14px',
+                    border: `1.5px solid ${isDark ? 'rgba(56,189,248,0.25)' : '#BAE6FD'}`,
+                    overflowY: 'auto',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '18px' }}>📦</span>
+                        <div>
+                          <div style={{ fontSize: '13.5px', fontWeight: 900, color: c.title }}>
+                            Inventory Details: <span style={{ color: '#0284C7' }}>{directParams.product_id}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: c.sub }}>
+                            Selected material and optimization inputs
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        className="btn-hover"
+                        onClick={async () => {
+                          setIsExecutingDirectApi(true);
+                          try {
+                            const r = await optimizeInventoryDetailed(directParams);
+                            setDirectApiResult(r);
+                            setComputedPolicies(prev => [{ ...r, _computedAt: new Date().toISOString() }, ...prev]);
+                            if (!r.reorder_required || r.material_shortage <= 0) {
+                              setReleasedGates(prev => ({ ...prev, [directParams.product_id]: true }));
+                            }
+                            setShowInventoryPicker(false);
+                            showToast(`✓ Optimization complete for ${directParams.product_id}! Results synced to Production Readiness.`);
+                          } catch(e) {
+                            showToast(`Optimization error: ${e.message || 'Unknown'}`, 'error');
+                          } finally {
+                            setIsExecutingDirectApi(false);
+                          }
+                        }}
+                        disabled={isExecutingDirectApi}
+                        style={{
+                          padding: '9px 20px',
+                          borderRadius: '10px',
+                          border: 'none',
+                          background: 'linear-gradient(135deg, #0284C7, #0369A1)',
+                          color: '#FFFFFF',
+                          fontSize: '12.5px',
+                          fontWeight: 800,
+                          cursor: isExecutingDirectApi ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '7px',
+                          boxShadow: '0 4px 14px rgba(2,132,199,0.35)',
+                        }}
+                      >
+                        {isExecutingDirectApi ? '⟳ Calculating Policy...' : '⚡ Run Optimization'}
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
+                      {[
+                        ['Material', currentProduct.product_name],
+                        ['Category', currentProduct.category || 'Raw Material'],
+                        ['Physical Stock', `${Number(directParams.current_inventory).toLocaleString()} ${currentProduct.unit || 'units'}`],
+                        ['In-Transit Stock', `${Number(directParams.in_transit_qty || 0).toLocaleString()} ${currentProduct.unit || 'units'}`],
+                        ['Forecast Demand', `${Number(directParams.forecasted_demand).toLocaleString()} ${currentProduct.unit || 'units'}`],
+                        ['Demand Std. Deviation', `${Number(directParams.demand_std_dev).toLocaleString()} ${currentProduct.unit || 'units'}`],
+                        ['Lead Time', `${directParams.average_lead_time} days`],
+                        ['Lead Time Std. Deviation', `${directParams.lead_time_std_dev} days`],
+                        ['Disruption Risk', `${(directParams.disruption_probability * 100).toFixed(0)}%`],
+                        ['Supplier Trust', `${directParams.supplier_trust_score}/100`],
+                        ['Target Service Level', `${(directParams.service_level * 100).toFixed(0)}%`],
+                        ['Disruption Scenario', directParams.scenario],
+                        ['Optimization Policy', directParams.policy_type],
+                      ].map(([label, value]) => (
+                        <div key={label} style={{
+                          background: isDark ? 'rgba(0,0,0,0.2)' : '#FFFFFF',
+                          padding: '9px 10px',
+                          borderRadius: '10px',
+                          border: `1px solid ${c.tableBorder}`,
+                          minWidth: 0,
+                        }}>
+                          <div style={{ fontSize: '10px', fontWeight: 800, color: c.sub, marginBottom: '4px' }}>{label}</div>
+                          <div style={{ fontSize: '12px', fontWeight: 800, color: c.title, overflowWrap: 'anywhere' }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Dedicated Results Section */}
             {directApiResult && (
@@ -5254,7 +5561,7 @@ export default function InventoryOptimizationView() {
                       display:'flex',
                       alignItems:'center',
                       gap:'8px',
-                      padding:'6px 12px',
+                      padding:'5px 10px',
                       background: activePreset===p.id?p.color:(isDark?'#1E293B':'#FFFFFF'),
                       color: activePreset===p.id?'#FFFFFF':c.title,
                       border: `1.5px solid ${activePreset===p.id?p.color:c.tagBorder}`,
@@ -5264,7 +5571,7 @@ export default function InventoryOptimizationView() {
                     <img
                       src={p.img}
                       alt={p.label}
-                      style={{ width:'22px', height:'22px', borderRadius:'6px', objectFit:'cover' }}
+                      style={{ width:'18px', height:'18px', borderRadius:'5px', objectFit:'cover' }}
                     />
                     <span style={{ fontWeight: 800 }}>{p.label}</span>
                   </button>
@@ -5280,7 +5587,7 @@ export default function InventoryOptimizationView() {
                 { icon:'🎯', label:'Target Service Level', desc:`z = ${activeOpt.z}`, val:`${(serviceLevel*100).toFixed(0)}%`, color:'#A78BFA', min:.85, max:.99, step:.01, cur:serviceLevel, set:v=>setServiceLevel(parseFloat(v)) },
               ].map((s,i)=>(
                 <div key={i} style={styles.sliderCard}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'14px' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', gap:'8px' }}>
                     <div>
                       <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'3px' }}>
                         <span style={{ fontSize:'16px' }}>{s.icon}</span>
@@ -5299,8 +5606,8 @@ export default function InventoryOptimizationView() {
             </div>
 
             {/* ═══ INTERACTIVE AI BEFORE / AFTER SPLIT COMPARISON SLIDER ═══ */}
-            <div style={{ marginTop:'24px' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'10px' }}>
+            <div style={{ marginTop:'16px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px', flexWrap:'wrap', gap:'8px' }}>
                 <div>
                   <div style={{ fontWeight:800, fontSize:'13px', color:c.title, display:'flex', alignItems:'center', gap:'7px' }}>
                     <span>⚡</span> Interactive Split Lens: Static Policy vs. AI Adaptive Guardian
@@ -5312,19 +5619,19 @@ export default function InventoryOptimizationView() {
                 <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
                   <button
                     onClick={() => setSplitSliderPos(0)}
-                    style={{ padding:'4px 10px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 0 ? '#EF4444' : 'transparent', color: splitSliderPos === 0 ? '#fff' : c.sub, fontSize:'10.5px', fontWeight:700, cursor:'pointer' }}
+                    style={{ padding:'4px 9px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 0 ? '#EF4444' : 'transparent', color: splitSliderPos === 0 ? '#fff' : c.sub, fontSize:'10px', fontWeight:700, cursor:'pointer' }}
                   >
                     100% Static
                   </button>
                   <button
                     onClick={() => setSplitSliderPos(50)}
-                    style={{ padding:'4px 10px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 50 ? '#2563EB' : 'transparent', color: splitSliderPos === 50 ? '#fff' : c.sub, fontSize:'10.5px', fontWeight:700, cursor:'pointer' }}
+                    style={{ padding:'4px 9px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 50 ? '#2563EB' : 'transparent', color: splitSliderPos === 50 ? '#fff' : c.sub, fontSize:'10px', fontWeight:700, cursor:'pointer' }}
                   >
                     50 / 50 Split
                   </button>
                   <button
                     onClick={() => setSplitSliderPos(100)}
-                    style={{ padding:'4px 10px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 100 ? '#10B981' : 'transparent', color: splitSliderPos === 100 ? '#fff' : c.sub, fontSize:'10.5px', fontWeight:700, cursor:'pointer' }}
+                    style={{ padding:'4px 9px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 100 ? '#10B981' : 'transparent', color: splitSliderPos === 100 ? '#fff' : c.sub, fontSize:'10px', fontWeight:700, cursor:'pointer' }}
                   >
                     100% AI Guardian
                   </button>
@@ -5339,13 +5646,13 @@ export default function InventoryOptimizationView() {
                 border:`1.5px solid ${isDark ? 'rgba(59,130,246,0.35)' : '#CBD5E1'}`,
                 background: isDark ? '#0A1224' : '#F8FAFC',
                 boxShadow: isDark ? '0 12px 36px rgba(0,0,0,0.45)' : '0 6px 24px rgba(15,23,42,0.08)',
-                minHeight:'220px',
+                minHeight:'176px',
                 display:'flex',
               }}>
                 {/* Left Side: Static Legacy Policy */}
                 <div style={{
                   flex: `${splitSliderPos}`,
-                  padding: '18px 22px',
+                  padding: '14px 16px',
                   background: isDark ? 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(15,23,42,0.6))' : 'linear-gradient(135deg, #FEF2F2, #FFFFFF)',
                   borderRight: `2px solid ${isDark ? '#EF4444' : '#DC2626'}`,
                   transition: 'flex 0.1s ease-out',
@@ -5363,26 +5670,26 @@ export default function InventoryOptimizationView() {
                     </div>
                   </div>
 
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px' }}>
-                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:'8px' }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'8px', borderRadius:'9px', border:`1px solid ${c.tableBorder}` }}>
                       <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>STATIC BUFFER</div>
-                      <div style={{ fontSize:'18px', fontWeight:900, color: isDark ? '#F87171' : '#DC2626', marginTop:'3px' }}>
+                      <div style={{ fontSize:'16px', fontWeight:900, color: isDark ? '#F87171' : '#DC2626', marginTop:'3px' }}>
                         {(baselineSnap?.ss || Math.round(currentProduct.forecasted_demand * 0.2)).toLocaleString()}
                       </div>
                       <div style={{ fontSize:'9px', color:c.sub }}>{currentProduct.unit}</div>
                     </div>
 
-                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'8px', borderRadius:'9px', border:`1px solid ${c.tableBorder}` }}>
                       <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>STOCKOUT RISK</div>
-                      <div style={{ fontSize:'18px', fontWeight:900, color:'#EF4444', marginTop:'3px' }}>
+                      <div style={{ fontSize:'16px', fontWeight:900, color:'#EF4444', marginTop:'3px' }}>
                         {(disruptionProb * 100).toFixed(0)}%
                       </div>
                       <div style={{ fontSize:'9px', color:'#F87171' }}>Line Starvation Imminent</div>
                     </div>
 
-                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'8px', borderRadius:'9px', border:`1px solid ${c.tableBorder}` }}>
                       <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>IDLE EXPOSURE</div>
-                      <div style={{ fontSize:'18px', fontWeight:900, color:'#EF4444', marginTop:'3px' }}>
+                      <div style={{ fontSize:'16px', fontWeight:900, color:'#EF4444', marginTop:'3px' }}>
                         ${(calculateFinancialImpact(currentProduct, activeOpt.roq, activeOpt.ss).downtimeExposure).toLocaleString()}
                       </div>
                       <div style={{ fontSize:'9px', color:c.sub }}>12h Stoppage Penalty</div>
@@ -5393,7 +5700,7 @@ export default function InventoryOptimizationView() {
                 {/* Right Side: OptiChain AI Adaptive Guardian */}
                 <div style={{
                   flex: `${100 - splitSliderPos}`,
-                  padding: '18px 22px',
+                  padding: '14px 16px',
                   background: isDark ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(37,99,235,0.1))' : 'linear-gradient(135deg, #F0FDF4, #EFF6FF)',
                   transition: 'flex 0.1s ease-out',
                   overflow: 'hidden',
@@ -5410,26 +5717,33 @@ export default function InventoryOptimizationView() {
                     </div>
                   </div>
 
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px' }}>
-                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:'8px' }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'8px', borderRadius:'9px', border:`1px solid ${c.tableBorder}` }}>
                       <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>ADAPTIVE BUFFER</div>
-                      <div style={{ fontSize:'18px', fontWeight:900, color: '#10B981', marginTop:'3px' }}>
+                      <div style={{ fontSize:'16px', fontWeight:900, color: '#10B981', marginTop:'3px' }}>
                         {activeOpt.ss.toLocaleString()}
                       </div>
                       <div style={{ fontSize:'9px', color:c.sub }}>+{Math.round(activeOpt.ss - (baselineSnap?.ss || currentProduct.forecasted_demand * 0.2)).toLocaleString()} protected</div>
                     </div>
 
-                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'8px', borderRadius:'9px', border:`1px solid ${c.tableBorder}` }}>
                       <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>SERVICE LEVEL</div>
-                      <div style={{ fontSize:'18px', fontWeight:900, color:'#34D399', marginTop:'3px' }}>
-                        {(serviceLevel * 100).toFixed(1)}%
+                      <div style={{ display:'flex', justifyContent:'center', margin:'2px 0' }}>
+                        <StockGauge
+                          pct={serviceLevel}
+                          label="SLA"
+                          color="#34D399"
+                          size={72}
+                          precision={1}
+                          trackColor={isDark ? 'rgba(148,163,184,0.2)' : '#E2E8F0'}
+                        />
                       </div>
                       <div style={{ fontSize:'9px', color:'#10B981' }}>Full SLA Secured</div>
                     </div>
 
-                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'8px', borderRadius:'9px', border:`1px solid ${c.tableBorder}` }}>
                       <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>PROTECTED ROI</div>
-                      <div style={{ fontSize:'18px', fontWeight:900, color:'#10B981', marginTop:'3px' }}>
+                      <div style={{ fontSize:'16px', fontWeight:900, color:'#10B981', marginTop:'3px' }}>
                         {calculateFinancialImpact(currentProduct, activeOpt.roq, activeOpt.ss).roiMultiplier}×
                       </div>
                       <div style={{ fontSize:'9px', color:'#10B981' }}>+${(calculateFinancialImpact(currentProduct, activeOpt.roq, activeOpt.ss).netProtectedValue).toLocaleString()} net</div>
@@ -5440,17 +5754,17 @@ export default function InventoryOptimizationView() {
 
               {/* Interactive Luxury Drag Slider Control with Pop-up HUD and Dynamic Drag Indicator */}
               <div style={{
-                marginTop: '16px',
+                marginTop: '10px',
                 background: isDark ? 'rgba(15,23,42,0.8)' : '#FFFFFF',
                 border: `1.5px solid ${isDark ? 'rgba(245,158,11,0.3)' : '#FDE68A'}`,
-                borderRadius: '18px',
-                padding: '14px 20px',
+                borderRadius: '12px',
+                padding: '9px 14px',
                 boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 2px 12px rgba(15,23,42,0.05)',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '8px', flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{
-                      fontSize: '11px',
+                      fontSize: '10px',
                       fontWeight: 900,
                       color: '#EF4444',
                       background: 'rgba(239,68,68,0.15)',
@@ -5471,7 +5785,7 @@ export default function InventoryOptimizationView() {
                     fontWeight: 800,
                     color: isDark ? '#FDE047' : '#D97706',
                     background: isDark ? 'rgba(245,158,11,0.15)' : '#FEF3C7',
-                    padding: '4px 14px',
+                    padding: '3px 10px',
                     borderRadius: '20px',
                     border: '1px solid rgba(245,158,11,0.4)',
                     boxShadow: '0 2px 8px rgba(245,158,11,0.2)',
@@ -5483,7 +5797,7 @@ export default function InventoryOptimizationView() {
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{
-                      fontSize: '11px',
+                      fontSize: '10px',
                       fontWeight: 900,
                       color: '#10B981',
                       background: 'rgba(16,185,129,0.15)',
@@ -5497,7 +5811,7 @@ export default function InventoryOptimizationView() {
                 </div>
 
                 {/* Range Slider Track */}
-                <div style={{ position: 'relative', width: '100%', padding: '6px 0' }}>
+                <div style={{ position: 'relative', width: '100%', padding: '4px 0' }}>
                   <input
                     type="range"
                     min="0"
@@ -5507,8 +5821,8 @@ export default function InventoryOptimizationView() {
                     className="split-drag-thumb"
                     style={{
                       width: '100%',
-                      height: '12px',
-                      borderRadius: '6px',
+                      height: '9px',
+                      borderRadius: '5px',
                       appearance: 'none',
                       background: 'linear-gradient(to right, #EF4444 0%, #F59E0B 50%, #10B981 100%)',
                       outline: 'none',
@@ -5521,10 +5835,10 @@ export default function InventoryOptimizationView() {
             </div>
 
             {/* Before / After comparison tabular breakdown */}
-            <div style={{ marginTop:'20px', display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:'16px', alignItems:'center' }}>
+            <div style={{ marginTop:'12px', display:'grid', gridTemplateColumns:'minmax(0, 1fr) auto minmax(0, 1fr)', gap:'10px', alignItems:'center' }}>
               {/* Before */}
               <div style={{ ...styles.subCard, opacity: baselineSnap?1:0.5 }}>
-                <div style={{ fontSize:'10px', fontWeight:800, color:c.sub, letterSpacing:'.07em', marginBottom:'10px' }}>
+                <div style={{                 fontSize:'10px', fontWeight:800, color:c.sub, letterSpacing:'.07em', marginBottom:'6px' }}>
                   BASELINE SNAPSHOT {!baselineSnap&&'(select a preset to compare)'}
                 </div>
                 {[
@@ -5533,7 +5847,7 @@ export default function InventoryOptimizationView() {
                   ['Reorder Qty', baselineSnap?.roq?.toLocaleString()??'—', '#34D399'],
                   ['Risk Level', baselineSnap?.risk??'—', '#FBBF24'],
                 ].map(([l,v,col],i)=>(
-                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', color:c.sub, padding:'5px 0', borderBottom:`1px solid ${c.tableBorder}` }}>
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:c.sub, padding:'4px 0', borderBottom:`1px solid ${c.tableBorder}` }}>
                     <span>{l}</span><strong style={{ color:col }}>{v}</strong>
                   </div>
                 ))}
@@ -5547,7 +5861,7 @@ export default function InventoryOptimizationView() {
 
               {/* After */}
               <div style={{ ...styles.subCard, border:`1px solid ${isDark?'rgba(59,130,246,.3)':'#BFDBFE'}`, background: isDark?'rgba(59,130,246,.06)':'rgba(37,99,235,.03)' }}>
-                <div style={{ fontSize:'10px', fontWeight:800, color:'#60A5FA', letterSpacing:'.07em', marginBottom:'10px' }}>LIVE OUTPUT</div>
+                <div style={{ fontSize:'10px', fontWeight:800, color:'#60A5FA', letterSpacing:'.07em', marginBottom:'6px' }}>LIVE OUTPUT</div>
                 {[
                   ['Safety Stock', activeOpt.ss.toLocaleString()+` ${currentProduct.unit}`, '#60A5FA'],
                   ['Reorder Point', activeOpt.rop.toLocaleString()+` ${currentProduct.unit}`, c.title],
@@ -5559,7 +5873,7 @@ export default function InventoryOptimizationView() {
                   const hasSnap = typeof snapVals[i] === 'number' && typeof currVals[i] === 'number';
                   const delta = hasSnap ? currVals[i] - snapVals[i] : null;
                   return (
-                    <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'12px', color:c.sub, padding:'5px 0', borderBottom:`1px solid ${c.tableBorder}` }}>
+                    <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:'11px', color:c.sub, padding:'4px 0', borderBottom:`1px solid ${c.tableBorder}` }}>
                       <span>{l}</span>
                       <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
                         {delta!==null && delta!==0 && <span style={{ fontSize:'10px', fontWeight:700, color: delta>0?'#F87171':'#34D399' }}>{delta>0?'+':''}{delta.toLocaleString()}</span>}
@@ -5570,6 +5884,12 @@ export default function InventoryOptimizationView() {
                 })}
               </div>
             </div>
+            <PolicyComparisonChart
+              baseline={baselineSnap}
+              current={activeOpt}
+              unit={currentProduct.unit}
+              isDark={isDark}
+            />
           </div>
 
           {/* Scenario cards */}
@@ -5581,7 +5901,7 @@ export default function InventoryOptimizationView() {
                 <div style={styles.cardSub}>Stress testing <strong>{currentProduct.product_id}</strong> across NORMAL / MODERATE / SEVERE</div>
               </div>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'16px' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))', gap:'12px' }}>
               {['NORMAL','MODERATE','SEVERE'].map(scName => {
                 const sc = scenarioData?.scenarios?.[scName] || {
                   multiplier: scName==='NORMAL'?1.0:scName==='MODERATE'?1.5:2.0,
@@ -5595,8 +5915,8 @@ export default function InventoryOptimizationView() {
                 };
                 const ac = scName==='SEVERE'?'#EF4444':scName==='MODERATE'?'#F59E0B':'#10B981';
                 return (
-                  <div key={scName} style={{ ...styles.subCard, border:`1px solid ${ac}44`, boxShadow:`0 0 18px ${ac}14` }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px', paddingBottom:'10px', borderBottom:`1px solid ${ac}33` }}>
+                  <div key={scName} style={{ ...styles.subCard, padding:'14px', border:`1px solid ${ac}44`, boxShadow:`0 0 18px ${ac}14` }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px', paddingBottom:'7px', borderBottom:`1px solid ${ac}33` }}>
                       <div>
                         <div style={{ fontWeight:800, fontSize:'13px', color:c.title }}>{scName} ({sc.multiplier}x)</div>
                         <div style={{ fontSize:'11px', color:c.sub, marginTop:'2px' }}>P(risk): {(sc.disruption_probability*100).toFixed(0)}%</div>
@@ -5604,9 +5924,9 @@ export default function InventoryOptimizationView() {
                       <span style={{ ...styles.badge, background:ac+'22', color:ac, border:`1px solid ${ac}55`, fontSize:'11px', padding:'4px 10px' }}>{sc.risk_level}</span>
                     </div>
                     {[['Lead Time',sc.risk_adjusted_lead_time+' days',c.title],['Safety Buffer',sc.safety_stock.toLocaleString()+` ${currentProduct.unit}`,'#60A5FA'],['Trigger ROP',sc.reorder_point.toLocaleString()+` ${currentProduct.unit}`,c.title],['Rec. ROQ',sc.reorder_quantity.toLocaleString()+` ${currentProduct.unit}`,'#34D399']].map(([l,v,col],i)=>(
-                      <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'12px', color:c.sub, padding:'5px 0', borderBottom:`1px solid ${c.tableBorder}` }}><span>{l}</span><strong style={{ color:col }}>{v}</strong></div>
+                      <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:c.sub, padding:'4px 0', borderBottom:`1px solid ${c.tableBorder}` }}><span>{l}</span><strong style={{ color:col }}>{v}</strong></div>
                     ))}
-                    <div style={{ marginTop:'10px', padding:'8px 10px', background:ac+'12', borderRadius:'8px', border:`1px dashed ${ac}44`, fontSize:'11.5px', color:c.title }}>
+                    <div style={{ marginTop:'8px', padding:'7px 8px', background:ac+'12', borderRadius:'8px', border:`1px dashed ${ac}44`, fontSize:'10.5px', color:c.title }}>
                       <span style={{ color:ac, fontWeight:800, fontSize:'9.5px', letterSpacing:'.06em' }}>DIRECTIVE — </span>{sc.reorder_recommendation}
                     </div>
                   </div>
@@ -5621,7 +5941,9 @@ export default function InventoryOptimizationView() {
       {activeTab === 'readiness' && (() => {
         // Enrich data with factory lines, shifts, and simulation overrides
         const enrichedList = (productionInterfaceData || []).map(item => {
-          const isSim = simulateExpeditedArrival || Boolean(releasedGates[item.product_id]);
+          // Check if user has computed an adaptive policy for this SKU in the active session
+          const userPolicy = computedPolicies.find(p => p.product_id === item.product_id);
+          const isSim = simulateExpeditedArrival || Boolean(releasedGates[item.product_id]) || (userPolicy && !userPolicy.reorder_required);
           const meta = LINE_METADATA[item.product_id] || {
             line: `Line ${Math.abs(item.product_id.charCodeAt(0) % 8) + 1} · Assembly`,
             shortLine: `Line 0${Math.abs(item.product_id.charCodeAt(0) % 8) + 1}`,
@@ -5632,14 +5954,23 @@ export default function InventoryOptimizationView() {
             downtimeCost: 3000,
             category: 'Fabrics',
           };
-          const req = item.material_requirement || 0;
-          const avail = isSim ? Math.max(req, item.available_inventory || 0) : (item.available_inventory || 0);
-          const shortage = isSim ? 0 : (item.material_shortage || 0);
-          const isReady = isSim ? true : Boolean(item.material_availability_flag);
+          const req = userPolicy ? (userPolicy.material_requirement || userPolicy.forecasted_demand || item.material_requirement) : (item.material_requirement || 0);
+          const avail = isSim
+            ? Math.max(req, userPolicy ? userPolicy.current_inventory : (item.available_inventory || 0))
+            : (userPolicy ? userPolicy.current_inventory : (item.available_inventory || 0));
+          const shortage = isSim ? 0 : (userPolicy ? (userPolicy.material_shortage ?? Math.max(0, req - avail)) : (item.material_shortage || 0));
+          const isReady = isSim ? true : (shortage === 0 && avail >= req);
           const fulfillmentPct = Math.min(100, Math.round((avail / Math.max(1, req)) * 100));
 
           return {
             ...item,
+            available_inventory: avail,
+            material_requirement: req,
+            material_shortage: shortage,
+            selected_reorder_point: userPolicy ? userPolicy.reorder_point : item.selected_reorder_point,
+            selected_reorder_quantity: userPolicy ? userPolicy.reorder_quantity : item.selected_reorder_quantity,
+            safety_stock: userPolicy ? userPolicy.safety_stock : item.safety_stock,
+            inventory_risk_level: userPolicy ? userPolicy.risk_level : item.inventory_risk_level,
             meta,
             req,
             avail,
@@ -9532,8 +9863,8 @@ function getStyles(c) {
     xaiBtn: { background: c.isDark?'rgba(255,255,255,.07)':'#F8FAFC', border:`1px solid ${c.tagBorder}`, color:c.title, borderRadius:'8px', padding:'6px 10px', fontSize:'12px', fontWeight:600, cursor:'pointer', transition:'all .2s' },
     poBtn:  { border:'none', color:'#FFFFFF', borderRadius:'8px', padding:'6px 10px', fontSize:'11px', fontWeight:700, cursor:'pointer', transition:'all .2s', whiteSpace:'nowrap' },
     // Simulator
-    sliderGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'16px', marginTop:'4px' },
-    sliderCard: { background: c.isDark?'rgba(255,255,255,.02)':'#FFFFFF', border:`1.5px solid ${c.subCardBorder}`, borderRadius:'14px', padding:'18px', boxShadow: c.isDark?'none':'0 2px 10px rgba(15,23,42,0.06)' },
+    sliderGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:'10px', marginTop:'4px' },
+    sliderCard: { background: c.isDark?'rgba(255,255,255,.02)':'#FFFFFF', border:`1.5px solid ${c.subCardBorder}`, borderRadius:'12px', padding:'13px', boxShadow: c.isDark?'none':'0 2px 10px rgba(15,23,42,0.06)' },
     presetBtn: { border:'1.5px solid', borderRadius:'10px', padding:'7px 14px', fontSize:'11.5px', fontWeight:800, cursor:'pointer', transition:'all .2s' },
     // API Tester
     execBtn: { background:'linear-gradient(135deg,#1E40AF,#2563EB)', border:'none', color:'#FFFFFF', borderRadius:'10px', padding:'10px 20px', fontSize:'12.5px', fontWeight:800, cursor:'pointer', transition:'all .2s', boxShadow:'0 4px 14px rgba(37,99,235,.35)', whiteSpace:'nowrap' },
