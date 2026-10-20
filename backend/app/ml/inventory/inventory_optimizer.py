@@ -99,6 +99,21 @@ class InventoryOptimizer:
             raise ValueError(f"Current inventory cannot be negative ({current_inventory}).")
         if forecasted_demand < 0:
             raise ValueError(f"Forecasted demand cannot be negative ({forecasted_demand}).")
+        if forecasted_demand == 0:
+            raise ValueError(
+                "Forecasted demand is 0 — this is a meaningless input. "
+                "Please provide a valid demand signal from Module 1 (Demand Forecasting)."
+            )
+        if average_lead_time <= 0:
+            raise ValueError(
+                "Baseline lead time must be > 0 days. "
+                "A value of 0 is physically impossible for a real supplier."
+            )
+        if supplier_trust_score <= 0:
+            raise ValueError(
+                "Supplier trust score must be > 0. "
+                "A score of 0 indicates no supplier relationship — optimization cannot proceed."
+            )
 
         calc_date = decision_date or date.today()
         pos = current_inventory + in_transit_qty if inventory_position is None else inventory_position

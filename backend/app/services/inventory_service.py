@@ -9,9 +9,15 @@ from typing import Any
 from app.db.session import Base, SessionLocal, engine
 from app.integration.mock_upstream import (
     UPSTREAM_DATA_MODE,
-    get_combined_upstream_signal,
+    CombinedUpstreamRecord,
     list_all_mock_products,
 )
+from app.integration.upstream_adapter import (
+    get_combined_upstream_signal,
+    list_all_upstream_products,
+)
+
+from app.integration.upstream_adapter import list_all_upstream_products
 from app.ml.inventory.inventory_optimizer import InventoryOptimizer
 from app.ml.inventory.simulator import InventorySimulator
 from app.models.inventory_sql import ProductModel, PurchaseOrderModel

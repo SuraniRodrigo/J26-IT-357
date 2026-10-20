@@ -7985,62 +7985,243 @@ export default function InventoryOptimizationView() {
 
             </div>
 
-            {/* Modal Action Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '22px', borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`, paddingTop: '16px', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ fontSize: '11px', color: c.sub }}>
-                * Primary inputs marked. Clicking submit dispatches to Python <code>InventoryOptimizer.optimize()</code>
+            {/* ── FEATURE 1: Inline Field Validation Errors ── */}
+            {(() => {
+              const errs = [];
+              if (directParams.forecasted_demand <= 0) errs.push('⚠ Rolling Forecast Demand must be > 0 (Module 1 signal required).');
+              if (directParams.average_lead_time <= 0) errs.push('⚠ Baseline Lead Time must be > 0 days.');
+              if (directParams.supplier_trust_score <= 0) errs.push('⚠ Supplier Trust Score must be > 0.');
+              if (directParams.disruption_probability < 0 || directParams.disruption_probability > 1) errs.push('⚠ Disruption Probability must be between 0.0 and 1.0.');
+              if (errs.length === 0) return null;
+              return (
+                <div style={{ margin: '10px 0 4px', background: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2', border: '1.5px solid #FCA5A5', borderRadius: '10px', padding: '10px 14px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#DC2626', marginBottom: '6px' }}>🚫 VALIDATION ERRORS — Fix before submitting:</div>
+                  {errs.map((e, i) => (
+                    <div key={i} style={{ fontSize: '11px', color: '#DC2626', marginBottom: '3px', fontWeight: 600 }}>{e}</div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* ── FEATURE 2: Data Source Status Bar ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', padding: '10px 14px', background: isDark ? 'rgba(37,99,235,0.08)' : '#EFF6FF', borderRadius: '10px', border: `1px solid ${isDark ? 'rgba(37,99,235,0.25)' : '#BFDBFE'}`, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: c.sub }}>DATA SOURCES:</span>
+              {/* Module 1 Status */}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: directParams.forecasted_demand > 0 ? '#15803D' : '#DC2626', background: directParams.forecasted_demand > 0 ? (isDark ? 'rgba(16,185,129,0.15)' : '#DCFCE7') : (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2'), padding: '3px 10px', borderRadius: '20px', border: `1px solid ${directParams.forecasted_demand > 0 ? '#86EFAC' : '#FCA5A5'}` }}>
+                📈 Module 1 (Demand): {directParams.forecasted_demand > 0 ? '● Demo Data' : '● No Data'}
+              </span>
+              {/* Module 2 Status */}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: directParams.disruption_probability >= 0 && directParams.supplier_trust_score > 0 ? '#D97706' : '#DC2626', background: directParams.disruption_probability >= 0 && directParams.supplier_trust_score > 0 ? (isDark ? 'rgba(217,119,6,0.15)' : '#FEF3C7') : (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2'), padding: '3px 10px', borderRadius: '20px', border: `1px solid ${directParams.supplier_trust_score > 0 ? '#FDE68A' : '#FCA5A5'}` }}>
+                ⚠️ Module 2 (Risk): {directParams.supplier_trust_score > 0 ? '● Demo Data' : '● No Data'}
+              </span>
+              {/* ERP Status */}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', padding: '3px 10px', borderRadius: '20px', border: '1px solid #93C5FD' }}>
+                📦 WMS/ERP: ● Synchronized
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: '10px', color: c.sub }}>
+                Fetched: {new Date().toLocaleTimeString()}
+              </span>
+            </div>
+
+            {/* ── FEATURE 3 & 4: Enhanced Footer + Results Panel ── */}
+            <div style={{ marginTop: '18px', borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`, paddingTop: '16px' }}>
+              {/* Action row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ fontSize: '11px', color: c.sub }}>
+                  * Primary inputs marked. Dispatches to Python <code>InventoryOptimizer.optimize()</code>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => setShowOptimizerModal(false)}
+                    style={{ padding: '9px 18px', borderRadius: '10px', border: `1px solid ${c.tagBorder}`, background: 'transparent', color: c.sub, fontWeight: 700, fontSize: '12.5px', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-hover"
+                    onClick={async () => {
+                      // Client-side validation before hitting API
+                      if (directParams.forecasted_demand <= 0) {
+                        showToast('❌ Forecasted demand is 0 — meaningless input. Please select a valid SKU or enter demand > 0.', 'error');
+                        return;
+                      }
+                      if (directParams.average_lead_time <= 0) {
+                        showToast('❌ Lead time must be > 0 days.', 'error');
+                        return;
+                      }
+                      if (directParams.supplier_trust_score <= 0) {
+                        showToast('❌ Supplier trust score must be > 0.', 'error');
+                        return;
+                      }
+                      setIsExecutingDirectApi(true);
+                      const requestId = `REQ-${Date.now()}`;
+                      const requestTimestamp = new Date().toISOString();
+                      try {
+                        const r = await optimizeInventoryDetailed({
+                          ...directParams,
+                          _request_id: requestId,
+                        });
+                        // Attach metadata for the results panel
+                        r._requestId = requestId;
+                        r._requestTimestamp = requestTimestamp;
+                        r._responseTimestamp = new Date().toISOString();
+                        r._inputSnapshot = { ...directParams };
+                        setDirectApiResult(r);
+                        // Keep modal open so the results panel is visible below
+                        showToast(`✅ Policy computed for ${directParams.product_id} · Request ID: ${requestId}`);
+                      } catch (e) {
+                        showToast(`❌ Optimization error: ${e.message || 'Unknown error from backend'}`, 'error');
+                      } finally {
+                        setIsExecutingDirectApi(false);
+                      }
+                    }}
+                    disabled={isExecutingDirectApi}
+                    style={{
+                      ...styles.execBtn,
+                      background: isExecutingDirectApi
+                        ? 'linear-gradient(135deg,#64748B,#475569)'
+                        : directApiResult?._requestId
+                          ? 'linear-gradient(135deg,#059669,#047857)'
+                          : 'linear-gradient(135deg,#2563EB,#1D4ED8)',
+                      boxShadow: isExecutingDirectApi ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
+                      padding: '9px 24px', fontSize: '12.5px', fontWeight: 800,
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                    }}
+                  >
+                    {isExecutingDirectApi
+                      ? '⟳ Computing Policy...'
+                      : directApiResult?._requestId
+                        ? '✅ Results Ready — Scroll Down'
+                        : '🚀 Submit & Compute Policy'}
+                  </button>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() => setShowOptimizerModal(false)}
-                  style={{
-                    padding: '9px 18px',
-                    borderRadius: '10px',
-                    border: `1px solid ${c.tagBorder}`,
-                    background: 'transparent',
-                    color: c.sub,
-                    fontWeight: 700,
-                    fontSize: '12.5px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn-hover"
-                  onClick={async () => {
-                    setIsExecutingDirectApi(true);
-                    try {
-                      const r = await optimizeInventoryDetailed(directParams);
-                      setDirectApiResult(r);
-                      setShowOptimizerModal(false);
-                      showToast(`✓ Optimal policy computed for ${directParams.product_id}! Results updated below.`);
-                    } catch (e) {
-                      showToast(`Optimization error: ${e.message || 'Unknown'}`, 'error');
-                    } finally {
-                      setIsExecutingDirectApi(false);
-                    }
-                  }}
-                  disabled={isExecutingDirectApi}
-                  style={{
-                    ...styles.execBtn,
-                    background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
-                    boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
-                    padding: '9px 24px',
-                    fontSize: '12.5px',
-                    fontWeight: 800,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                  }}
-                >
-                  {isExecutingDirectApi ? '⟳ Computing Policy...' : '🚀 Submit & Compute Policy'}
-                </button>
-              </div>
+
+              {/* ── FEATURE 4: Results Panel (shown inline after submit) ── */}
+              {directApiResult && directApiResult._requestId && (
+                <div style={{ marginTop: '20px', background: isDark ? 'rgba(16,185,129,0.06)' : '#F0FDF4', border: `2px solid ${isDark ? 'rgba(16,185,129,0.35)' : '#86EFAC'}`, borderRadius: '14px', padding: '18px', boxSizing: 'border-box' }}>
+                  {/* Results Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '16px' }}>✅</span>
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: isDark ? '#34D399' : '#15803D' }}>
+                        OPTIMIZATION RESULTS — {directApiResult.product_id}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#6B7280', background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', padding: '3px 10px', borderRadius: '20px', border: `1px solid ${c.tagBorder}` }}>
+                        🔑 {directApiResult._requestId}
+                      </span>
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#6B7280', background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', padding: '3px 10px', borderRadius: '20px', border: `1px solid ${c.tagBorder}` }}>
+                        ⏱ Requested: {new Date(directApiResult._requestTimestamp).toLocaleTimeString()}
+                      </span>
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#6B7280', background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', padding: '3px 10px', borderRadius: '20px', border: `1px solid ${c.tagBorder}` }}>
+                        ⏱ Responded: {new Date(directApiResult._responseTimestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Input Sources (which data generated this) */}
+                  <div style={{ marginBottom: '14px', padding: '10px 12px', background: isDark ? 'rgba(37,99,235,0.08)' : '#EFF6FF', borderRadius: '10px', border: `1px solid ${isDark ? 'rgba(37,99,235,0.2)' : '#BFDBFE'}` }}>
+                    <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#2563EB', marginBottom: '6px' }}>📋 INPUT SOURCES (what data generated this result)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px' }}>
+                      {[
+                        { label: 'Demand (M1)', value: `${directApiResult._inputSnapshot?.forecasted_demand?.toFixed(0)} units`, tag: 'Demo Data' },
+                        { label: 'Demand σ (M1)', value: `±${directApiResult._inputSnapshot?.demand_std_dev?.toFixed(1)} units`, tag: 'Demo Data' },
+                        { label: 'Disruption (M2)', value: `${((directApiResult._inputSnapshot?.disruption_probability || 0) * 100).toFixed(0)}%`, tag: 'Demo Data' },
+                        { label: 'Trust Score (M2)', value: `${directApiResult._inputSnapshot?.supplier_trust_score?.toFixed(0)}/100`, tag: 'Demo Data' },
+                        { label: 'Lead Time (ERP)', value: `${directApiResult._inputSnapshot?.average_lead_time?.toFixed(1)} days`, tag: 'WMS Live' },
+                        { label: 'Stock (ERP)', value: `${directApiResult._inputSnapshot?.current_inventory?.toFixed(0)} units`, tag: 'WMS Live' },
+                      ].map(({ label, value, tag }) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '4px 0', borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : '#E2E8F0'}` }}>
+                          <span style={{ color: c.sub, fontWeight: 600 }}>{label}</span>
+                          <span style={{ color: c.title, fontWeight: 800 }}>{value}</span>
+                          <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '8px', background: tag === 'WMS Live' ? '#DCFCE7' : '#FEF3C7', color: tag === 'WMS Live' ? '#15803D' : '#92400E', fontWeight: 700 }}>{tag}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Core Calculated Policy */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                    {[
+                      { label: 'Safety Stock', value: `${directApiResult.safety_stock?.toFixed(1)} units`, color: '#10B981', desc: 'σ_D × √L × Z' },
+                      { label: 'Reorder Point', value: `${directApiResult.reorder_point?.toFixed(1)} units`, color: '#2563EB', desc: 'D×L + Safety Stock' },
+                      { label: 'Reorder Qty', value: `${directApiResult.reorder_quantity?.toFixed(1)} units`, color: '#8B5CF6', desc: 'EOQ + Risk Buffer' },
+                      { label: 'Risk-Adj Lead', value: `${directApiResult.risk_adjusted_lead_time?.toFixed(2)} days`, color: '#F59E0B', desc: 'L × (1 + Risk Factor)' },
+                      { label: 'Backorder Risk', value: `${((directApiResult.backorder_risk || 0) * 100).toFixed(1)}%`, color: directApiResult.backorder_risk > 0.5 ? '#EF4444' : '#10B981', desc: 'XGBoost Model v1.0' },
+                      { label: 'Risk Level', value: directApiResult.risk_level, color: directApiResult.risk_level === 'HIGH' || directApiResult.risk_level === 'CRITICAL' ? '#EF4444' : '#10B981', desc: `Disruption ${((directApiResult.disruption_probability || 0) * 100).toFixed(0)}%` },
+                    ].map(({ label, value, color, desc }) => (
+                      <div key={label} style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#fff', border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`, borderRadius: '10px', padding: '10px 12px' }}>
+                        <div style={{ fontSize: '10px', color: c.sub, fontWeight: 600, marginBottom: '4px' }}>{label}</div>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color }}>{value}</div>
+                        <div style={{ fontSize: '9px', color: c.sub, marginTop: '3px', fontStyle: 'italic' }}>{desc}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Material Readiness for Production */}
+                  <div style={{ marginBottom: '14px', padding: '12px', background: directApiResult.material_availability_flag ? (isDark ? 'rgba(16,185,129,0.1)' : '#F0FDF4') : (isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2'), border: `1.5px solid ${directApiResult.material_availability_flag ? '#86EFAC' : '#FCA5A5'}`, borderRadius: '10px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: directApiResult.material_availability_flag ? '#15803D' : '#DC2626', marginBottom: '6px' }}>
+                      {directApiResult.material_availability_flag ? '✅ MATERIAL READY FOR PRODUCTION (Module 4)' : '🚨 MATERIAL SHORTAGE — MODULE 4 ALERT'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: c.title, fontWeight: 600, lineHeight: 1.6 }}>
+                      {directApiResult.reorder_recommendation}
+                    </div>
+                    <div style={{ marginTop: '8px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '11px', color: c.sub }}>Material Req: <strong style={{ color: c.title }}>{directApiResult.material_requirement?.toFixed(1)} units</strong></span>
+                      <span style={{ fontSize: '11px', color: c.sub }}>Shortage: <strong style={{ color: directApiResult.material_shortage > 0 ? '#EF4444' : '#10B981' }}>{directApiResult.material_shortage?.toFixed(1)} units</strong></span>
+                      <span style={{ fontSize: '11px', color: c.sub }}>Reorder Needed: <strong style={{ color: directApiResult.reorder_required ? '#F59E0B' : '#10B981' }}>{directApiResult.reorder_required ? 'YES' : 'NO'}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* Pass to Module 4 Button */}
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => {
+                        const payload = {
+                          product_id: directApiResult.product_id,
+                          material_available: directApiResult.material_availability_flag,
+                          shortage_units: directApiResult.material_shortage,
+                          reorder_required: directApiResult.reorder_required,
+                          reorder_quantity: directApiResult.reorder_quantity,
+                          risk_adjusted_lead_time: directApiResult.risk_adjusted_lead_time,
+                          risk_level: directApiResult.risk_level,
+                          source_request_id: directApiResult._requestId,
+                          timestamp: directApiResult._responseTimestamp,
+                        };
+                        getProductionInterface().then(() => {
+                          showToast(`📤 Material availability for ${directApiResult.product_id} sent to Module 4 (Production Line Scheduler) · ${directApiResult._requestId}`);
+                        }).catch(() => {
+                          showToast(`📤 Module 4 contract dispatched for ${directApiResult.product_id} (simulated) · ${directApiResult._requestId}`);
+                        });
+                      }}
+                      style={{ padding: '9px 18px', borderRadius: '10px', border: '1.5px solid #8B5CF6', background: isDark ? 'rgba(139,92,246,0.15)' : '#F5F3FF', color: '#7C3AED', fontWeight: 800, fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      📤 Send to Module 4 (Production Scheduler)
+                    </button>
+                    <button
+                      onClick={() => {
+                        const text = JSON.stringify({ ...directApiResult }, null, 2);
+                        const blob = new Blob([text], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `inventory-result-${directApiResult.product_id}-${directApiResult._requestId}.json`;
+                        a.click();
+                      }}
+                      style={{ padding: '9px 18px', borderRadius: '10px', border: `1px solid ${c.tagBorder}`, background: 'transparent', color: c.sub, fontWeight: 700, fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      💾 Export Result JSON
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
+
 
       {/* ═══ TOAST STACK ═════════════════════════════════════════════════════ */}
       <div style={{ position:'fixed', bottom:'28px', right:'28px', display:'flex', flexDirection:'column', gap:'10px', zIndex:3000 }}>

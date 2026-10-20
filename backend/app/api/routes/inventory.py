@@ -3,10 +3,35 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from app.integration.mock_upstream import (
+    UPSTREAM_DATA_MODE,
     CombinedUpstreamRecord,
     get_combined_upstream_signal,
     list_all_mock_products,
 )
+from app.integration.upstream_adapter import list_all_upstream_products
+
+# Existing demo endpoint retained for backward compatibility
+@router.get("/demo-upstream", response_model=list[CombinedUpstreamRecord])
+def list_demo_upstream_feeds() -> list[CombinedUpstreamRecord]:
+    """
+    Exposes raw mock upstream feeds for evaluation and transparency.
+    """
+    try:
+        return list_all_mock_products()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+# New live upstream endpoint
+@router.get("/upstream", response_model=list[CombinedUpstreamRecord])
+def list_live_upstream_feeds() -> list[CombinedUpstreamRecord]:
+    """
+    Returns real upstream data fetched from Module 1 (demand) and Module 2 (risk).
+    """
+    try:
+        return list_all_upstream_products()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
 from app.schemas.inventory import (
     CreateProductCatalogItem,
     InventoryOptimizationRequest,
