@@ -6,6 +6,7 @@ import {
   runScenarioAnalysis,
   getProductionInterface,
   getResearchResults,
+  getDemoUpstreamFeeds,
   createInventoryProduct,
   updateInventoryProduct,
   deleteInventoryProduct,
@@ -1401,8 +1402,10 @@ export default function InventoryOptimizationView() {
     lead_time_std_dev: 1.5,
     disruption_probability: 0.35,
     supplier_trust_score: 75.0,
+    is_demo_data: false,
   });
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
+  const [isLoadingDemoFeed, setIsLoadingDemoFeed] = useState(false);
 
   const [editModalItem, setEditModalItem] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -1411,24 +1414,112 @@ export default function InventoryOptimizationView() {
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
   const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
 
-  const handleCreateProduct = async (e) => {
-    e.preventDefault();
-    if (!addForm.product_id.trim() || !addForm.product_name.trim()) {
-      showToast('Please provide both Product ID and Material Name.', 'error');
+  const handleLoadDemoFeed = async () => {
+    const productId = addForm.product_id.trim().toUpperCase();
+    if (!productId) {
+      showToast('Enter a SKU ID first to load its demo module data.', 'error');
       return;
     }
+
+    try {
+      setIsLoadingDemoFeed(true);
+      const feeds = await getDemoUpstreamFeeds();
+      const feed = feeds.find(item => item.product_id.toUpperCase() === productId);
+      if (!feed) {
+        showToast(`No matching demo feed found for ${productId}. Check the demo feed SKU list.`, 'error');
+        return;
+      }
+      setAddForm(form => ({
+        ...form,
+        product_id: feed.product_id,
+        product_name: feed.product_name,
+        category: feed.category,
+        unit: feed.unit,
+        forecasted_demand: feed.forecasted_demand,
+        demand_std_dev: feed.demand_std_dev,
+        average_lead_time: feed.average_lead_time,
+        lead_time_std_dev: feed.lead_time_std_dev,
+        disruption_probability: feed.disruption_probability,
+        supplier_trust_score: feed.supplier_trust_score,
+        is_demo_data: true,
+      }));
+      showToast(`Loaded demo demand and supplier-risk data for ${feed.product_id}. Enter on-hand stock from your inventory record.`);
+    } catch (err) {
+      showToast(`Could not load demo module data: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsLoadingDemoFeed(false);
+    }
+  };
+
+  const handleCreateProduct = async (e) => {
+    e.preventDefault();
+    const productId = addForm.product_id.trim().toUpperCase();
+    const productName = addForm.product_name.trim();
+    const unit = addForm.unit.trim();
+    if (!productId || !productName || !unit) {
+      showToast('Product ID, material name, and unit are required.', 'error');
+      return;
+    }
+    if (!/^[A-Z][A-Z0-9]{1,9}-[A-Z0-9][A-Z0-9._-]{0,39}$/.test(productId)) {
+      showToast('Use a SKU in PREFIX-CODE format, such as FAB-009.', 'error');
+      return;
+    }
+    const categoryByPrefix = {
+      FAB: 'Fabrics',
+      DYE: 'Dyes & Chemicals',
+      CHM: 'Dyes & Chemicals',
+      TRM: 'Trims & Fasteners',
+      YRN: 'Yarns & Threads',
+    };
+    const expectedCategory = categoryByPrefix[productId.split('-', 1)[0]];
+    if (expectedCategory && addForm.category !== expectedCategory) {
+      showToast(`SKU prefix ${productId.split('-', 1)[0]} requires the ${expectedCategory} category.`, 'error');
+      return;
+    }
+
+    const numericValues = {
+      current_inventory: Number(addForm.current_inventory),
+      forecasted_demand: Number(addForm.forecasted_demand),
+      demand_std_dev: Number(addForm.demand_std_dev),
+      average_lead_time: Number(addForm.average_lead_time),
+      lead_time_std_dev: Number(addForm.lead_time_std_dev),
+      disruption_probability: Number(addForm.disruption_probability),
+      supplier_trust_score: Number(addForm.supplier_trust_score),
+    };
+    if (Object.values(numericValues).some(value => !Number.isFinite(value))) {
+      showToast('Enter a valid number for every inventory and supplier field.', 'error');
+      return;
+    }
+    if (numericValues.current_inventory < 0 || numericValues.forecasted_demand < 0
+      || numericValues.demand_std_dev < 0 || numericValues.lead_time_std_dev < 0) {
+      showToast('Stock, demand, and variability values cannot be negative.', 'error');
+      return;
+    }
+    if (numericValues.average_lead_time < 0.1) {
+      showToast('Average lead time must be at least 0.1 days.', 'error');
+      return;
+    }
+    if (numericValues.disruption_probability < 0 || numericValues.disruption_probability > 1) {
+      showToast('Disruption probability must be between 0 and 1.', 'error');
+      return;
+    }
+    if (numericValues.supplier_trust_score < 0 || numericValues.supplier_trust_score > 100) {
+      showToast('Supplier trust score must be between 0 and 100.', 'error');
+      return;
+    }
+    if (numericValues.current_inventory === 0 && numericValues.forecasted_demand === 0) {
+      showToast('On-hand stock and forecast demand cannot both be zero. Enter meaningful inventory or demand data.', 'error');
+      return;
+    }
+
     try {
       setIsSubmittingAdd(true);
       const created = await createInventoryProduct({
         ...addForm,
-        product_id: addForm.product_id.trim().toUpperCase(),
-        current_inventory: parseFloat(addForm.current_inventory) || 0,
-        forecasted_demand: parseFloat(addForm.forecasted_demand) || 0,
-        demand_std_dev: parseFloat(addForm.demand_std_dev) || 0,
-        average_lead_time: parseFloat(addForm.average_lead_time) || 1,
-        lead_time_std_dev: parseFloat(addForm.lead_time_std_dev) || 1,
-        disruption_probability: parseFloat(addForm.disruption_probability) || 0,
-        supplier_trust_score: parseFloat(addForm.supplier_trust_score) || 50,
+        product_id: productId,
+        product_name: productName,
+        unit,
+        ...numericValues,
       });
       showToast(`✓ Material ${created.product_id} added successfully`);
       setIsAddModalOpen(false);
@@ -1444,6 +1535,7 @@ export default function InventoryOptimizationView() {
         lead_time_std_dev: 1.5,
         disruption_probability: 0.35,
         supplier_trust_score: 75.0,
+        is_demo_data: false,
       });
       await fetchAll();
       setSelectedSku(created.product_id);
@@ -1473,19 +1565,67 @@ export default function InventoryOptimizationView() {
   const handleUpdateProduct = async (e) => {
     e.preventDefault();
     if (!editModalItem) return;
+    const productName = String(editForm.product_name || '').trim();
+    const unit = String(editForm.unit || '').trim();
+    if (!productName || !unit) {
+      showToast('Material name and unit are required.', 'error');
+      return;
+    }
+    const skuPrefix = editModalItem.product_id.split('-', 1)[0];
+    const categoryByPrefix = {
+      FAB: 'Fabrics',
+      DYE: 'Dyes & Chemicals',
+      CHM: 'Dyes & Chemicals',
+      TRM: 'Trims & Fasteners',
+      YRN: 'Yarns & Threads',
+    };
+    const expectedCategory = categoryByPrefix[skuPrefix];
+    if (expectedCategory && editForm.category !== expectedCategory) {
+      showToast(`SKU prefix ${skuPrefix} requires the ${expectedCategory} category.`, 'error');
+      return;
+    }
+    const numericValues = {
+      current_inventory: Number(editForm.current_inventory),
+      forecasted_demand: Number(editForm.forecasted_demand),
+      demand_std_dev: Number(editForm.demand_std_dev),
+      average_lead_time: Number(editForm.average_lead_time),
+      lead_time_std_dev: Number(editForm.lead_time_std_dev),
+      disruption_probability: Number(editForm.disruption_probability),
+      supplier_trust_score: Number(editForm.supplier_trust_score),
+    };
+    if (Object.values(numericValues).some(value => !Number.isFinite(value))) {
+      showToast('Enter a valid number for every inventory and supplier field.', 'error');
+      return;
+    }
+    if (numericValues.current_inventory < 0 || numericValues.forecasted_demand < 0
+      || numericValues.demand_std_dev < 0 || numericValues.lead_time_std_dev < 0) {
+      showToast('Stock, demand, and variability values cannot be negative.', 'error');
+      return;
+    }
+    if (numericValues.average_lead_time < 0.1) {
+      showToast('Average lead time must be at least 0.1 days.', 'error');
+      return;
+    }
+    if (numericValues.disruption_probability < 0 || numericValues.disruption_probability > 1) {
+      showToast('Disruption probability must be between 0 and 1.', 'error');
+      return;
+    }
+    if (numericValues.supplier_trust_score < 0 || numericValues.supplier_trust_score > 100) {
+      showToast('Supplier trust score must be between 0 and 100.', 'error');
+      return;
+    }
+    if (numericValues.current_inventory === 0 && numericValues.forecasted_demand === 0) {
+      showToast('On-hand stock and forecast demand cannot both be zero.', 'error');
+      return;
+    }
+
     try {
       setIsSubmittingEdit(true);
       await updateInventoryProduct(editModalItem.product_id, {
-        product_name: editForm.product_name,
+        product_name: productName,
         category: editForm.category,
-        unit: editForm.unit,
-        current_inventory: parseFloat(editForm.current_inventory) || 0,
-        forecasted_demand: parseFloat(editForm.forecasted_demand) || 0,
-        demand_std_dev: parseFloat(editForm.demand_std_dev) || 0,
-        average_lead_time: parseFloat(editForm.average_lead_time) || 1,
-        lead_time_std_dev: parseFloat(editForm.lead_time_std_dev) || 1,
-        disruption_probability: parseFloat(editForm.disruption_probability) || 0,
-        supplier_trust_score: parseFloat(editForm.supplier_trust_score) || 50,
+        unit,
+        ...numericValues,
       });
       showToast(`✓ Material ${editModalItem.product_id} updated`);
       setEditModalItem(null);
@@ -7227,11 +7367,22 @@ export default function InventoryOptimizationView() {
                     type="text"
                     placeholder="e.g. FAB-009"
                     required
+                    maxLength={50}
+                    pattern="[A-Za-z][A-Za-z0-9]{1,9}-[A-Za-z0-9][A-Za-z0-9._-]{0,39}"
                     value={addForm.product_id}
                     onChange={e=>setAddForm(f=>({...f, product_id:e.target.value}))}
                     className="input-focus"
                     style={styles.textInput}
                   />
+                  <button
+                    type="button"
+                    onClick={handleLoadDemoFeed}
+                    disabled={isLoadingDemoFeed}
+                    className="btn-hover"
+                    style={{ ...styles.cancelBtn, marginTop:'6px', fontSize:'11px', padding:'6px 10px' }}
+                  >
+                    {isLoadingDemoFeed ? 'Loading demo feeds...' : 'Load demo Module 1 + 2 data by SKU'}
+                  </button>
                 </div>
                 <div style={styles.inputField}>
                   <label style={styles.inputLabel}>Material Name *</label>
@@ -7239,6 +7390,7 @@ export default function InventoryOptimizationView() {
                     type="text"
                     placeholder="e.g. Heavy Duty Indigo Denim"
                     required
+                    maxLength={200}
                     value={addForm.product_name}
                     onChange={e=>setAddForm(f=>({...f, product_name:e.target.value}))}
                     className="input-focus"
@@ -7251,6 +7403,7 @@ export default function InventoryOptimizationView() {
                 <div style={styles.inputField}>
                   <label style={styles.inputLabel}>Category</label>
                   <select
+                    required
                     value={addForm.category}
                     onChange={e=>setAddForm(f=>({...f, category:e.target.value}))}
                     className="input-focus"
@@ -7267,6 +7420,8 @@ export default function InventoryOptimizationView() {
                   <input
                     type="text"
                     placeholder="kg, meters, pcs, cones"
+                    required
+                    maxLength={20}
                     value={addForm.unit}
                     onChange={e=>setAddForm(f=>({...f, unit:e.target.value}))}
                     className="input-focus"
@@ -7338,7 +7493,7 @@ export default function InventoryOptimizationView() {
                   <label style={styles.inputLabel}>Avg Lead Time (d)</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.1"
                     step="0.1"
                     required
                     value={addForm.average_lead_time}
@@ -7368,6 +7523,7 @@ export default function InventoryOptimizationView() {
                     min="0"
                     max="100"
                     step="1"
+                    required
                     value={addForm.supplier_trust_score}
                     onChange={e=>setAddForm(f=>({...f, supplier_trust_score:e.target.value}))}
                     className="input-focus"

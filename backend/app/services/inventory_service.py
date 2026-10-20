@@ -33,11 +33,17 @@ from app.schemas.inventory import (
     ScenarioAnalysisRequest,
     ScenarioAnalysisResponse,
     ScenarioEntrySchema,
+    SKU_CATEGORY_PREFIXES,
     UpdateProductCatalogItem,
     BatchOptimizationRequest,
 )
 
 logger = logging.getLogger("optichain.inventory.service")
+
+
+class InvalidProductUpdateError(ValueError):
+    """Raised when an inventory update conflicts with its SKU or data constraints."""
+
 
 # Paths to authentic research results CSVs placed in research/
 RESEARCH_RESULTS_DIR = os.path.abspath(
@@ -289,7 +295,7 @@ def create_product_catalog_item(item: CreateProductCatalogItem) -> ProductCatalo
             supplier_trust_score=float(item.supplier_trust_score),
             risk_level=risk_level,
             in_transit_qty=0.0,
-            is_demo_data=False,
+            is_demo_data=item.is_demo_data,
         )
         session.add(new_row)
         session.commit()
@@ -330,6 +336,17 @@ def update_product_catalog_item(product_id: str, updates: UpdateProductCatalogIt
             raise ValueError(f"Product '{pid}' not found in database catalog.")
 
         dump = updates.model_dump(exclude_unset=True)
+        updated_category = dump.get("category", row.category)
+        expected_category = SKU_CATEGORY_PREFIXES.get(pid.split("-", 1)[0])
+        if expected_category and updated_category != expected_category:
+            raise InvalidProductUpdateError(
+                f"SKU prefix '{pid.split('-', 1)[0]}' belongs to the '{expected_category}' category."
+            )
+        updated_inventory = dump.get("current_inventory", row.current_inventory)
+        updated_demand = dump.get("forecasted_demand", row.forecasted_demand)
+        if updated_inventory == 0 and updated_demand == 0:
+            raise InvalidProductUpdateError("On-hand stock and forecast demand cannot both be zero.")
+
         for k, v in dump.items():
             if v is not None and hasattr(row, k):
                 setattr(row, k, v)
@@ -636,4 +653,3 @@ def batch_optimize_inventory(request: BatchOptimizationRequest) -> list[Inventor
         )
         results.append(optimize_inventory(opt_req))
     return results
-

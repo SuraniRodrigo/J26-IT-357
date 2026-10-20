@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ─── 1. OPTIMIZE REQUEST (Section 26) ───────────────────────────────────────
 class InventoryOptimizationRequest(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     product_id: str = Field(..., description="Unique product SKU or identifier")
     order_date: date | None = Field(default=None, description="Decision or order schedule date")
     current_inventory: float = Field(..., ge=0, description="On-hand warehouse stock")
@@ -24,6 +26,12 @@ class InventoryOptimizationRequest(BaseModel):
     scenario: Literal["NORMAL", "MODERATE", "SEVERE"] = Field(default="NORMAL", description="Disruption stress scenario")
     policy_type: Literal["FORECAST_RISK_AWARE", "ADAPTIVE", "STATIC_BASELINE"] = Field(default="FORECAST_RISK_AWARE")
     custom_features: dict[str, float] | None = Field(default=None, description="Optional telemetry features for XGBoost model")
+
+    @model_validator(mode="after")
+    def validate_inventory_signal(self) -> "InventoryOptimizationRequest":
+        if self.current_inventory == 0 and self.forecasted_demand == 0:
+            raise ValueError("On-hand stock and forecast demand cannot both be zero for optimization.")
+        return self
 
 
 # ─── 2. OPTIMIZE RESPONSE (Section 27) ──────────────────────────────────────
@@ -166,32 +174,75 @@ class ProductCatalogItem(BaseModel):
     is_demo_data: bool = True
 
 
+SKU_CATEGORY_PREFIXES = {
+    "FAB": "Fabrics",
+    "DYE": "Dyes & Chemicals",
+    "CHM": "Dyes & Chemicals",
+    "TRM": "Trims & Fasteners",
+    "YRN": "Yarns & Threads",
+}
+MaterialCategory = Literal["Fabrics", "Dyes & Chemicals", "Trims & Fasteners", "Yarns & Threads"]
+
+
 class CreateProductCatalogItem(BaseModel):
-    product_id: str
-    product_name: str
-    category: str
-    unit: str
-    current_inventory: float
-    forecasted_demand: float
-    demand_std_dev: float = 0.0
-    average_lead_time: float
-    lead_time_std_dev: float = 1.0
-    disruption_probability: float
-    supplier_trust_score: float = 80.0
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    product_id: str = Field(..., min_length=3, max_length=50, pattern=r"^[A-Z][A-Z0-9]{1,9}-[A-Z0-9][A-Z0-9._-]{0,39}$")
+    product_name: str = Field(..., min_length=1, max_length=200)
+    category: MaterialCategory
+    unit: str = Field(..., min_length=1, max_length=20)
+    current_inventory: float = Field(..., ge=0)
+    forecasted_demand: float = Field(..., ge=0)
+    demand_std_dev: float = Field(default=0.0, ge=0)
+    average_lead_time: float = Field(..., ge=0.1)
+    lead_time_std_dev: float = Field(default=1.0, ge=0)
+    disruption_probability: float = Field(..., ge=0, le=1)
+    supplier_trust_score: float = Field(default=80.0, ge=0, le=100)
     risk_level: str | None = None
+    is_demo_data: bool = False
+
+    @field_validator("product_id", mode="before")
+    @classmethod
+    def normalize_product_id(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("product_name", "unit", mode="before")
+    @classmethod
+    def normalize_required_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def validate_catalog_item(self) -> "CreateProductCatalogItem":
+        if self.current_inventory == 0 and self.forecasted_demand == 0:
+            raise ValueError("On-hand stock and forecast demand cannot both be zero; provide meaningful inventory or demand data.")
+
+        prefix = self.product_id.split("-", 1)[0]
+        expected_category = SKU_CATEGORY_PREFIXES.get(prefix)
+        if expected_category and self.category != expected_category:
+            raise ValueError(
+                f"SKU prefix '{prefix}' belongs to the '{expected_category}' category, not '{self.category}'."
+            )
+        return self
 
 
 class UpdateProductCatalogItem(BaseModel):
-    product_name: str | None = None
-    category: str | None = None
-    unit: str | None = None
-    current_inventory: float | None = None
-    forecasted_demand: float | None = None
-    demand_std_dev: float | None = None
-    average_lead_time: float | None = None
-    lead_time_std_dev: float | None = None
-    disruption_probability: float | None = None
-    supplier_trust_score: float | None = None
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    product_name: str | None = Field(default=None, min_length=1, max_length=200)
+    category: MaterialCategory | None = None
+    unit: str | None = Field(default=None, min_length=1, max_length=20)
+    current_inventory: float | None = Field(default=None, ge=0)
+    forecasted_demand: float | None = Field(default=None, ge=0)
+    demand_std_dev: float | None = Field(default=None, ge=0)
+    average_lead_time: float | None = Field(default=None, ge=0.1)
+    lead_time_std_dev: float | None = Field(default=None, ge=0)
+    disruption_probability: float | None = Field(default=None, ge=0, le=1)
+    supplier_trust_score: float | None = Field(default=None, ge=0, le=100)
+
+    @field_validator("product_name", "unit", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
 
 
 # ─── 6. RESEARCH RESULTS SCHEMA (Section 8 & 41) ────────────────────────────
@@ -226,4 +277,3 @@ class BatchOptimizationRequest(BaseModel):
     service_level: float = Field(default=0.95, ge=0.5, le=0.9999, description="Target service level")
     scenario: Literal["NORMAL", "MODERATE", "SEVERE"] = Field(default="NORMAL")
     policy_type: Literal["FORECAST_RISK_AWARE", "ADAPTIVE", "STATIC_BASELINE"] = Field(default="FORECAST_RISK_AWARE")
-

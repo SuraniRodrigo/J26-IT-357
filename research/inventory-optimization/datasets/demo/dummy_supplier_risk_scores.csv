@@ -7,3 +7,7 @@ FAB-002,DEMO-SUP-108,Sintra Mills Export,Vietnam (Hai Phong),9.0,3.8,0.65,60.0,H
 TRM-022,DEMO-SUP-315,YKK Lanka Fasteners,Sri Lanka (Local Seethawaka),3.0,0.5,0.10,95.0,LOW,Direct Factory Dispatch,MOCK UPSTREAM DATA (DEMO)
 CHM-005,DEMO-SUP-218,Dystar Speciality Dyes,India (Chennai),6.0,2.1,0.45,70.0,MEDIUM,Customs Hazardous Cargo Inspection,MOCK UPSTREAM DATA (DEMO)
 YRN-018,DEMO-SUP-425,Nahar Spinning Mills,India (Mundra),8.0,2.8,0.55,66.0,MEDIUM,Freight Container Repositioning,MOCK UPSTREAM DATA (DEMO)
+FAB-009,DEMO-SUP-509,Lanka Circular Textiles,Sri Lanka (Katunayake),5.5,1.0,0.12,91.0,LOW,Local Recycled Fiber Mill,MOCK UPSTREAM DATA (DEMO)
+DYE-012,DEMO-SUP-612,BlueWave Colorants,Malaysia (Port Klang),8.5,2.4,0.48,68.0,MEDIUM,Seasonal Chemical Shipping Delay,MOCK UPSTREAM DATA (DEMO)
+TRM-031,DEMO-SUP-731,EverTrim Components,Vietnam (Ho Chi Minh City),6.0,1.5,0.25,82.0,MEDIUM,Regional Port Feeder Delay,MOCK UPSTREAM DATA (DEMO)
+YRN-050,DEMO-SUP-850,EastSpun Viscose,India (Tuticorin),10.0,3.5,0.72,54.0,CRITICAL,Monsoon Export Disruption,MOCK UPSTREAM DATA (DEMO)

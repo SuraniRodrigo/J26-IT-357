@@ -25,6 +25,7 @@ from app.schemas.inventory import (
     BatchOptimizationRequest,
 )
 from app.services.inventory_service import (
+    InvalidProductUpdateError,
     create_product_catalog_item,
     delete_product_catalog_item,
     get_inventory_summary,
@@ -107,6 +108,8 @@ def update_product(product_id: str, updates: UpdateProductCatalogItem) -> Produc
     """Updates an existing raw material SKU in the inventory catalog."""
     try:
         return update_product_catalog_item(product_id, updates)
+    except InvalidProductUpdateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -280,4 +283,3 @@ def create_purchase_order(payload: dict) -> dict:
         raise HTTPException(status_code=400, detail=f"Missing required field: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-

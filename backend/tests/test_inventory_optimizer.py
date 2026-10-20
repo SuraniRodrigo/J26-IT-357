@@ -104,7 +104,21 @@ def test_mock_upstream_signals():
     assert prod.disruption_probability > 0
 
     all_prods = list_all_mock_products()
-    assert len(all_prods) >= 4
+    assert len(all_prods) == 12
+    added_product = get_combined_upstream_signal("FAB-009")
+    assert added_product.product_name == "Recycled Cotton Jersey Fabric"
+    assert added_product.forecasted_demand == 12750.0
+    assert added_product.average_lead_time == 5.5
+    assert added_product.disruption_probability == 0.12
+    assert added_product.supplier_trust_score == 91.0
+
+
+def test_demo_upstream_api_returns_joined_module_feeds():
+    response = client.get("/api/inventory/demo-upstream")
+    assert response.status_code == 200
+    products_by_id = {item["product_id"]: item for item in response.json()}
+    assert products_by_id["YRN-050"]["forecasted_demand"] == 7600.0
+    assert products_by_id["YRN-050"]["disruption_probability"] == 0.72
 
 
 def test_api_health():

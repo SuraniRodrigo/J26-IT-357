@@ -142,6 +142,16 @@ To provide an orthogonal operational risk signal alongside mathematical buffer c
                      (Sewing line reallocation)
 ```
 
+For a local presentation, the FastAPI endpoint `GET /api/inventory/demo-upstream`
+joins Module 1 demand and Module 2 supplier-risk CSV records by `product_id`.
+Open `http://localhost:8000/docs`, run `GET /api/inventory/demo-upstream`, or
+open `http://localhost:8000/api/inventory/demo-upstream` directly to inspect
+the combined demo records. In **Add Raw Material**, enter a feed SKU such as
+`FAB-009` and choose **Load demo Module 1 + 2 data by SKU**. This fills the
+forecast and supplier-risk fields from the CSVs; enter current on-hand stock
+separately because it is not provided by either upstream feed. Then save the SKU
+and run optimization. All values in these files are synthetic presentation data.
+
 ### Upstream Integration Mode
 - `UPSTREAM_DATA_MODE="DEMO"` (Default): Feeds deterministic synthetic profiles for 8 MAS factory materials.
 - `UPSTREAM_DATA_MODE="INTEGRATED"`: Directly ingests live REST endpoints from peer microservices.
