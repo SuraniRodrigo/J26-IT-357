@@ -100,3 +100,30 @@ export async function getResearchResults() {
 export async function getDemoUpstreamFeeds() {
   return apiRequest('/api/inventory/demo-upstream');
 }
+
+/**
+ * Runs batch optimization across all monitored SKUs with optional policy overrides.
+ */
+export async function batchOptimizeInventory(params = {}) {
+  return apiRequest('/api/inventory/optimize/batch', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+/**
+ * Fetches all purchase orders from the persistent SQLite database.
+ */
+export async function getPurchaseOrders() {
+  return apiRequest('/api/inventory/purchase-orders');
+}
+
+/**
+ * Creates a new purchase order in the persistent SQLite database.
+ */
+export async function createPurchaseOrder(payload) {
+  return apiRequest('/api/inventory/purchase-orders', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}

@@ -216,3 +216,14 @@ class ResearchResultsResponse(BaseModel):
     observed_improvements: dict[str, Any]
     backorder_xgboost_metrics: dict[str, Any]
     research_source_files: list[str]
+
+
+# ─── 7. BATCH OPTIMIZATION SCHEMA ──────────────────────────────────────────
+class BatchOptimizationRequest(BaseModel):
+    disruption_probability_override: float | None = Field(default=None, ge=0, le=1, description="Override disruption probability for all products")
+    lead_time_std_dev_override: float | None = Field(default=None, ge=0, description="Override lead time std dev")
+    demand_surge_pct: float = Field(default=0.0, ge=-50, le=200, description="Demand surge percentage adjustment")
+    service_level: float = Field(default=0.95, ge=0.5, le=0.9999, description="Target service level")
+    scenario: Literal["NORMAL", "MODERATE", "SEVERE"] = Field(default="NORMAL")
+    policy_type: Literal["FORECAST_RISK_AWARE", "ADAPTIVE", "STATIC_BASELINE"] = Field(default="FORECAST_RISK_AWARE")
+

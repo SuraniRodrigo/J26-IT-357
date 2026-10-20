@@ -19,6 +19,7 @@ from app.schemas.inventory import (
     ScenarioAnalysisRequest,
     ScenarioAnalysisResponse,
     UpdateProductCatalogItem,
+    BatchOptimizationRequest,
 )
 from app.services.inventory_service import (
     create_product_catalog_item,
@@ -30,6 +31,7 @@ from app.services.inventory_service import (
     legacy_optimize_inventory,
     list_purchase_orders,
     optimize_inventory,
+    batch_optimize_inventory,
     record_purchase_order,
     run_scenario_analysis,
     update_product_catalog_item,
@@ -129,6 +131,20 @@ def inventory_optimize_detailed(request: InventoryOptimizationRequest) -> Invent
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Optimization failed: {exc}") from exc
+
+
+@router.post("/optimize/batch", response_model=list[InventoryOptimizationResponse])
+def inventory_optimize_batch(request: BatchOptimizationRequest) -> list[InventoryOptimizationResponse]:
+    """
+    Executes batch optimization across the full catalog of materials,
+    applying optional simulation overrides (disruption probability, lead-time variance, demand surge).
+    """
+    try:
+        return batch_optimize_inventory(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Batch optimization failed: {exc}") from exc
 
 
 @router.post("/scenario", response_model=ScenarioAnalysisResponse)

@@ -9,6 +9,9 @@ import {
   createInventoryProduct,
   updateInventoryProduct,
   deleteInventoryProduct,
+  batchOptimizeInventory,
+  getPurchaseOrders,
+  createPurchaseOrder,
 } from '../../services/inventoryService';
 
 // ─── tiny SVG bar-chart used in Research tab ───────────────────────────────
@@ -147,16 +150,102 @@ function MiniSparkline({ data = [20, 24, 22, 28, 30, 38, 45], color = '#10B981',
 }
 
 // ─── Real Supply Chain High-Res Imagery per Garment SKU ──────────────────────
-const SKU_IMAGES = {
-  'FAB-001': 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=600&auto=format&fit=crop&q=80', // Cotton Single Jersey
-  'DYE-008': 'https://images.unsplash.com/photo-1581093458791-9f3c3900df4b?w=600&auto=format&fit=crop&q=80', // Reactive Navy Dye
-  'TRM-015': 'https://images.unsplash.com/photo-1605518216938-7c31b7b14ad0?w=600&auto=format&fit=crop&q=80', // YKK Zippers & Trims
-  'YRN-042': 'https://images.unsplash.com/photo-1564419320461-6870880221ad?w=600&auto=format&fit=crop&q=80', // Combed Cotton Yarn
-  'FAB-002': 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?w=600&auto=format&fit=crop&q=80', // Poly-Spandex Rib
-  'TRM-022': 'https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?w=600&auto=format&fit=crop&q=80', // Snap Fasteners
-  'CHM-005': 'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=600&auto=format&fit=crop&q=80', // Silicone Softener
-  'YRN-018': 'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=600&auto=format&fit=crop&q=80', // Spun Polyester Thread
+// ─── Multi-angle garment & raw material imagery and technical specs ──────────
+const SKU_CATALOG_MEDIA = {
+  'FAB-001': {
+    images: [
+      'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=800&auto=format&fit=crop&q=80',
+    ],
+    fabricSpec: '100% GOTS Organic Cotton · 180 GSM Single Jersey',
+    endUse: 'Luxury Minimalist Noir Eveningwear & Core Active Tops',
+    garmentType: 'Noir Structured Gown & Core Bodysuits',
+    priceEur: '€120',
+    rating: 4.9,
+  },
+  'DYE-008': {
+    images: [
+      'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1600&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&auto=format&fit=crop&q=80',
+    ],
+    fabricSpec: 'Eco-Reactive Deep Pigment · OEKO-TEX Standard 100',
+    endUse: 'Midnight Noir Rich Dyeing · Colorfastness Grade 4.5',
+    garmentType: 'Noir Signature Monochrome Collection',
+    priceEur: '€140',
+    rating: 4.8,
+  },
+  'TRM-015': {
+    images: [
+      'https://images.unsplash.com/photo-1605518216938-7c31b7b14ad0?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=800&auto=format&fit=crop&q=80',
+    ],
+    fabricSpec: 'Gunmetal Concealed Coil #5 · Anti-Corrosive Finish',
+    endUse: 'Seamless Spine Closure on High-Fashion Silhouettes',
+    garmentType: 'Contoured Evening Slit Dresses',
+    priceEur: '€115',
+    rating: 5.0,
+  },
+  'YRN-042': {
+    images: [
+      'https://images.unsplash.com/photo-1564419320461-6870880221ad?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop&q=80',
+    ],
+    fabricSpec: '30s/1 Combed Ring-Spun Compact Cotton Yarn',
+    endUse: 'High-Density Circular Knitting for Seamless Panels',
+    garmentType: 'Sculpted Knit Evening Mini Dresses',
+    priceEur: '€110',
+    rating: 4.7,
+  },
+  'FAB-002': {
+    images: [
+      'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&auto=format&fit=crop&q=80',
+    ],
+    fabricSpec: '88% Recycled Poly, 12% Elastane Rib Knit · 240 GSM',
+    endUse: 'Body-Contouring Stretch Silhouette with Side Slit',
+    garmentType: 'Draped Off-Shoulder Column Gown',
+    priceEur: '€135',
+    rating: 4.9,
+  },
+  'TRM-022': {
+    images: [
+      'https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&auto=format&fit=crop&q=80',
+    ],
+    fabricSpec: 'Matte Black Heavy-Duty Brass Prong Fasteners',
+    endUse: 'Detachable Corsetry Straps & Collar Accent Systems',
+    garmentType: 'Strapless Fluted Ballgowns',
+    priceEur: '€125',
+    rating: 4.6,
+  },
+  'CHM-005': {
+    images: [
+      'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1485968579580-b6d095142e6e?w=800&auto=format&fit=crop&q=80',
+    ],
+    fabricSpec: 'Micro-Emulsion Hydrophilic Textile Finish Polymer',
+    endUse: 'Cashmere-Touch Silky Handfeel on Viscose Crepe',
+    garmentType: 'Noir Draped Satin Gowns',
+    priceEur: '€150',
+    rating: 4.9,
+  },
+  'YRN-018': {
+    images: [
+      'https://images.unsplash.com/photo-1604014237800-1c9102c219da?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop&q=80',
+    ],
+    fabricSpec: 'High-Tenacity 100% Polyester Filament 120D/2',
+    endUse: 'Ultra-High Tensile Seam Joining on Stretch Lycra',
+    garmentType: 'High-Neck Tailored Eveningwear',
+    priceEur: '€120',
+    rating: 4.8,
+  },
 };
+
+const SKU_IMAGES = Object.fromEntries(
+  Object.entries(SKU_CATALOG_MEDIA).map(([k, v]) => [k, v.images[0]])
+);
 
 // ─── Material category image thumbnail (High contrast & Light Mode safe) ────
 function MaterialThumb({ category, isDark }) {
@@ -168,7 +257,7 @@ function MaterialThumb({ category, isDark }) {
       label: 'Fabric Roll'
     },
     'Dyes & Chemicals': {
-      img: 'https://images.unsplash.com/photo-1581093458791-9f3c3900df4b?w=96&h=96&fit=crop&q=80',
+      img: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=96&h=96&fit=crop&q=80',
       color: '#7C3AED',
       emoji: '🧪',
       label: 'Dye Compound'
@@ -258,140 +347,590 @@ function MaterialThumb({ category, isDark }) {
   );
 }
 
-// ─── Supplier origin world map (High-Contrast Light & Dark Mode) ─────────────
-function SupplierWorldMap({ isDark }) {
-  const W = 620, H = 275;
-  const factory = { x: 315, y: 228 };
+// ─── Real Satellite-Texture World Map Component with Animated Freight Nodes & Dynamic Rerouting ────
+function SupplierWorldMap({ isDark, selectedSku, isRerouted, onToggleReroute }) {
+  const W = 720, H = 320;
+  // Geographic node mapping: Spread across Indian Ocean & Asian Maritime Corridor
+  const factory = { x: 340, y: 220 }; // Colombo CICT Hub, Sri Lanka
+  const backupHub = { x: 300, y: 260, label: 'Hambantota Deep Port (Alternative)', flag: '🇱🇰', color: '#10B981' };
+
+  const [activeShipHover, setActiveShipHover] = useState(null);
+
+  // Widely separated geographic coordinates to prevent ANY label overlap
   const nodes = [
-    { x: 425, y: 88,  label: 'Guangzhou', country: '🇨🇳', sub: 'China',      trust: 72, skus: 3, color: '#D97706' },
-    { x: 268, y: 158, label: 'Dhaka',     country: '🇧🇩', sub: 'Bangladesh', trust: 45, skus: 2, color: '#DC2626' },
-    { x: 278, y: 185, label: 'Mumbai',    country: '🇮🇳', sub: 'India',       trust: 81, skus: 2, color: '#059669' },
-    { x: 450, y: 165, label: 'Ho Chi Minh',country:'🇻🇳', sub: 'Vietnam',    trust: 65, skus: 1, color: '#2563EB' },
+    {
+      x: 140, y: 130, label: 'Nhava Sheva Hub', flag: '🇮🇳', country: 'India',
+      trust: 42, risk: '85%', color: '#DC2626', sku: 'FAB-001', labelOffsetY: -38,
+      vessel: 'Ever Given VII', speed: '11.8 kts', teu: '18,500 TEU', delay: 'Choke Point Delay (+3.2d)', eta: '5d 02h', seaState: 'Swell · Beaufort 5'
+    },
+    {
+      x: 320, y: 80, label: 'Chittagong Port', flag: '🇧🇩', country: 'Bangladesh',
+      trust: 45, risk: '70%', color: '#DC2626', sku: 'DYE-008', labelOffsetY: -36,
+      vessel: 'CMA CGM Bengal', speed: '14.2 kts', teu: '8,400 TEU', delay: 'Monsoon Jitter (+4.0d)', eta: '6d 08h', seaState: 'Rough · Beaufort 6'
+    },
+    {
+      x: 500, y: 155, label: 'Hai Phong Port', flag: '🇻🇳', country: 'Vietnam',
+      trust: 60, risk: '65%', color: '#2563EB', sku: 'FAB-002', labelOffsetY: -36,
+      vessel: 'Maersk Colombo', speed: '18.1 kts', teu: '12,600 TEU', delay: 'Port Berth Wait (+1.5d)', eta: '4d 18h', seaState: 'Moderate · Beaufort 3'
+    },
+    {
+      x: 610, y: 95, label: 'Guangzhou Hub', flag: '🇨🇳', country: 'China',
+      trust: 72, risk: '30%', color: '#D97706', sku: 'TRM-015', labelOffsetY: -38,
+      vessel: 'MSC Ariane', speed: '19.4 kts', teu: '14,200 TEU', delay: 'Nominal (+0.4d)', eta: '3d 14h', seaState: 'Calm · Beaufort 2'
+    },
   ];
 
-  // Colors tuned for maximum clarity and contrast in both themes
-  const tc = isDark ? '#94A3B8' : '#0F172A';
-  const subTc = isDark ? '#64748B' : '#475569';
-  const landFill = isDark ? 'rgba(30,58,95,0.7)' : '#CBD5E1';
-  const landStroke = isDark ? 'rgba(96,165,250,0.5)' : '#2563EB';
-  const gridColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(100,116,139,0.12)';
-
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 275, borderRadius: '12px', overflow: 'hidden', border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#E2E8F0'}` }}>
-        <defs>
-          <radialGradient id="factGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#2563EB" stopOpacity="0.6"/>
-            <stop offset="100%" stopColor="#2563EB" stopOpacity="0"/>
-          </radialGradient>
-          <radialGradient id="oceanBg" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor={isDark ? '#060C17' : '#F8FAFC'} />
-            <stop offset="100%" stopColor={isDark ? '#0A1628' : '#EEF2F6'} />
-          </radialGradient>
-        </defs>
-        <rect width={W} height={H} fill="url(#oceanBg)" />
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: '340px', borderRadius: '14px', overflow: 'hidden', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#CBD5E1'}`, boxShadow: isDark ? '0 12px 32px rgba(0,0,0,0.5)' : '0 6px 20px rgba(15,23,42,0.08)', display: 'flex', flexDirection: 'column' }}>
+      {/* Real High-Resolution NASA Earth Satellite Imagery Background */}
+      <div style={{ position: 'relative', flex: 1, minHeight: '300px', overflow: 'hidden' }}>
+        <img
+          src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&auto=format&fit=crop&q=80"
+          alt="Real Satellite Earth Map"
+          referrerPolicy="no-referrer"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center 45%',
+            filter: isDark ? 'brightness(0.65) contrast(1.2) saturate(1.1)' : 'brightness(0.95) contrast(1.15) saturate(1.15)',
+          }}
+        />
 
-        {/* Coordinate Grid */}
-        {[1, 2, 3, 4, 5].map(i => <line key={`v${i}`} x1={i * 100} y1={0} x2={i * 100} y2={H} stroke={gridColor} strokeWidth="1" />)}
-        {[1, 2, 3].map(i => <line key={`h${i}`} x1={0} y1={i * 70} x2={W} y2={i * 70} stroke={gridColor} strokeWidth="1" />)}
+        {/* Ambient Dark/Light Overlay for readability */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: isDark
+            ? 'radial-gradient(ellipse at 55% 55%, rgba(13,27,46,0.35) 0%, rgba(6,12,23,0.85) 100%)'
+            : 'radial-gradient(ellipse at 55% 55%, rgba(240,249,255,0.15) 0%, rgba(226,232,240,0.45) 100%)',
+          pointerEvents: 'none',
+        }} />
 
-        {/* Land masses (Asia & Indian Subcontinent) */}
-        <path d="M238,118 Q260,110 282,128 Q293,155 288,188 Q283,215 315,228 Q318,242 302,248 Q272,242 256,222 Q234,197 238,170 Q232,144 238,118Z" fill={landFill} stroke={landStroke} strokeWidth="1.5" />
-        <ellipse cx="315" cy="238" rx="10" ry="12" fill={isDark ? '#1E3A5F' : '#93C5FD'} stroke="#2563EB" strokeWidth="1.5" />
-        <path d="M378,116 Q432,98 472,108 Q494,128 482,162 Q462,178 442,172 Q418,167 398,152 Q382,136 378,116Z" fill={landFill} stroke={landStroke} strokeWidth="1.5" />
-        <ellipse cx="270" cy="162" rx="18" ry="14" fill={landFill} stroke={landStroke} strokeWidth="1.5" />
-        <path d="M318,56 Q402,46 464,68 Q494,88 472,114 Q442,104 390,98 Q348,93 318,78 Q308,68 318,56Z" fill={landFill} stroke={landStroke} strokeWidth="1.5" />
+        {/* Top-Right Interactive Route Switcher Control */}
+        <div style={{
+          position: 'absolute',
+          top: '12px',
+          right: '12px',
+          zIndex: 4,
+          display: 'flex',
+          gap: '8px',
+        }}>
+          <button
+            onClick={onToggleReroute}
+            style={{
+              padding: '6px 12px',
+              borderRadius: '20px',
+              border: `1.5px solid ${isRerouted ? '#10B981' : 'rgba(239,68,68,0.6)'}`,
+              background: isRerouted
+                ? 'linear-gradient(135deg, rgba(16,185,129,0.92), rgba(5,150,105,0.92))'
+                : 'linear-gradient(135deg, rgba(239,68,68,0.92), rgba(185,28,28,0.92))',
+              color: '#FFFFFF',
+              fontSize: '11px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all .25s ease',
+            }}
+          >
+            <span>{isRerouted ? '🛡️ AI Adaptive Route ACTIVE' : '⚡ Simulate AI Sourcing Reroute'}</span>
+            <span style={{ fontSize: '9px', background: 'rgba(255,255,255,0.25)', padding: '1px 6px', borderRadius: '10px' }}>
+              {isRerouted ? 'ETA -4 Days' : 'Choke Point Risk'}
+            </span>
+          </button>
+        </div>
 
-        {/* Animated Freight Routes */}
-        {nodes.map((n, i) => (
-          <g key={i}>
-            <line x1={n.x} y1={n.y} x2={factory.x} y2={factory.y} stroke={n.color} strokeWidth="1.8" strokeDasharray="7 5" opacity="0.65">
-              <animate attributeName="stroke-dashoffset" values="0;-24" dur={`${1.8 + i * 0.35}s`} repeatCount="indefinite" />
-            </line>
-            {/* Moving freight dot */}
-            <circle r="3.5" fill={n.color} stroke="#fff" strokeWidth="0.8">
-              <animateMotion dur={`${2.5 + i * 0.4}s`} repeatCount="indefinite" path={`M${n.x},${n.y} L${factory.x},${factory.y}`} />
+        {/* Interactive SVG Freight Vectors Layer */}
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+          <defs>
+            <radialGradient id="factPulseGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor={isRerouted ? "#10B981" : "#2563EB"} stopOpacity="0.8" />
+              <stop offset="100%" stopColor={isRerouted ? "#10B981" : "#2563EB"} stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          {/* Animated Trade Lanes (Curved Bézier Paths) */}
+          {nodes.map((n, i) => {
+            const isMatch = selectedSku === n.sku;
+            const targetPt = (isRerouted && n.sku === 'FAB-001') ? backupHub : factory;
+            const midX = (n.x + targetPt.x) / 2 + (i % 2 === 0 ? 15 : -15);
+            const midY = (n.y + targetPt.y) / 2 - (isRerouted && n.sku === 'FAB-001' ? 35 : 20);
+            const pathD = `M${n.x},${n.y} Q${midX},${midY} ${targetPt.x},${targetPt.y}`;
+            const laneColor = (isRerouted && n.sku === 'FAB-001') ? '#10B981' : n.color;
+
+            return (
+              <g key={i}>
+                {/* Glowing Multi-layer Ambient Freight Corridor */}
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={laneColor}
+                  strokeWidth={isMatch ? "6" : "3.5"}
+                  opacity={isMatch ? "0.6" : "0.22"}
+                  style={{ filter: `drop-shadow(0 0 8px ${laneColor})` }}
+                />
+                {/* Animated Dashed Lane */}
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={laneColor}
+                  strokeWidth={isMatch ? "2.6" : "1.8"}
+                  strokeDasharray="8 5"
+                >
+                  <animate attributeName="stroke-dashoffset" values="0;-26" dur={`${1.2 + i * 0.3}s`} repeatCount="indefinite" />
+                </path>
+                {/* Flowing Cargo Vessel Marker */}
+                <g
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={() => setActiveShipHover(n)}
+                  onMouseLeave={() => setActiveShipHover(null)}
+                >
+                  <circle r={isMatch ? "8" : "6"} fill="#0B132B" stroke={laneColor} strokeWidth="2.5" filter="drop-shadow(0 0 8px #fff)">
+                    <animateMotion dur={`${2.6 + i * 0.4}s`} repeatCount="indefinite" path={pathD} />
+                  </circle>
+                  <text fontSize="8.5" textAnchor="middle" dy=".3em" fill="#FFFFFF">
+                    🚢
+                    <animateMotion dur={`${2.6 + i * 0.4}s`} repeatCount="indefinite" path={pathD} />
+                  </text>
+                </g>
+              </g>
+            );
+          })}
+
+          {/* Malacca & Palk Strait Maritime Chokepoint Hazard Pin */}
+          <g>
+            <circle cx="560" cy="275" r="9" fill="rgba(239,68,68,0.25)" stroke="#EF4444" strokeWidth="1.5">
+              <animate attributeName="r" values="8;14;8" dur="2s" repeatCount="indefinite" />
             </circle>
+            <circle cx="560" cy="275" r="4.5" fill="#EF4444" />
+            <rect x="500" y="290" width="120" height="18" rx="4" fill="rgba(15,23,42,0.92)" stroke="rgba(239,68,68,0.5)" strokeWidth="1" />
+            <text x="560" y="302" textAnchor="middle" fontSize="8" fontWeight="800" fill="#FCA5A5">
+              ⚠️ Malacca Swell Chokepoint
+            </text>
           </g>
-        ))}
 
-        {/* Factory Glow & Pulse Ring (Sri Lanka Hub) */}
-        <circle cx={factory.x} cy={factory.y} r="28" fill="url(#factGlow)" />
-        <circle cx={factory.x} cy={factory.y} r="14" fill="none" stroke="#2563EB" strokeWidth="1.5" opacity="0.6">
-          <animate attributeName="r" values="14;24;14" dur="2.5s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.6;0;0.6" dur="2.5s" repeatCount="indefinite" />
-        </circle>
-        <circle cx={factory.x} cy={factory.y} r="10" fill="#2563EB" stroke="#fff" strokeWidth="2.5" />
-        <text x={factory.x} y={factory.y - 18} textAnchor="middle" fontSize="10" fontWeight="900" fill={isDark ? '#60A5FA' : '#1D4ED8'}>🏭 MAS Factory</text>
-        <text x={factory.x} y={factory.y - 8} textAnchor="middle" fontSize="8" fontWeight="700" fill={tc}>Colombo, Sri Lanka</text>
+          {/* Alternative Hub Marker if Rerouted */}
+          {isRerouted && (
+            <g>
+              <circle cx={backupHub.x} cy={backupHub.y} r="10" fill="#10B981" stroke="#FFFFFF" strokeWidth="2.5">
+                <animate attributeName="r" values="8;13;8" dur="1.8s" repeatCount="indefinite" />
+              </circle>
+              <rect x={backupHub.x - 65} y={backupHub.y + 12} width="130" height="20" rx="5" fill="rgba(6,95,70,0.92)" stroke="#34D399" strokeWidth="1" />
+              <text x={backupHub.x} y={backupHub.y + 25} textAnchor="middle" fontSize="8.5" fontWeight="900" fill="#FFFFFF">
+                ⚓ Hambantota Bypass Lane
+              </text>
+            </g>
+          )}
 
-        {/* Sourcing Nodes */}
-        {nodes.map((n, i) => (
-          <g key={i}>
-            <circle cx={n.x} cy={n.y} r="18" fill={`${n.color}20`} stroke={n.color} strokeWidth="1.2" opacity="0.7">
-              <animate attributeName="r" values="18;23;18" dur={`${2.8 + i * 0.5}s`} repeatCount="indefinite" />
-              <animate attributeName="opacity" values="0.7;0.2;0.7" dur={`${2.8 + i * 0.5}s`} repeatCount="indefinite" />
-            </circle>
-            <circle cx={n.x} cy={n.y} r="7" fill={n.color} stroke="#fff" strokeWidth="1.8" />
-            <text x={n.x} y={n.y - 17} textAnchor="middle" fontSize="9.5" fontWeight="800" fill={tc}>{n.country} {n.sub}</text>
-            <text x={n.x} y={n.y - 8} textAnchor="middle" fontSize="7.5" fontWeight="600" fill={subTc}>{n.label}</text>
-            <text x={n.x} y={n.y + 19} textAnchor="middle" fontSize="7.5" fill={n.color} fontWeight="800">Trust {n.trust}%</text>
-          </g>
-        ))}
+          {/* Colombo Port Factory Central Hub Marker */}
+          <circle cx={factory.x} cy={factory.y} r="34" fill="url(#factPulseGlow)" />
+          <circle cx={factory.x} cy={factory.y} r="15" fill="none" stroke={isRerouted ? "#34D399" : "#60A5FA"} strokeWidth="2">
+            <animate attributeName="r" values="15;30;15" dur="2.2s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.8;0;0.8" dur="2.2s" repeatCount="indefinite" />
+          </circle>
+          <circle cx={factory.x} cy={factory.y} r="8" fill={isRerouted ? "#059669" : "#2563EB"} stroke="#FFFFFF" strokeWidth="2.5" />
 
-        {/* Telemetry Header */}
-        <text x="14" y="20" fontSize="9.5" fontWeight="900" fill={tc} letterSpacing="0.08em">LIVE SUPPLIER ORIGIN NETWORK</text>
-        <text x="14" y="32" fontSize="8" fill={subTc}>Animated maritime & air freight routes · MAS Holdings Colombo Hub</text>
-      </svg>
+          {/* Hub Label Tag */}
+          <rect x={factory.x - 62} y={factory.y + 12} width="124" height="22" rx="6" fill="rgba(15,23,42,0.85)" stroke={isRerouted ? "#10B981" : "#3B82F6"} strokeWidth="1.2" />
+          <text x={factory.x} y={factory.y + 26} textAnchor="middle" fontSize="9.5" fontWeight="900" fill="#FFFFFF">
+            MAS Colombo CICT Hub
+          </text>
 
-      {/* Supplier summary strip with high contrast */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '8px', marginTop: '12px' }}>
-        {nodes.map((n, i) => (
-          <div key={i} style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF', border: `1px solid ${isDark ? n.color + '35' : '#E2E8F0'}`, borderRadius: '10px', padding: '10px 12px', textAlign: 'center', boxShadow: isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: '20px', marginBottom: '3px' }}>{n.country}</div>
-            <div style={{ fontSize: '11px', fontWeight: 800, color: n.color }}>{n.label}</div>
-            <div style={{ fontSize: '9.5px', color: subTc, margin: '2px 0 6px 0', fontWeight: 600 }}>{n.skus} SKUs · {n.sub}</div>
-            <div style={{ height: '5px', borderRadius: '4px', background: isDark ? 'rgba(100,116,139,0.2)' : '#E2E8F0', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${n.trust}%`, background: `linear-gradient(90deg,${n.color},${n.color}DD)`, borderRadius: '4px', transition: 'width 1.2s ease' }} />
+          {/* Sourcing Origin Pins */}
+          {nodes.map((n, i) => {
+            const isMatch = selectedSku === n.sku;
+            const offsetY = n.labelOffsetY || -36;
+            return (
+              <g key={i}>
+                {/* Micro Leader Line from Pin to Floating Badge */}
+                <line x1={n.x} y1={n.y} x2={n.x} y2={n.y + offsetY + 22} stroke={n.color} strokeWidth="1.2" strokeDasharray="2 2" opacity="0.6" />
+
+                {/* Pulsing Origin Radar Ring */}
+                <circle cx={n.x} cy={n.y} r={isMatch ? "22" : "16"} fill={`${n.color}25`} stroke={n.color} strokeWidth={isMatch ? "2.5" : "1.5"}>
+                  <animate attributeName="r" values={isMatch ? "18;26;18" : "14;20;14"} dur={`${2.5 + i * 0.4}s`} repeatCount="indefinite" />
+                </circle>
+                <circle cx={n.x} cy={n.y} r={isMatch ? "8" : "6.5"} fill={n.color} stroke="#FFFFFF" strokeWidth="2" />
+
+                {/* Crisp Node Card Badge with High Contrast */}
+                <rect
+                  x={n.x - 56}
+                  y={n.y + offsetY}
+                  width="112"
+                  height="24"
+                  rx="6"
+                  fill="rgba(11, 23, 44, 0.94)"
+                  stroke={isMatch ? "#60A5FA" : n.color}
+                  strokeWidth={isMatch ? "2" : "1.2"}
+                  filter="drop-shadow(0 2px 8px rgba(0,0,0,0.5))"
+                />
+                <text x={n.x} y={n.y + offsetY + 15} textAnchor="middle" fontSize="9" fontWeight="800" fill="#FFFFFF">
+                  {n.flag} {n.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Live Hoverable Cargo Vessel Telemetry HUD Card */}
+        {activeShipHover && (
+          <div style={{
+            position: 'absolute',
+            top: '50px',
+            left: '16px',
+            background: 'rgba(11,19,43,0.92)',
+            backdropFilter: 'blur(10px)',
+            border: `1.5px solid ${activeShipHover.color}`,
+            borderRadius: '12px',
+            padding: '12px 16px',
+            color: '#FFFFFF',
+            zIndex: 10,
+            boxShadow: '0 12px 28px rgba(0,0,0,0.6)',
+            animation: 'slide-up .2s ease',
+            minWidth: '220px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '14px' }}>🚢</span>
+                <span style={{ fontWeight: 900, fontSize: '13px', color: '#60A5FA' }}>{activeShipHover.vessel}</span>
+              </div>
+              <span style={{
+                fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '10px',
+                background: activeShipHover.color + '33', color: activeShipHover.color,
+                border: `1px solid ${activeShipHover.color}88`,
+              }}>
+                {activeShipHover.flag} {activeShipHover.country}
+              </span>
             </div>
-            <div style={{ fontSize: '9px', color: isDark ? '#7A9EC0' : '#475569', marginTop: '4px', fontWeight: 700 }}>Trust Score: {n.trust}%</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '10px', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '8px' }}>
+              <div>
+                <span style={{ color: '#94A3B8' }}>Speed:</span> <strong style={{ color: '#FFFFFF' }}>{activeShipHover.speed}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#94A3B8' }}>Payload:</span> <strong style={{ color: '#FFFFFF' }}>{activeShipHover.teu}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#94A3B8' }}>ETA:</span> <strong style={{ color: '#34D399' }}>{activeShipHover.eta}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#94A3B8' }}>Sea State:</span> <strong style={{ color: '#FDE047' }}>{activeShipHover.seaState}</strong>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '8px', padding: '5px 8px', borderRadius: '6px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', fontSize: '9.5px', color: '#FCA5A5', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span>⚠️ Status:</span>
+              <span>{activeShipHover.delay}</span>
+            </div>
           </div>
-        ))}
+        )}
+
+        {/* Bottom Legend Overlay Bar */}
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: isDark ? 'rgba(10,16,28,0.92)' : 'rgba(255,255,255,0.95)',
+          borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0'}`,
+          padding: '7px 14px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px',
+          fontSize: '10px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, color: isDark ? '#93C5FD' : '#1D4ED8' }}>
+            <span>🛰️ Live Satellite GIS</span>
+            <span style={{ color: '#10B981', animation: 'pulse-dot 2s infinite' }}>●</span>
+            <span style={{ color: isDark ? '#CBD5E1' : '#475569' }}>
+              {isRerouted ? 'Bypass Corridors Active · 0 Port Stoppage' : '4 Active Sourcing Corridors'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <span style={{ color: '#DC2626', fontWeight: 800 }}>● Critical Risk (&gt;60%)</span>
+            <span style={{ color: '#10B981', fontWeight: 800 }}>● Rerouted Safe Lane</span>
+            <span style={{ color: '#2563EB', fontWeight: 800 }}>● Destination Hub</span>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+// ─── Live Activity Feed with Recommended Layout (KPI Summary + Search + Incident Cards) ──
+function ActivityFeed({ productsList, isDark, onSelectSku }) {
+  const [filterType, setFilterType] = useState('ALL');
+  const [streamSearch, setStreamSearch] = useState('');
 
-// ─── Live activity feed ──────────────────────────────────────────────────────
-function ActivityFeed({ productsList, isDark }) {
-  const events = useMemo(() => {
+  const rawEvents = useMemo(() => {
     const list = [];
     productsList.forEach(p => {
-      if (p.disruption_probability >= 0.7)
-        list.push({ icon:'🚨', msg:`${p.product_id} — Critical disruption risk (${Math.round(p.disruption_probability*100)}%)`, color:'#EF4444', time:'2m ago', type:'critical' });
-      if (p.current_inventory < p.forecasted_demand * 0.35)
-        list.push({ icon:'⚠️', msg:`${p.product_id} — Stock below safety buffer threshold`, color:'#F59E0B', time:'5m ago', type:'warn' });
+      if (p.disruption_probability >= 0.7) {
+        list.push({
+          id: `${p.product_id}-crit`,
+          title: 'Disruption risk elevated',
+          sub: `${p.product_id} · Risk threshold exceeded (${Math.round(p.disruption_probability * 100)}%)`,
+          sku: p.product_id,
+          color: '#EF4444',
+          time: '2m ago',
+          type: 'critical',
+          badgeText: 'CRITICAL',
+          icon: '🚨',
+        });
+      }
+      if (p.current_inventory < (p.safety_stock || p.forecasted_demand * 0.35)) {
+        list.push({
+          id: `${p.product_id}-warn`,
+          title: 'Safety stock breached',
+          sub: `${p.product_id} · Reorder assessment required`,
+          sku: p.product_id,
+          color: '#F59E0B',
+          time: '5m ago',
+          type: 'warn',
+          badgeText: 'WARNING',
+          icon: '📦',
+        });
+      }
     });
-    list.push({ icon:'🔄', msg:'Inventory optimization cycle completed', color:'#10B981', time:'8m ago', type:'info' });
-    list.push({ icon:'📊', msg:'14-day demand forecast model updated', color:'#60A5FA', time:'15m ago', type:'info' });
-    list.push({ icon:'📡', msg:'Upstream supplier signals refreshed from mock feed', color:'#A78BFA', time:'22m ago', type:'info' });
-    list.push({ icon:'✅', msg:'YRN-018 safety buffer met — reorder cleared', color:'#10B981', time:'1h ago', type:'info' });
-    list.push({ icon:'🚢', msg:'Sea freight route SL↔CN operational — 7d ETA normal', color:'#60A5FA', time:'2h ago', type:'info' });
-    return list.slice(0, 8);
+
+    list.push({ id: 'sys-1', title: 'Adaptive optimization completed', sub: 'Calculated 8 dynamic Kingman safety buffers', sku: null, color: '#10B981', time: '8m ago', type: 'system', badgeText: 'SYSTEM', icon: '🔄' });
+    list.push({ id: 'sys-2', title: 'Monsoon jitter telemetry received', sub: 'DYE-008 · Chittagong port swell forecast', sku: 'DYE-008', color: '#F59E0B', time: '14m ago', type: 'warn', badgeText: 'WARNING', icon: '📡' });
+    list.push({ id: 'sys-3', title: 'Maritime corridor cleared', sub: 'FAB-001 · Ever Given VII crossed Malacca choke', sku: 'FAB-001', color: '#3B82F6', time: '22m ago', type: 'system', badgeText: 'SYSTEM', icon: '🚢' });
+    list.push({ id: 'sys-4', title: 'Buffer replenishment confirmed', sub: 'YRN-042 · Received at Colombo CICT Hub', sku: 'YRN-042', color: '#10B981', time: '45m ago', type: 'system', badgeText: 'SYSTEM', icon: '✅' });
+
+    return list;
   }, [productsList]);
 
+  const critCount = rawEvents.filter(e => e.type === 'critical').length;
+  const warnCount = rawEvents.filter(e => e.type === 'warn').length;
+
+  const filteredEvents = useMemo(() => {
+    let list = rawEvents;
+    if (filterType === 'CRITICAL') list = list.filter(e => e.type === 'critical');
+    else if (filterType === 'WARN') list = list.filter(e => e.type === 'warn');
+    else if (filterType === 'SYSTEM') list = list.filter(e => e.type === 'system');
+
+    if (streamSearch.trim()) {
+      const q = streamSearch.toLowerCase();
+      list = list.filter(e =>
+        e.title.toLowerCase().includes(q) ||
+        e.sub.toLowerCase().includes(q) ||
+        (e.sku && e.sku.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [rawEvents, filterType, streamSearch]);
+
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'7px' }}>
-      {events.map((ev,i)=>(
-        <div key={i} style={{ display:'flex', gap:'10px', alignItems:'flex-start', background:isDark?'rgba(255,255,255,0.025)':'#F8FAFC', borderRadius:'10px', padding:'9px 12px', border:`1px solid ${ev.color}20`, animation:'slide-up .35s ease', animationDelay:`${i*0.06}s`, animationFillMode:'both' }}>
-          <span style={{ fontSize:'14px', flexShrink:0, marginTop:'1px' }}>{ev.icon}</span>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:'11px', fontWeight:600, color:isDark?'#E2E8F0':'#1E293B', lineHeight:1.4 }}>{ev.msg}</div>
-            <div style={{ fontSize:'9.5px', color:isDark?'#7A9EC0':'#64748B', marginTop:'2px' }}>{ev.time}</div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* 1. Header KPI Summary Row: Total events | Critical | Warnings */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '8px',
+        padding: '10px 14px',
+        marginBottom: '10px',
+        background: isDark ? 'rgba(15,23,42,0.6)' : '#F8FAFC',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
+        borderRadius: '12px',
+      }}>
+        <div>
+          <div style={{ fontSize: '10px', color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600 }}>Total events</div>
+          <div style={{ fontSize: '20px', fontWeight: 900, color: isDark ? '#FFFFFF' : '#0F172A', marginTop: '1px' }}>
+            {rawEvents.length}
           </div>
-          <div style={{ width:'6px', height:'6px', borderRadius:'50%', background:ev.color, flexShrink:0, marginTop:'5px', boxShadow:`0 0 8px ${ev.color}80` }}/>
         </div>
-      ))}
+        <div>
+          <div style={{ fontSize: '10px', color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600 }}>Critical</div>
+          <div style={{ fontSize: '20px', fontWeight: 900, color: '#EF4444', marginTop: '1px' }}>
+            {critCount}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: '10px', color: isDark ? '#94A3B8' : '#64748B', fontWeight: 600 }}>Warnings</div>
+          <div style={{ fontSize: '20px', fontWeight: 900, color: '#F59E0B', marginTop: '1px' }}>
+            {warnCount}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Search Bar */}
+      <div style={{ position: 'relative', marginBottom: '10px' }}>
+        <span style={{
+          position: 'absolute',
+          left: '12px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          fontSize: '12px',
+          color: isDark ? '#64748B' : '#94A3B8',
+          pointerEvents: 'none',
+        }}>🔍</span>
+        <input
+          type="text"
+          placeholder="Search material or event..."
+          value={streamSearch}
+          onChange={e => setStreamSearch(e.target.value)}
+          className="input-focus"
+          style={{
+            width: '100%',
+            padding: '7px 32px 7px 32px',
+            fontSize: '11.5px',
+            borderRadius: '10px',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0'}`,
+            background: isDark ? 'rgba(15,23,42,0.8)' : '#FFFFFF',
+            color: isDark ? '#F1F5F9' : '#0F172A',
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+        {streamSearch && (
+          <button
+            onClick={() => setStreamSearch('')}
+            style={{
+              position: 'absolute',
+              right: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: 'transparent',
+              border: 'none',
+              color: isDark ? '#94A3B8' : '#64748B',
+              cursor: 'pointer',
+              fontSize: '11px',
+            }}
+          >✕</button>
+        )}
+      </div>
+
+      {/* 3. Filter Category Pills */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        {[
+          { id: 'ALL', label: 'All events' },
+          { id: 'CRITICAL', label: 'Critical' },
+          { id: 'WARN', label: 'Warnings' },
+          { id: 'SYSTEM', label: 'System' },
+        ].map(tab => {
+          const isActive = filterType === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setFilterType(tab.id)}
+              className="btn-hover"
+              style={{
+                fontSize: '10.5px',
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: '16px',
+                cursor: 'pointer',
+                border: isActive
+                  ? `1px solid ${isDark ? '#3B82F6' : '#2563EB'}`
+                  : `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+                background: isActive
+                  ? (isDark ? 'rgba(59,130,246,0.25)' : '#EFF6FF')
+                  : (isDark ? 'rgba(255,255,255,0.02)' : '#F8FAFC'),
+                color: isActive ? (isDark ? '#93C5FD' : '#1D4ED8') : (isDark ? '#94A3B8' : '#64748B'),
+                transition: 'all .15s ease',
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 4. Incident Cards List with Navigation Chevron */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        overflowY: 'auto',
+        maxHeight: '260px',
+        paddingRight: '4px',
+      }}>
+        {filteredEvents.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 10px', color: isDark ? '#64748B' : '#94A3B8', fontSize: '11px' }}>
+            No events match current filter or search criteria.
+          </div>
+        ) : (
+          filteredEvents.map(ev => (
+            <div
+              key={ev.id}
+              onClick={() => {
+                if (ev.sku && onSelectSku) onSelectSku(ev.sku);
+              }}
+              className="btn-hover"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '9px 12px',
+                borderRadius: '12px',
+                background: isDark ? 'rgba(30,41,59,0.45)' : '#FFFFFF',
+                border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+                cursor: ev.sku ? 'pointer' : 'default',
+                boxShadow: isDark ? '0 2px 6px rgba(0,0,0,0.2)' : '0 1px 4px rgba(15,23,42,0.03)',
+                transition: 'all .18s ease',
+              }}
+            >
+              {/* Category Icon */}
+              <span style={{
+                fontSize: '15px',
+                width: '30px',
+                height: '30px',
+                borderRadius: '8px',
+                background: `${ev.color}15`,
+                border: `1px solid ${ev.color}35`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                {ev.icon}
+              </span>
+
+              {/* Title, Subtitle, and Timestamp */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#F1F5F9' : '#0F172A' }}>
+                    {ev.title}
+                  </span>
+                  <span style={{
+                    fontSize: '8.5px',
+                    fontWeight: 900,
+                    color: ev.color,
+                    background: `${ev.color}18`,
+                    border: `1px solid ${ev.color}40`,
+                    padding: '1.5px 6px',
+                    borderRadius: '6px',
+                    letterSpacing: '.04em',
+                    textTransform: 'uppercase',
+                  }}>
+                    {ev.badgeText}
+                  </span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: isDark ? '#94A3B8' : '#64748B', marginTop: '2px', fontWeight: 500 }}>
+                  {ev.sub}
+                </div>
+                <div style={{ fontSize: '9px', color: isDark ? '#64748B' : '#94A3B8', marginTop: '1px' }}>
+                  {ev.time}
+                </div>
+              </div>
+
+              {/* Navigation Chevron */}
+              <span style={{
+                fontSize: '14px',
+                color: isDark ? '#64748B' : '#94A3B8',
+                flexShrink: 0,
+                paddingLeft: '4px',
+              }}>
+                ›
+              </span>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -470,6 +1009,46 @@ export default function InventoryOptimizationView() {
   const [serviceLevel, setServiceLevel] = useState(0.95);
   const [baselineSnap, setBaselineSnap] = useState(null);
   const [showPolicyOverlay, setShowPolicyOverlay] = useState(false);
+  const [showResearchTransparency, setShowResearchTransparency] = useState(false);
+  const [showPipelineCard, setShowPipelineCard] = useState(false);
+  const [splitSliderPos, setSplitSliderPos] = useState(50); // 0 to 100% split slider position
+
+  // ── Animated Cost-of-Inaction Live Countdown Timer ───────────────────────────
+  const [inactionSeconds, setInactionSeconds] = useState(0);
+  const [inactionPaused, setInactionPaused] = useState(false);
+  // ── Cargo Ship Telemetry Hover State ─────────────────────────────────────────
+  const [hoveredShip, setHoveredShip] = useState(null);
+
+  // ── Auto-Cycling Hero Background & Material Imagery ─────────────────────────
+  const [heroBgIdx, setHeroBgIdx] = useState(0);
+  const [activeImageIndexes, setActiveImageIndexes] = useState({});
+  const [selectedHero3DModal, setSelectedHero3DModal] = useState(null);
+
+  useEffect(() => {
+    const bgTimer = setInterval(() => {
+      setHeroBgIdx(prev => (prev + 1) % 5);
+    }, 5000);
+    const timer = setInterval(() => {
+      setActiveImageIndexes(prev => {
+        const next = { ...prev };
+        Object.keys(SKU_CATALOG_MEDIA).forEach(sku => {
+          const total = SKU_CATALOG_MEDIA[sku]?.images?.length || 1;
+          next[sku] = ((prev[sku] || 0) + 1) % total;
+        });
+        return next;
+      });
+    }, 3800);
+    return () => { clearInterval(bgTimer); clearInterval(timer); };
+  }, []);
+
+  // ── Cost-of-Inaction Accumulating Countdown Effect ──────────────────────────
+  useEffect(() => {
+    if (inactionPaused) return;
+    const tick = setInterval(() => {
+      setInactionSeconds(s => s + 1);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [inactionPaused]);
 
   // ── Table Controls ────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -486,6 +1065,7 @@ export default function InventoryOptimizationView() {
   const [dispatchedPOs, setDispatchedPOs] = useState({});
   const [showPoHistory, setShowPoHistory] = useState(false);
   const [drawerItem, setDrawerItem] = useState(null);
+  const [isRerouted, setIsRerouted] = useState(false);
   const [toasts, setToasts] = useState([]);
 
   // ── Module 4 Readiness & Line Handoff ─────────────────────────────────────
@@ -497,13 +1077,16 @@ export default function InventoryOptimizationView() {
 
   // ── Direct API Tester ─────────────────────────────────────────────────────
   const [directParams, setDirectParams] = useState({
-    product_id: 'FAB-001', current_inventory: 3400, forecasted_demand: 15200,
+    product_id: 'FAB-001', current_inventory: 3400, in_transit_qty: 1200, forecasted_demand: 15200,
     demand_std_dev: 2280, average_lead_time: 7.0, lead_time_std_dev: 3.2,
     disruption_probability: 0.85, supplier_trust_score: 42.0,
     service_level: 0.95, replenishment_cycle_days: 7,
+    scenario: 'MODERATE', policy_type: 'FORECAST_RISK_AWARE',
   });
   const [directApiResult, setDirectApiResult] = useState(null);
   const [isExecutingDirectApi, setIsExecutingDirectApi] = useState(false);
+  const [activeControllerTab, setActiveControllerTab] = useState('ALL');
+  const [showOptimizerModal, setShowOptimizerModal] = useState(false);
 
   // ── Toast system ──────────────────────────────────────────────────────────
   const showToast = useCallback((msg, type = 'success') => {
@@ -527,27 +1110,28 @@ export default function InventoryOptimizationView() {
         setSelectedSku(prev => (prodRes.some(p => p.product_id === prev) ? prev : prodRes[0].product_id));
       }
       if (piRes) setProductionInterfaceData(piRes);
-      // Fetch persisted POs from SQLite
-      fetch('http://localhost:8000/api/inventory/purchase-orders')
-        .then(r => r.json())
-        .then(data => {
-          if (Array.isArray(data) && data.length) {
-            const poMap = {};
-            data.forEach(po => {
-              poMap[po.product_id] = {
-                poNum: po.po_number,
-                qty: po.quantity,
-                cost: po.estimated_cost_usd,
-                mode: po.freight_mode,
-                at: new Date(po.dispatched_at).toLocaleTimeString(),
-                sku: po.product_id,
-                name: po.product_name,
-              };
-            });
-            setDispatchedPOs(poMap);
-          }
-        })
-        .catch(() => {});
+
+      // Fetch persisted POs from SQLite via unified client
+      try {
+        const data = await getPurchaseOrders();
+        if (Array.isArray(data) && data.length) {
+          const poMap = {};
+          data.forEach(po => {
+            poMap[po.product_id] = {
+              poNum: po.po_number,
+              qty: po.quantity,
+              cost: po.estimated_cost_usd,
+              mode: po.freight_mode,
+              at: new Date(po.dispatched_at).toLocaleTimeString(),
+              sku: po.product_id,
+              name: po.product_name,
+            };
+          });
+          setDispatchedPOs(poMap);
+        }
+      } catch {
+        // Fallback or empty PO list
+      }
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, []);
@@ -621,17 +1205,13 @@ export default function InventoryOptimizationView() {
     const totalCost = Math.round(poModalItem.reorder_quantity * costPerUnit * (freightMode === 'air' ? 2.4 : 1.0));
 
     try {
-      await fetch('http://localhost:8000/api/inventory/purchase-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          po_number: poNum,
-          product_id: poModalItem.product_id,
-          product_name: poModalItem.product_name,
-          quantity: poModalItem.reorder_quantity,
-          freight_mode: freightMode,
-          estimated_cost_usd: totalCost,
-        }),
+      await createPurchaseOrder({
+        po_number: poNum,
+        product_id: poModalItem.product_id,
+        product_name: poModalItem.product_name,
+        quantity: poModalItem.reorder_quantity,
+        freight_mode: freightMode,
+        estimated_cost_usd: totalCost,
       });
     } catch (e) {
       console.warn('Failed to save PO to SQLite:', e);
@@ -654,6 +1234,7 @@ export default function InventoryOptimizationView() {
     unit: 'kg',
     current_inventory: 1000,
     forecasted_demand: 10000,
+    demand_std_dev: 1500,
     average_lead_time: 7.0,
     lead_time_std_dev: 1.5,
     disruption_probability: 0.35,
@@ -681,6 +1262,7 @@ export default function InventoryOptimizationView() {
         product_id: addForm.product_id.trim().toUpperCase(),
         current_inventory: parseFloat(addForm.current_inventory) || 0,
         forecasted_demand: parseFloat(addForm.forecasted_demand) || 0,
+        demand_std_dev: parseFloat(addForm.demand_std_dev) || 0,
         average_lead_time: parseFloat(addForm.average_lead_time) || 1,
         lead_time_std_dev: parseFloat(addForm.lead_time_std_dev) || 1,
         disruption_probability: parseFloat(addForm.disruption_probability) || 0,
@@ -695,6 +1277,7 @@ export default function InventoryOptimizationView() {
         unit: 'kg',
         current_inventory: 1000,
         forecasted_demand: 10000,
+        demand_std_dev: 1500,
         average_lead_time: 7.0,
         lead_time_std_dev: 1.5,
         disruption_probability: 0.35,
@@ -717,6 +1300,7 @@ export default function InventoryOptimizationView() {
       unit: item.unit,
       current_inventory: item.current_inventory,
       forecasted_demand: item.forecasted_demand,
+      demand_std_dev: item.demand_std_dev || Math.round(item.forecasted_demand * 0.15),
       average_lead_time: item.average_lead_time,
       lead_time_std_dev: item.lead_time_std_dev,
       disruption_probability: item.disruption_probability,
@@ -735,6 +1319,7 @@ export default function InventoryOptimizationView() {
         unit: editForm.unit,
         current_inventory: parseFloat(editForm.current_inventory) || 0,
         forecasted_demand: parseFloat(editForm.forecasted_demand) || 0,
+        demand_std_dev: parseFloat(editForm.demand_std_dev) || 0,
         average_lead_time: parseFloat(editForm.average_lead_time) || 1,
         lead_time_std_dev: parseFloat(editForm.lead_time_std_dev) || 1,
         disruption_probability: parseFloat(editForm.disruption_probability) || 0,
@@ -1123,10 +1708,137 @@ export default function InventoryOptimizationView() {
       <style>{`
         @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.6)} }
         @keyframes slide-up  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes pipeline-pop {
+          0% { opacity:0; transform: scale(0.96) translateY(-8px); filter: blur(3px); }
+          60% { transform: scale(1.01) translateY(2px); filter: blur(0px); }
+          100% { opacity:1; transform: scale(1) translateY(0); }
+        }
+        @keyframes col-stagger-1 { from { opacity:0; transform: translateY(14px); } to { opacity:1; transform: translateY(0); } }
+        @keyframes col-stagger-2 { from { opacity:0; transform: translateY(18px); } to { opacity:1; transform: translateY(0); } }
+        @keyframes col-stagger-3 { from { opacity:0; transform: translateY(22px); } to { opacity:1; transform: translateY(0); } }
+        @keyframes glow-pulse {
+          0%, 100% { box-shadow: 0 0 15px rgba(37,99,235,0.15); }
+          50% { box-shadow: 0 0 28px rgba(37,99,235,0.4); }
+        }
+        @keyframes alert-pulse {
+          0%, 100% { box-shadow: 0 0 20px rgba(239,68,68,0.25), inset 0 0 15px rgba(239,68,68,0.1); }
+          50% { box-shadow: 0 0 38px rgba(239,68,68,0.45), inset 0 0 22px rgba(239,68,68,0.25); }
+        }
+        @keyframes aurora-border {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes float-subtle {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-3px); }
+        }
+        @keyframes shimmer-sweep {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
         @keyframes toast-shrink { from{width:100%} to{width:0%} }
         @keyframes badge-pop { 0%{transform:scale(0.8)} 100%{transform:scale(1)} }
         @keyframes slide-drawer { from{transform:translateX(100%)} to{transform:translateX(0)} }
         @keyframes fade-backdrop { from{opacity:0} to{opacity:1} }
+        @keyframes border-shimmer {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        .luxury-kpi-card {
+          position: relative;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          backdrop-filter: blur(14px) !important;
+        }
+        .luxury-kpi-card:hover {
+          transform: translateY(-5px) scale(1.015) !important;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.45) !important;
+        }
+        .luxury-tab-btn {
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        }
+        .luxury-tab-btn:hover {
+          transform: translateY(-3px) !important;
+        }
+        @keyframes tab-pop-bounce {
+          0% { transform: scale(0.94) translateY(3px); }
+          50% { transform: scale(1.02) translateY(-2px); }
+          100% { transform: scale(1) translateY(0); }
+        }
+        @keyframes connector-pulse {
+          0%, 100% { opacity: 0.9; transform: translateY(0); }
+          50% { opacity: 1; transform: translateY(3px); }
+        }
+        @keyframes tab-slide-enter {
+          0% { opacity: 0; transform: translateY(16px) scale(0.99); }
+          60% { transform: translateY(-2px) scale(1.002); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .connected-tab-content {
+          animation: tab-slide-enter 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          will-change: transform, opacity;
+        }
+        .split-drag-thumb::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: #FFFFFF;
+          border: 3.5px solid #F59E0B;
+          box-shadow: 0 0 20px rgba(245, 158, 11, 0.8), 0 4px 12px rgba(0,0,0,0.4);
+          cursor: grab;
+          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+        }
+        .split-drag-thumb::-webkit-slider-thumb:hover {
+          transform: scale(1.25);
+          box-shadow: 0 0 30px rgba(245, 158, 11, 1), 0 6px 16px rgba(0,0,0,0.5);
+        }
+        .split-drag-thumb::-webkit-slider-thumb:active {
+          cursor: grabbing;
+          transform: scale(1.15);
+          background: #FDE047;
+          border-color: #D97706;
+        }
+        .deck-3d-perspective {
+          perspective: 1200px;
+        }
+        .card-3d-tilt {
+          transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.35s ease !important;
+          transform-style: preserve-3d;
+        }
+        .hero-3d-card {
+          perspective: 1000px;
+          transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease;
+          transform-style: preserve-3d;
+        }
+        .hero-3d-card:hover {
+          transform: translateY(-8px) rotateX(4deg) rotateY(-4deg) scale(1.02);
+          box-shadow: 0 24px 60px rgba(0,0,0,0.65), 0 0 40px rgba(59,130,246,0.4) !important;
+        }
+        @keyframes float-hero-3d {
+          0%, 100% { transform: translateY(0px) rotateY(0deg); }
+          50% { transform: translateY(-8px) rotateY(-3deg); }
+        }
+        @keyframes modal-scale-pop {
+          0% { opacity: 0; transform: scale(0.9) translateY(20px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .pipeline-card-effect {
+          transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease !important;
+        }
+        .pipeline-card-effect:hover {
+          transform: translateY(-4px) !important;
+        }
+        .col-effect-blue:hover {
+          box-shadow: 0 16px 36px rgba(37,99,235,0.22) !important;
+        }
+        .col-effect-purple:hover {
+          box-shadow: 0 16px 36px rgba(124,58,237,0.22) !important;
+        }
+        .col-effect-emerald:hover {
+          box-shadow: 0 16px 36px rgba(16,185,129,0.22) !important;
+        }
         .row-hover:hover { background: ${isDark ? 'rgba(59,130,246,0.1)' : 'rgba(37,99,235,0.05)'} !important; }
         .th-sort { cursor:pointer; user-select:none; }
         .th-sort:hover { color: ${isDark ? '#F1F5F9' : '#0B1F3A'} !important; }
@@ -1143,312 +1855,1914 @@ export default function InventoryOptimizationView() {
         .tab-btn:hover { transform:translateY(-2px); }
       `}</style>
 
-      {/* ═══ HEADER HERO ════════════════════════════════════════════════════ */}
-      <div style={styles.headerCard}>
-        <div style={styles.orbBlue} /><div style={styles.orbPurple} />
+      {/* ═══ CEYLON LUXURY INSPIRED HEADER & FULL-BLEED HERO SLIDER ═══ */}
+      {(() => {
+        const showcaseSlides = [
+          {
+            id: 'FAB-001',
+            categoryName: 'Organic Cotton Single Jersey',
+            heroTitle: 'Materials That Inspire Global Fashion',
+            heroSub: '100% GOTS Certified Organic Cotton Single Jersey · 180 GSM. Precision milled for luxury minimalist eveningwear & export activewear collections.',
+            collectionLink: 'View GOTS Collection ➔',
+            priceTag: '€120 / piece',
+            warrantyTag: '✓ OEKO-TEX Standard 100 Certified',
+            specs: [
+              { label: 'FLOOR INVENTORY', val: '3,400 meters' },
+              { label: 'ADAPTIVE BUFFER', val: '7,448 meters' },
+              { label: 'TRANSIT CORRIDOR', val: 'Nhava Sheva ➔ Colombo CICT' },
+              { label: 'DISRUPTION SIGNAL', val: 'Red Sea Congestion (+3.2d)' },
+            ],
+            bg: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=1920&auto=format&fit=crop&q=80',
+          },
+          {
+            id: 'FAB-002',
+            categoryName: 'Poly-Spandex Rib Knit',
+            heroTitle: 'Engineered For High-Performance Activewear',
+            heroSub: '88% Recycled Poly, 12% Elastane Rib Knit · 240 GSM. Micro-textured stretch panels crafted for contoured off-shoulder gowns and stretch leggings.',
+            collectionLink: 'View Activewear Knits ➔',
+            priceTag: '€135 / piece',
+            warrantyTag: '✓ 10-Year Tensile Resilience Guarantee',
+            specs: [
+              { label: 'FLOOR INVENTORY', val: '5,200 meters' },
+              { label: 'ADAPTIVE BUFFER', val: '6,100 meters' },
+              { label: 'TRANSIT CORRIDOR', val: 'Hai Phong Port ➔ Colombo' },
+              { label: 'DISRUPTION SIGNAL', val: 'Port Jitter (±2.8d)' },
+            ],
+            bg: 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?w=1920&auto=format&fit=crop&q=80',
+          },
+          {
+            id: 'DYE-008',
+            categoryName: 'Reactive Navy Dye Chemistry',
+            heroTitle: 'Sustainable Chemistry & Monochrome Pigments',
+            heroSub: 'Eco-reactive deep midnight pigments with colorfastness grade 4.5. Zero hazardous discharge for high-end European brand compliance.',
+            collectionLink: 'View Dyes & Finishing ➔',
+            priceTag: '€140 / kg',
+            warrantyTag: '✓ Zero Liquid Discharge (ZLD) Verified',
+            specs: [
+              { label: 'FLOOR INVENTORY', val: '420 kg' },
+              { label: 'ADAPTIVE BUFFER', val: '890 kg' },
+              { label: 'TRANSIT CORRIDOR', val: 'Chittagong ➔ Colombo CICT' },
+              { label: 'DISRUPTION SIGNAL', val: 'Monsoon Jitter (+4.0d)' },
+            ],
+            bg: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1920&auto=format&fit=crop&q=80',
+          },
+          {
+            id: 'TRM-015',
+            heroTitle: 'Architectural Trims & Precision Hardware',
+            categoryName: 'YKK Gunmetal Zippers & Hardware',
+            heroSub: 'Gunmetal concealed coil #5 zippers with anti-corrosive finish. Precision spine closure systems engineered for bespoke export silhouettes.',
+            collectionLink: 'View Trims Catalog ➔',
+            priceTag: '€115 / set',
+            warrantyTag: '✓ High-Cycle Salt-Spray Tested',
+            specs: [
+              { label: 'FLOOR INVENTORY', val: '12,500 pcs' },
+              { label: 'ADAPTIVE BUFFER', val: '8,200 pcs' },
+              { label: 'TRANSIT CORRIDOR', val: 'Guangzhou Hub ➔ Colombo' },
+              { label: 'DISRUPTION SIGNAL', val: 'Nominal Sea Freight' },
+            ],
+            bg: 'https://images.unsplash.com/photo-1605518216938-7c31b7b14ad0?w=1920&auto=format&fit=crop&q=80',
+          },
+          {
+            id: 'YRN-042',
+            categoryName: 'Combed Compact Spun Yarn',
+            heroTitle: 'Fine Ring-Spun Compact Cotton Yarns',
+            heroSub: '30s/1 combed ring-spun compact cotton yarn. Ultra-high tensile seam joining engineered for seamless automated circular knitting panels.',
+            collectionLink: 'View Yarns Portfolio ➔',
+            priceTag: '€110 / kg',
+            warrantyTag: '✓ BCI Better Cotton Initiative',
+            specs: [
+              { label: 'FLOOR INVENTORY', val: '18,400 kg' },
+              { label: 'ADAPTIVE BUFFER', val: '9,500 kg' },
+              { label: 'TRANSIT CORRIDOR', val: 'Nhava Sheva ➔ Colombo' },
+              { label: 'DISRUPTION SIGNAL', val: 'Stable Logistics Lane' },
+            ],
+            bg: 'https://images.unsplash.com/photo-1564419320461-6870880221ad?w=1920&auto=format&fit=crop&q=80',
+          },
+        ];
 
-        <div style={styles.headerTopRow}>
-          {/* Left: Brand Identity & Subtitle */}
-          <div style={{ display:'flex', alignItems:'center', gap:'16px', flex:'1 1 500px', minWidth:'320px' }}>
-            <div style={styles.headerIconBox}><span style={{ fontSize:'28px' }}>🛡️</span></div>
-            <div>
-              <div style={styles.moduleBadge}>
-                <span style={styles.liveDot} />
-                OPTICHAIN AI · MODULE 3 · DISRUPTION-AWARE ADAPTIVE INVENTORY GUARDIAN
-              </div>
-              <h1 style={styles.headerTitle}>Inventory Guardian</h1>
-              <p style={styles.headerSubtitle}>
-                Dynamically calibrating safety stock buffers and reorder thresholds by coupling upstream stochastic
-                demand volatility with real-time supplier disruption signals for export garment factories.
-              </p>
-              <div style={{ display:'flex', gap:'8px', alignItems:'center', marginTop:'10px', flexWrap:'wrap' }}>
-                <span style={styles.demoModeBadge}>⚠️ DEMO MODE (Upstream: Simulated)</span>
-                <span style={styles.statusBadge}><span style={{ color:'#10B981', animation:'pulse-dot 2s infinite', fontSize:'8px' }}>●</span> inventory-policy-v1.0</span>
-                <span style={styles.statusBadge}><span style={{ color:'#818CF8', animation:'pulse-dot 2.4s infinite', fontSize:'8px' }}>●</span> backorder-xgb-v1.0</span>
-              </div>
-            </div>
-          </div>
+        const activeIdx = heroBgIdx % showcaseSlides.length;
+        const curSlide = showcaseSlides[activeIdx];
 
-          {/* Right: Factory Showcase Card + Theme Toggle */}
-          <div style={{ display:'flex', flexDirection:'column', gap:'10px', alignItems:'flex-end', flexShrink:0 }}>
-            {/* Theme Toggle Button */}
-            <button className="btn-hover" onClick={() => { const n = isDark?'light':'dark'; setTheme(n); try{localStorage.setItem('optichain_inventory_theme',n);}catch(e){} }} style={styles.themeToggleBtn}>
-              {isDark ? '☀️ Switch to Light Mode' : '🌙 Switch to Dark Mode'}
-            </button>
-
-            {/* Smart Factory Node Live Terminal Card (Always 100% visible in Light & Dark Mode) */}
+        return (
+          <div style={{
+            position: 'relative',
+            borderRadius: '24px',
+            overflow: 'hidden',
+            marginBottom: '22px',
+            boxShadow: isDark ? '0 24px 60px rgba(0,0,0,0.65)' : '0 16px 45px rgba(15,23,42,0.12)',
+            border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.12)' : '#E2E8F0'}`,
+            background: '#0B132B',
+          }}>
+            {/* 1. Ceylon Top Announcement Ticker Bar */}
             <div style={{
-              display:'flex', alignItems:'center', gap:'12px',
-              background: isDark ? 'rgba(15,23,42,0.85)' : '#FFFFFF',
-              border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#CBD5E1'}`,
-              borderRadius:'14px', padding:'10px 14px',
-              boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.45)' : '0 4px 18px rgba(15,23,42,0.08)',
-              maxWidth:'420px', position:'relative',
+              background: '#090E17',
+              color: '#CBD5E1',
+              padding: '10px 32px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '11.5px',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              fontWeight: 600,
             }}>
-              {/* Photo with live badge */}
-              <div style={{ width:'78px', height:'58px', borderRadius:'9px', overflow:'hidden', position:'relative', flexShrink:0, border:`1px solid ${isDark ? 'rgba(255,255,255,0.15)' : '#E2E8F0'}` }}>
-                <img
-                  src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=240&h=180&fit=crop&q=80"
-                  alt="Factory Floor"
-                  referrerPolicy="no-referrer"
-                  style={{ width:'100%', height:'100%', objectFit:'cover' }}
-                />
-                <div style={{ position:'absolute', bottom:'2px', left:'3px', background:'rgba(0,0,0,0.7)', borderRadius:'4px', padding:'1px 5px', fontSize:'7.5px', color:'#34D399', fontWeight:900, letterSpacing:'.04em' }}>
-                  ● LIVE
+              {/* Social / Channel Icons */}
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <span style={{ color: '#F8FAFC', fontWeight: 800, letterSpacing: '.06em' }}>
+                  🇱🇰 MAS COLOMBO MANUFACTURING HUB
+                </span>
+                <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+                <span style={{ color: '#34D399', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#34D399', animation: 'pulse-dot 1.8s infinite' }} />
+                  Line 04 Active · 99.95% Target SLA
+                </span>
+              </div>
+
+              {/* Center Warranty Ticker with Arrows */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button
+                  onClick={() => setHeroBgIdx(prev => (prev - 1 + showcaseSlides.length) % showcaseSlides.length)}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#CBD5E1',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                  }}
+                  title="Previous"
+                >
+                  ←
+                </button>
+                <span style={{
+                  color: '#FDE047',
+                  fontWeight: 800,
+                  letterSpacing: '.04em',
+                  background: 'rgba(253,224,71,0.1)',
+                  padding: '3px 12px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(253,224,71,0.25)',
+                }}>
+                  🛡️ {curSlide.warrantyTag}
+                </span>
+                <button
+                  onClick={() => setHeroBgIdx(prev => (prev + 1) % showcaseSlides.length)}
+                  style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#CBD5E1',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                  }}
+                  title="Next"
+                >
+                  →
+                </button>
+              </div>
+
+              {/* Right utility links */}
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                <span style={{ color: '#94A3B8', fontSize: '11px' }}>Deep Port CICT Colombo</span>
+                <button
+                  onClick={() => { const n = isDark ? 'light' : 'dark'; setTheme(n); try { localStorage.setItem('optichain_inventory_theme', n); } catch (e) {} }}
+                  style={{
+                    background: isDark ? 'rgba(255,255,255,0.12)' : '#0F172A',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#FFFFFF',
+                    padding: '3px 12px',
+                    borderRadius: '14px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {isDark ? '☀️ Light' : '🌙 Dark'}
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Ceylon Clean Brand Navigation Bar with Smooth Category Tabs */}
+            <div style={{
+              background: '#FFFFFF',
+              color: '#0F172A',
+              padding: '16px 32px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderBottom: '1px solid #E2E8F0',
+              flexWrap: 'wrap',
+              gap: '14px',
+            }}>
+              {/* Brand Logo */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #0B192C, #1E3A8A)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '22px',
+                  color: '#FFFFFF',
+                  boxShadow: '0 4px 12px rgba(30,58,138,0.25)',
+                }}>
+                  🛡️
+                </div>
+                <div>
+                  <div style={{ fontWeight: 900, fontSize: '20px', letterSpacing: '-0.025em', color: '#0F172A', lineHeight: 1.1 }}>
+                    OPTICHAIN <span style={{ color: '#2563EB' }}>GUARDIAN</span>
+                  </div>
+                  <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#64748B', letterSpacing: '.08em', marginTop: '2px' }}>
+                    SRI LANKA EXPORT APPAREL · MODULE 03
+                  </div>
                 </div>
               </div>
 
-              {/* Node description */}
-              <div style={{ minWidth:0 }}>
-                <div style={{ fontSize:'9px', fontWeight:900, color:'#2563EB', letterSpacing:'.08em', textTransform:'uppercase' }}>
-                  🏭 FACTORY HUB: MAS HOLDINGS
+              {/* Enterprise System Status & Active SKU Pill */}
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: '#F1F5F9',
+                  border: '1px solid #E2E8F0',
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: '#1E293B',
+                }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', boxShadow: '0 0 8px #10B981' }}></span>
+                  <span>Active Material: <strong style={{ color: '#2563EB' }}>{curSlide.id}</strong> ({curSlide.categoryName})</span>
                 </div>
-                <div style={{ fontSize:'12px', fontWeight:800, color:c.title, marginTop:'2px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                  Colombo Manufacturing Hub Line 04
+              </div>
+
+              {/* Quick Actions */}
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <button
+                  onClick={() => {
+                    const fullItem = productsList.find(p => p.product_id === curSlide.id) || {
+                      product_id: curSlide.id,
+                      product_name: curSlide.categoryName,
+                      category: 'Fabrics',
+                      current_inventory: 3400,
+                      forecasted_demand: 15200,
+                      demand_std_dev: 2280,
+                      average_lead_time: 7.0,
+                      lead_time_std_dev: 3.2,
+                      disruption_probability: 0.85,
+                      supplier_trust_score: 55,
+                      unit: 'METERS',
+                    };
+                    setDrawerItem(fullItem);
+                  }}
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    background: '#0F172A',
+                    color: '#FFFFFF',
+                    padding: '8px 18px',
+                    borderRadius: '24px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(15,23,42,0.2)',
+                  }}
+                >
+                  Inspect Material BOM ➔
+                </button>
+              </div>
+            </div>
+
+            {/* 3. Ceylon Full-Bleed Hero Image Canvas */}
+            <div style={{
+              position: 'relative',
+              height: '480px',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'flex-end',
+              padding: '52px 42px',
+            }}>
+              {/* Background Photography with Slow Motion Cinematic Zoom */}
+              <img
+                key={curSlide.bg}
+                src={curSlide.bg}
+                alt={curSlide.heroTitle}
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1920&auto=format&fit=crop&q=80';
+                }}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  objectPosition: 'center 40%',
+                  animation: 'fade-backdrop 1.2s ease',
+                  filter: 'brightness(0.55) contrast(1.15)',
+                  transform: 'scale(1.03)',
+                  transition: 'transform 8s ease-out',
+                }}
+              />
+
+              {/* Gentle Gradient Mask for High Text Contrast */}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(to top, rgba(7,14,29,0.95) 0%, rgba(7,14,29,0.45) 50%, rgba(7,14,29,0.2) 100%)',
+                pointerEvents: 'none',
+              }} />
+
+              {/* Ceylon Furniture Style Hero Content Split: Left Text + Right Floating 3D Material Card */}
+              <div style={{
+                position: 'relative',
+                zIndex: 3,
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '32px',
+                flexWrap: 'wrap',
+              }}>
+                {/* Left Column: Bold Ceylon Narrative */}
+                <div style={{ flex: '1 1 560px', maxWidth: '780px' }}>
+                  {/* SKU Badge & Assurance Tag */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                    <span style={{
+                      background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+                      color: '#FFFFFF',
+                      fontSize: '11px',
+                      fontWeight: 900,
+                      padding: '4px 14px',
+                      borderRadius: '20px',
+                      letterSpacing: '.08em',
+                      boxShadow: '0 4px 12px rgba(37,99,235,0.4)',
+                    }}>
+                      {curSlide.id}
+                    </span>
+                    <span style={{ color: '#E2E8F0', fontSize: '13.5px', fontWeight: 800 }}>
+                      {curSlide.categoryName}
+                    </span>
+                    <span style={{
+                      fontSize: '10.5px',
+                      fontWeight: 700,
+                      color: '#10B981',
+                      background: 'rgba(16,185,129,0.2)',
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(16,185,129,0.4)',
+                    }}>
+                      {curSlide.warrantyTag}
+                    </span>
+                  </div>
+
+                  {/* Big Bold Headline */}
+                  <h1 style={{
+                    margin: '0 0 14px 0',
+                    fontSize: 'clamp(34px, 4.5vw, 54px)',
+                    fontWeight: 900,
+                    color: '#FFFFFF',
+                    letterSpacing: '-0.035em',
+                    lineHeight: 1.08,
+                    textShadow: '0 4px 24px rgba(0,0,0,0.95)',
+                  }}>
+                    {curSlide.heroTitle}
+                  </h1>
+
+                  {/* Narrative Subtext */}
+                  <p style={{
+                    margin: '0 0 24px 0',
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    color: '#E2E8F0',
+                    maxWidth: '680px',
+                    lineHeight: 1.5,
+                    textShadow: '0 2px 12px rgba(0,0,0,0.95)',
+                  }}>
+                    {curSlide.heroSub}
+                  </p>
+
+                  {/* Live Telemetry Specs & Slider Controls Bar */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '18px',
+                    background: 'rgba(10,16,28,0.75)',
+                    backdropFilter: 'blur(12px)',
+                    padding: '14px 20px',
+                    borderRadius: '16px',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+                  }}>
+                    {/* Real-time Telemetry Grid */}
+                    <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {curSlide.specs.slice(0, 3).map((sp, sIdx) => (
+                        <div key={sIdx}>
+                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#93C5FD', letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                            {sp.label}
+                          </div>
+                          <div style={{ fontSize: '14.5px', fontWeight: 900, color: '#FFFFFF', marginTop: '2px', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
+                            {sp.val}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Right: Price + Ceylon Slider Arrows */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '9px', color: '#CBD5E1', fontWeight: 700, letterSpacing: '.06em' }}>PRICE</div>
+                        <div style={{ fontSize: '18px', fontWeight: 900, color: '#FDE047' }}>
+                          {curSlide.priceTag}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <button
+                          onClick={() => setHeroBgIdx(prev => (prev - 1 + showcaseSlides.length) % showcaseSlides.length)}
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '50%',
+                            background: 'rgba(255,255,255,0.2)',
+                            border: '1px solid rgba(255,255,255,0.35)',
+                            color: '#FFFFFF',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '14px',
+                            backdropFilter: 'blur(6px)',
+                            transition: 'background .2s',
+                          }}
+                          title="Previous Material"
+                        >
+                          ←
+                        </button>
+
+                        <button
+                          onClick={() => setHeroBgIdx(prev => (prev + 1) % showcaseSlides.length)}
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '50%',
+                            background: 'rgba(255,255,255,0.2)',
+                            border: '1px solid rgba(255,255,255,0.35)',
+                            color: '#FFFFFF',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '14px',
+                            backdropFilter: 'blur(6px)',
+                            transition: 'background .2s',
+                          }}
+                          title="Next Material"
+                        >
+                          →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display:'flex', gap:'8px', alignItems:'center', marginTop:'4px', fontSize:'10.5px', color:c.sub }}>
-                  <span style={{ color:'#10B981', fontWeight:700 }}>99.95% SL</span>
-                  <span>•</span>
-                  <span>4 Lines Active</span>
-                  <span>•</span>
-                  <span style={{ color:'#60A5FA', fontWeight:600 }}>Sri Lanka</span>
+
+                {/* Right Column: Floating 3D Material Perspective Card with Click-to-Expand */}
+                <div
+                  className="hero-3d-card"
+                  onClick={() => {
+                    const fullItem = productsList.find(p => p.product_id === curSlide.id) || {
+                      product_id: curSlide.id,
+                      product_name: curSlide.categoryName,
+                      category: 'Fabrics',
+                      current_inventory: 3400,
+                      forecasted_demand: 15200,
+                      demand_std_dev: 2280,
+                      average_lead_time: 7.0,
+                      lead_time_std_dev: 3.2,
+                      disruption_probability: 0.85,
+                      supplier_trust_score: 55,
+                      unit: 'METERS',
+                    };
+                    setSelectedHero3DModal(fullItem);
+                  }}
+                  style={{
+                    flex: '0 0 320px',
+                    borderRadius: '22px',
+                    background: 'linear-gradient(145deg, rgba(15,23,42,0.88) 0%, rgba(30,41,59,0.75) 100%)',
+                    border: '1.5px solid rgba(255,255,255,0.25)',
+                    padding: '16px',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2)',
+                    backdropFilter: 'blur(16px)',
+                    cursor: 'pointer',
+                    animation: 'float-hero-3d 6s ease-in-out infinite',
+                    position: 'relative',
+                  }}
+                  title="Click to interact with 3D deep-dive inspector & material laboratory"
+                >
+                  {/* Glowing 3D Badge */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '26px',
+                    right: '26px',
+                    background: 'rgba(0,0,0,0.75)',
+                    backdropFilter: 'blur(8px)',
+                    border: '1px solid rgba(96,165,250,0.5)',
+                    color: '#60A5FA',
+                    fontSize: '9.5px',
+                    fontWeight: 900,
+                    padding: '4px 10px',
+                    borderRadius: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    zIndex: 4,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  }}>
+                    <span>✨</span>
+                    <span>3D INSPECT</span>
+                  </div>
+
+                  {/* 3D High-Res Material Texture Display */}
+                  <div style={{
+                    width: '100%',
+                    height: '190px',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    boxShadow: 'inset 0 0 20px rgba(0,0,0,0.4)',
+                  }}>
+                    <img
+                      src={curSlide.bg}
+                      alt={curSlide.heroTitle}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        transition: 'transform 0.4s ease',
+                      }}
+                    />
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'linear-gradient(to top, rgba(15,23,42,0.8) 0%, transparent 60%)',
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '10px',
+                      left: '12px',
+                      color: '#FFFFFF',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                    }}>
+                      {curSlide.categoryName}
+                    </div>
+                  </div>
+
+                  {/* Quick Material Laboratory Attribute Pills */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '12px' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.06)', padding: '8px 10px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ fontSize: '8.5px', color: '#94A3B8', fontWeight: 800 }}>ESTIMATED STOCK</div>
+                      <div style={{ fontSize: '13px', fontWeight: 900, color: '#38BDF8', marginTop: '2px' }}>
+                        {curSlide.specs[0].val}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.06)', padding: '8px 10px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ fontSize: '8.5px', color: '#94A3B8', fontWeight: 800 }}>ADAPTIVE BUFFER</div>
+                      <div style={{ fontSize: '13px', fontWeight: 900, color: '#34D399', marginTop: '2px' }}>
+                        {curSlide.specs[1].val}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Click to expand prompt bar */}
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '8px',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, rgba(37,99,235,0.25), rgba(124,58,237,0.2))',
+                    border: '1px solid rgba(96,165,250,0.3)',
+                    textAlign: 'center',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: '#93C5FD',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}>
+                    <span>🔍</span> Click For Full 3D Fabric & BOM Specs ↗
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
-      {/* ═══ STANDALONE FLOATING BENTO KPI GRID ═════════════════════════════ */}
-      <div style={styles.kpiGrid}>
+      {/* ═══ LUXURY BENTO KPI GRID (Floating Glassmorphism + Ambient Ambient Neon Glow) ═════════════════════════════ */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        gap: '16px',
+        marginBottom: '20px',
+      }}>
         {[
-          { label:'TARGET SERVICE LEVEL', val:`${summaryData?.average_service_level||99.95}%`, trend:'↑ +0.49pp vs baseline', icon:'📈', accent:'#10B981', spark:[98.2, 98.6, 99.1, 99.4, 99.2, 99.8, 99.95], bg: isDark?'linear-gradient(145deg,rgba(16,185,129,0.12),rgba(16,185,129,0.03))':'#FFFFFF', bdr: isDark?'rgba(16,185,129,0.35)':'#E2E8F0', tag:'OPTIMAL' },
-          { label:'STOCKOUT MITIGATION',  val:`${summaryData?.stockout_mitigation_pct||91.95}%`, trend:'−91.95% stockout units', icon:'✅', accent:'#2563EB', spark:[40, 55, 68, 74, 82, 88, 91.95], bg: isDark?'linear-gradient(145deg,rgba(37,99,235,0.12),rgba(37,99,235,0.03))':'#FFFFFF', bdr: isDark?'rgba(37,99,235,0.35)':'#E2E8F0', tag:'SECURED' },
-          { label:'MONITORED RAW MATERIALS', val:`${summaryData?.total_materials_monitored||productsList.length||8} SKUs`, trend:'Active supply portfolio', icon:'📦', accent:'#8B5CF6', spark:[5, 6, 6, 7, 7, 8, 8], bg: isDark?'linear-gradient(145deg,rgba(139,92,246,0.12),rgba(139,92,246,0.03))':'#FFFFFF', bdr: isDark?'rgba(139,92,246,0.35)':'#E2E8F0', tag:'PORTFOLIO' },
-          { label:'CRITICAL ALERTS & REORDERS', val:`${summaryData?.critical_shortages_count||7} Shortage`, trend:`${summaryData?.reorder_required_count||8} POs triggered`, icon:'🚨', accent:'#EF4444', spark:[9, 8, 8, 7, 8, 7, 7], bg: isDark?'linear-gradient(145deg,rgba(239,68,68,0.12),rgba(239,68,68,0.03))':'#FFFFFF', bdr: isDark?'rgba(239,68,68,0.35)':'#E2E8F0', tag:'ACTION REQ' },
-        ].map((k,i) => (
-          <div key={i} className="kpi-hover" style={{ ...styles.kpiCard, background:k.bg, border:`1px solid ${k.bdr}`, boxShadow: isDark?'0 6px 24px rgba(0,0,0,0.35)':'0 4px 18px rgba(15,23,42,0.05)', transition:'all .25s ease' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:'7px' }}>
-                <span style={{ fontSize:'16px' }}>{k.icon}</span>
-                <div style={{ fontSize:'10.5px', fontWeight:800, letterSpacing:'.06em', color:c.sub }}>{k.label}</div>
-              </div>
-              <span style={{ fontSize:'9px', fontWeight:800, color:k.accent, background:`${k.accent}16`, padding:'2px 8px', borderRadius:'12px', border:`1px solid ${k.accent}35` }}>
-                {k.tag}
-              </span>
-            </div>
+          {
+            label: 'TARGET SERVICE LEVEL',
+            val: `${summaryData?.average_service_level || 99.95}%`,
+            trend: '↑ +0.49pp vs baseline',
+            icon: '📈',
+            accent: '#10B981',
+            spark: [98.2, 98.6, 99.1, 99.4, 99.2, 99.8, 99.95],
+            tag: 'OPTIMAL',
+            glow: 'rgba(16,185,129,0.18)',
+            desc: 'MAS Line 04 High-Precision SLA',
+          },
+          {
+            label: 'STOCKOUT MITIGATION',
+            val: `${summaryData?.stockout_mitigation_pct || 91.95}%`,
+            trend: '−91.95% stockout units',
+            icon: '✅',
+            accent: '#3B82F6',
+            spark: [40, 55, 68, 74, 82, 88, 91.95],
+            tag: 'SECURED',
+            glow: 'rgba(59,130,246,0.18)',
+            desc: 'Real-time Buffer Guard Active',
+          },
+          {
+            label: 'MONITORED RAW MATERIALS',
+            val: `${summaryData?.total_materials_monitored || productsList.length || 8} SKUs`,
+            trend: 'Active supply portfolio',
+            icon: '📦',
+            accent: '#A855F7',
+            spark: [5, 6, 6, 7, 7, 8, 8],
+            tag: 'PORTFOLIO',
+            glow: 'rgba(168,85,247,0.18)',
+            desc: 'Fabrics · Dyes · Trims · Yarns',
+          },
+          {
+            label: 'CRITICAL ALERTS & REORDERS',
+            val: `${summaryData?.critical_shortages_count || 7} Shortage`,
+            trend: `${summaryData?.reorder_required_count || 8} POs triggered`,
+            icon: '🚨',
+            accent: '#EF4444',
+            spark: [9, 8, 8, 7, 8, 7, 7],
+            tag: 'ACTION REQ',
+            glow: 'rgba(239,68,68,0.22)',
+            desc: 'Lead-Time Variance Compensated',
+          },
+        ].map((k, i) => {
+          const glowClass = i === 0 ? 'kpi-glow-emerald' : i === 1 ? 'kpi-glow-blue' : i === 2 ? 'kpi-glow-purple' : 'kpi-glow-red';
+          return (
+            <div
+              key={i}
+              className={`luxury-kpi-card ${glowClass}`}
+              style={{
+                background: isDark
+                  ? 'linear-gradient(145deg, rgba(13,27,46,0.95) 0%, rgba(8,16,28,0.98) 100%)'
+                  : `linear-gradient(145deg, #FFFFFF 0%, ${k.accent}08 100%)`,
+                border: `1.5px solid ${isDark ? `${k.accent}35` : `${k.accent}25`}`,
+                borderRadius: '16px',
+                padding: '16px 18px',
+                boxShadow: isDark
+                  ? `0 10px 28px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06), 0 0 16px ${k.glow}`
+                  : `0 6px 20px rgba(15,23,42,0.05), inset 0 1px 0 #FFFFFF, 0 2px 10px ${k.glow}`,
+                overflow: 'hidden',
+                cursor: 'pointer',
+                position: 'relative',
+              }}
+            >
+              {/* Corner Ambient Glow Mesh */}
+              <div style={{
+                position: 'absolute',
+                top: '-25px',
+                right: '-25px',
+                width: '110px',
+                height: '110px',
+                borderRadius: '50%',
+                background: `radial-gradient(circle, ${k.glow} 0%, transparent 70%)`,
+                pointerEvents: 'none',
+              }} />
 
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end' }}>
-              <div>
-                <div style={{ fontSize:'28px', fontWeight:900, color:k.accent, letterSpacing:'-0.025em', lineHeight:1.1 }}>
-                  {k.val}
+              {/* Top Accent Strip */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: '14px',
+                right: '14px',
+                height: '2px',
+                background: `linear-gradient(90deg, transparent, ${k.accent}, transparent)`,
+                opacity: 0.8,
+              }} />
+
+              {/* Top Row: Icon + Label + Tag */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    fontSize: '14px',
+                    background: isDark ? 'rgba(255,255,255,0.06)' : `${k.accent}12`,
+                    padding: '5px 7px',
+                    borderRadius: '8px',
+                    border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : `${k.accent}30`}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    {k.icon}
+                  </span>
+                  <div>
+                    <div style={{ fontSize: '10.5px', fontWeight: 800, letterSpacing: '.06em', color: isDark ? '#E2E8F0' : '#1E293B' }}>
+                      {k.label}
+                    </div>
+                    <div style={{ fontSize: '9px', color: isDark ? '#64748B' : '#64748B', marginTop: '1px' }}>
+                      {k.desc}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize:'11px', color:c.sub, display:'flex', alignItems:'center', gap:'5px', marginTop:'6px' }}>
-                  <span style={{ color:k.accent, fontWeight:800 }}>{i===3?'⚠':'↑'}</span> {k.trend}
+
+                <span style={{
+                  fontSize: '9px',
+                  fontWeight: 900,
+                  color: k.accent,
+                  background: `${k.accent}15`,
+                  padding: '2.5px 8px',
+                  borderRadius: '12px',
+                  border: `1px solid ${k.accent}40`,
+                  letterSpacing: '.04em',
+                }}>
+                  {k.tag}
+                </span>
+              </div>
+
+              {/* Metric Value + Sparkline Row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', position: 'relative', marginTop: '4px' }}>
+                <div>
+                  <div className="kpi-value-animated" style={{
+                    fontSize: '26px',
+                    fontWeight: 900,
+                    color: isDark ? '#FFFFFF' : '#0F172A',
+                    letterSpacing: '-0.025em',
+                    lineHeight: 1,
+                    textShadow: isDark ? `0 2px 12px ${k.glow}` : 'none',
+                  }}>
+                    {k.val}
+                  </div>
+                  <div style={{
+                    fontSize: '10.5px',
+                    color: isDark ? '#94A3B8' : '#475569',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    marginTop: '6px',
+                    fontWeight: 600,
+                  }}>
+                    <span style={{ color: k.accent, fontWeight: 900 }}>{i === 3 ? '⚠' : '↑'}</span>
+                    {k.trend}
+                  </div>
+                </div>
+
+                {/* Sparkline Graphic with Subtle Underglow */}
+                <div style={{ filter: isDark ? `drop-shadow(0 2px 6px ${k.accent}55)` : 'none' }}>
+                  <MiniSparkline data={k.spark} color={k.accent} isDark={isDark} />
                 </div>
               </div>
-              <MiniSparkline data={k.spark} color={k.accent} isDark={isDark} />
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* ═══ DISRUPTION ALERT BANNER ═════════════════════════════════════════ */}
-      {criticalSkus.length > 0 && (
-        <div style={styles.alertBanner}>
-          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <span style={{ fontSize:'20px', animation:'badge-pop .4s ease' }}>🚨</span>
-            <div>
-              <div style={{ fontWeight:800, fontSize:'13px', color:'#FCA5A5' }}>
-                Disruption Alert — {criticalSkus.length} SKU{criticalSkus.length>1?'s':''} at Critical Risk
-              </div>
-              <div style={{ fontSize:'11.5px', color:'#FCD4D4', marginTop:'2px' }}>
-                {criticalSkus.map(s=>`${s.product_id} (P=${Math.round(s.disruption_probability*100)}%, Stock below Safety Buffer)`).join(' · ')}
-              </div>
-            </div>
-          </div>
-          <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
-            <div style={{ fontSize:'11px', color:'#FCA5A5', fontWeight:800, background:'rgba(239,68,68,0.25)', padding:'5px 12px', borderRadius:'20px', border:'1px solid rgba(239,68,68,0.5)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'5px' }}>
-              <span>⚠️ Inaction Risk:</span>
-              <span>${criticalSkus.reduce((acc, s) => acc + calculateFinancialImpact(s, 1000, 500).downtimeExposure, 0).toLocaleString()}</span>
-            </div>
-            <div style={{ fontSize:'11px', color:'#34D399', fontWeight:800, background:'rgba(16,185,129,0.2)', padding:'5px 12px', borderRadius:'20px', border:'1px solid rgba(16,185,129,0.4)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'5px' }}>
-              <span>🛡️ ROI: 3.4× Cost Avoidance</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ═══ ENTERPRISE SUPPLY CHAIN CONTROL TOWER — DISRUPTION COCKPIT ═══ */}
+      {criticalSkus.length > 0 && (() => {
+        const totalCostPerHr = criticalSkus.reduce((acc, s) => acc + calculateFinancialImpact(s, 1000, 500).meta.downtimeCost, 0);
+        const totalExposure = criticalSkus.reduce((acc, s) => acc + calculateFinancialImpact(s, 1000, 500).downtimeExposure, 0);
+        const accumulatedCost = Math.round(totalCostPerHr * (inactionSeconds / 3600));
+        const hoursToStoppage = 12;
+        const remainingSec = Math.max(0, hoursToStoppage * 3600 - inactionSeconds);
+        const remainH = Math.floor(remainingSec / 3600);
+        const remainM = Math.floor((remainingSec % 3600) / 60);
+        const decimalHrs = (remainH + remainM / 60).toFixed(1);
 
-      {/* ═══ TAB NAVIGATION ══════════════════════════════════════════════════ */}
-      <div style={styles.tabNavContainer}>
-        {[
-          { id:'operations', icon:'📊', label:'Operations & Cockpit',      desc:'Live monitoring & decisions' },
-          { id:'simulator',  icon:'⚡', label:'What-If Simulator',          desc:'Disruption stress testing' },
-          { id:'readiness',  icon:'🏭', label:'Production Readiness',        desc:'Module 4 handoff interface' },
-          { id:'research',   icon:'📈', label:'Research & ML Benchmarks',    desc:'171K dataset · XGBoost ML' },
-          { id:'apitester',  icon:'🔌', label:'FastAPI Live Tester',         desc:'Viva defence · Direct API calls' },
-        ].map(tab => (
-          <button key={tab.id} className="tab-btn" onClick={() => setActiveTab(tab.id)} style={{ ...styles.tabNavBtn, ...(activeTab===tab.id ? styles.tabActive : {}) }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-              <span style={{ fontSize:'17px' }}>{tab.icon}</span>
-              <div style={{ textAlign:'left' }}>
-                <div style={{ fontWeight:700, fontSize:'12.5px' }}>{tab.label}</div>
-                <div style={{ fontSize:'10.5px', opacity:.7, marginTop:'1px' }}>{tab.desc}</div>
+        // Calculate expedite air cost vs protected loss for projected benefit
+        const totalExpediteCost = criticalSkus.reduce((acc, s) => {
+          const roq = Math.round(s.forecasted_demand * 7 * (1 + s.disruption_probability));
+          return acc + (roq * (s.unit_cost || 12) * 0.18 + 450);
+        }, 0);
+        const benefitMultiplier = totalExpediteCost > 0 
+          ? (totalExposure / totalExpediteCost).toFixed(1) 
+          : '3.4';
+
+        const highestRiskSku = [...criticalSkus].sort((a, b) => b.disruption_probability - a.disruption_probability)[0];
+
+        // Disruption stats mapping
+        const delayedCount = criticalSkus.length;
+        const shortageCount = criticalSkus.filter(s => s.stock_level < (s.safety_stock || 1200)).length || 1;
+        const lineDelaysCount = 2;
+        const otherAlertsCount = 3;
+        const onTimePercent = 72; // SLA benchmark
+
+        // SVG Donut chart calculation
+        const radius = 32;
+        const circumference = 2 * Math.PI * radius;
+        const onTimeOffset = circumference - (onTimePercent / 100) * circumference;
+
+        return (
+          <div
+            role="region"
+            aria-label="Supply Chain Control Tower"
+            style={{
+              background: 'linear-gradient(160deg, #070D18 0%, #0B1728 50%, #0F223D 100%)',
+              border: '1.5px solid rgba(239, 68, 68, 0.45)',
+              borderRadius: '20px',
+              padding: '18px 22px',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 32px rgba(239, 68, 68, 0.18)',
+              marginBottom: '20px',
+              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              position: 'relative',
+              overflow: 'hidden',
+              color: '#F1F5F9',
+            }}
+          >
+            {/* Top Glowing Hazard Warning Bar */}
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '3px',
+              background: 'linear-gradient(90deg, #EF4444, #F59E0B 50%, #EF4444)',
+              boxShadow: '0 0 12px #EF4444',
+            }} />
+
+            {/* Header Row: Live Radar Title + Disruption Status Pill + Countdown */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px',
+              paddingBottom: '12px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{
+                  background: 'rgba(239, 68, 68, 0.2)',
+                  border: '1px solid rgba(239, 68, 68, 0.5)',
+                  padding: '5px 9px',
+                  borderRadius: '10px',
+                  fontSize: '15px',
+                  boxShadow: '0 0 14px rgba(239, 68, 68, 0.35)',
+                }}>🚨</span>
+                <div>
+                  <div style={{
+                    fontSize: '15px',
+                    fontWeight: 900,
+                    letterSpacing: '0.04em',
+                    color: '#FFFFFF',
+                    textTransform: 'uppercase',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}>
+                    <span>SUPPLY CHAIN CONTROL TOWER</span>
+                    <span style={{
+                      fontSize: '9.5px',
+                      background: 'rgba(239, 68, 68, 0.25)',
+                      color: '#FCA5A5',
+                      border: '1px solid #EF4444',
+                      padding: '1px 7px',
+                      borderRadius: '12px',
+                      fontWeight: 800,
+                    }}>P(RISK) CRITICAL</span>
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: '#94A3B8', marginTop: '1px' }}>
+                    MAS Line 04 Continuous Stream · Port Nhava Sheva & Chittagong Maritime Telemetry
+                  </div>
+                </div>
+              </div>
+
+              {/* Status and Telemetry Quick Chips */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(239, 68, 68, 0.16)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  padding: '4px 12px',
+                  borderRadius: '20px',
+                  boxShadow: '0 0 10px rgba(239, 68, 68, 0.2)',
+                }}>
+                  <span style={{
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    background: '#EF4444',
+                    boxShadow: '0 0 8px #EF4444',
+                    display: 'inline-block',
+                    animation: 'pulseRed 1.6s infinite',
+                  }}></span>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#FCA5A5' }}>
+                    {delayedCount} SHIPMENTS DELAYED
+                  </span>
+                </div>
+
+                <div style={{
+                  background: 'rgba(15, 23, 42, 0.8)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  padding: '4px 12px',
+                  borderRadius: '20px',
+                  fontSize: '10.5px',
+                  color: '#CBD5E1',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}>
+                  <span>⏱️ Buffer Horizon:</span>
+                  <strong style={{ color: '#FBBF24', fontFamily: 'monospace' }}>{decimalHrs}h to stoppage</strong>
+                </div>
               </div>
             </div>
-            {activeTab===tab.id && <div style={styles.tabActiveBar} />}
-          </button>
-        ))}
-      </div>
+
+            {/* 3-Column Bento Cockpit Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1.2fr 1fr 1fr',
+              gap: '12px',
+              marginTop: '14px',
+              alignItems: 'stretch',
+            }}>
+              {/* Column 1: Active Threat Breakdown List */}
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.75)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '14px',
+                padding: '14px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '10px',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                  paddingBottom: '8px',
+                }}>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    📋 ACTIVE THREAT AUDIT
+                  </span>
+                  <span style={{ fontSize: '10px', color: '#EF4444', fontWeight: 800 }}>LIVE EXCEPTION LOG</span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {[
+                    { label: 'Delayed Shipments', count: delayedCount, icon: '🚢', color: '#EF4444', bg: 'rgba(239,68,68,0.14)' },
+                    { label: 'Inventory Shortages', count: shortageCount, icon: '📦', color: '#F97316', bg: 'rgba(249,115,22,0.14)' },
+                    { label: 'Line Stoppage Hazards', count: lineDelaysCount, icon: '⚠️', color: '#F59E0B', bg: 'rgba(245,158,11,0.14)' },
+                    { label: 'Customs & Port Dwell', count: otherAlertsCount, icon: '⚓', color: '#38BDF8', bg: 'rgba(56,189,248,0.12)' },
+                  ].map((row, idx) => (
+                    <div key={idx} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '5px 9px',
+                      borderRadius: '8px',
+                      background: row.bg,
+                      border: `1px solid ${row.color}35`,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11px', color: '#F1F5F9', fontWeight: 700 }}>
+                        <span style={{ fontSize: '12px' }}>{row.icon}</span>
+                        <span>{row.label}</span>
+                      </div>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 900,
+                        color: row.color,
+                        background: 'rgba(0,0,0,0.3)',
+                        padding: '1px 7px',
+                        borderRadius: '6px',
+                        fontFamily: 'monospace',
+                      }}>
+                        {row.count}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* SKU Interactive Tag Bar */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  marginTop: '10px',
+                  paddingTop: '8px',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                  flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontSize: '9.5px', color: '#64748B', fontWeight: 700 }}>DRILL-DOWN:</span>
+                  {criticalSkus.map(s => (
+                    <button
+                      key={s.product_id}
+                      onClick={() => {
+                        setSelectedSku(s.product_id);
+                        setDrawerItem(s);
+                      }}
+                      title={`Inspect ${s.product_id}`}
+                      style={{
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(239, 68, 68, 0.6)',
+                        background: 'rgba(239, 68, 68, 0.25)',
+                        color: '#FCA5A5',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {s.product_id} ({Math.round(s.disruption_probability * 100)}%)
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Column 2: Freight Telemetry & SLA Ring Hub */}
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.75)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '14px',
+                padding: '14px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                  paddingBottom: '8px',
+                }}>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    🛰️ MARITIME SLA & TRANSIT
+                  </span>
+                  <span style={{ fontSize: '10px', color: '#38BDF8', fontWeight: 800 }}>LIVE GPS</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', margin: '8px 0' }}>
+                  {/* Gauge Arc */}
+                  <div style={{ position: 'relative', width: '78px', height: '78px', flexShrink: 0 }}>
+                    <svg width="78" height="78" viewBox="0 0 80 80" style={{ transform: 'rotate(-90deg)' }}>
+                      <circle cx="40" cy="40" r={radius} stroke="rgba(239,68,68,0.25)" strokeWidth="8" fill="transparent" />
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r={radius}
+                        stroke="#38BDF8"
+                        strokeWidth="8"
+                        fill="transparent"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={onTimeOffset}
+                        strokeLinecap="round"
+                        style={{ filter: 'drop-shadow(0 0 6px rgba(56,189,248,0.7))' }}
+                      />
+                    </svg>
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <span style={{ fontSize: '16px', fontWeight: 900, color: '#FFFFFF', lineHeight: 1 }}>{onTimePercent}%</span>
+                      <span style={{ fontSize: '7.5px', fontWeight: 700, color: '#94A3B8', marginTop: '2px' }}>ON-TIME</span>
+                    </div>
+                  </div>
+
+                  {/* Telemetry Micro-List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1, fontSize: '10.5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#94A3B8' }}>Active Vessels:</span>
+                      <strong style={{ color: '#FFFFFF' }}>4 Cargo Ships</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#94A3B8' }}>Avg Port Dwell:</span>
+                      <strong style={{ color: '#F87171' }}>+3.2 Days</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#94A3B8' }}>Primary Chokepoint:</span>
+                      <strong style={{ color: '#FBBF24' }}>Nhava Sheva (IN)</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#94A3B8' }}>SLA Target:</span>
+                      <strong style={{ color: '#34D399' }}>95.0% SLA</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  background: 'rgba(0,0,0,0.3)',
+                  padding: '5px 8px',
+                  borderRadius: '6px',
+                  fontSize: '9.5px',
+                  color: '#94A3B8',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  <span>🔵 Sea Freight: 28 Orders</span>
+                  <span style={{ color: '#F59E0B' }}>⚡ Air Express: 4 Dispatched</span>
+                </div>
+              </div>
+
+              {/* Column 3: Financial Exposure & Instant Mitigation */}
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.75)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '14px',
+                padding: '14px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                  paddingBottom: '8px',
+                }}>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    💰 FINANCIAL DOWNTIME EXPOSURE
+                  </span>
+                  <span style={{ fontSize: '10px', color: '#10B981', fontWeight: 800 }}>ROI {benefitMultiplier}×</span>
+                </div>
+
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-end',
+                  margin: '6px 0',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>
+                      Accumulated Loss
+                    </div>
+                    <div style={{
+                      fontSize: '22px',
+                      fontWeight: 900,
+                      color: '#FBBF24',
+                      letterSpacing: '-0.02em',
+                      marginTop: '2px',
+                      fontFamily: 'monospace',
+                    }}>
+                      ${accumulatedCost.toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: '#10B981', textTransform: 'uppercase' }}>
+                      Protected Value
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#10B981', fontFamily: 'monospace' }}>
+                      ${(totalExposure - totalExpediteCost > 0 ? totalExposure - totalExpediteCost : 4450).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mitigation CTA Button */}
+                <button
+                  className="btn-hover"
+                  onClick={() => {
+                    if (highestRiskSku) {
+                      const roq = Math.round(highestRiskSku.forecasted_demand * 7 * (1 + highestRiskSku.disruption_probability));
+                      setPoModalItem({ ...highestRiskSku, reorder_quantity: roq });
+                      setInactionPaused(true);
+                    }
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                    border: 'none',
+                    color: '#FFFFFF',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: '0 4px 16px rgba(245, 158, 11, 0.4)',
+                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                  }}
+                >
+                  <span>⚡ Expedite Reorder (Air Express) →</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom Section: 24-Hour Buffer Depletion Trajectory with Gradient Area Shading */}
+            <div style={{
+              marginTop: '14px',
+              paddingTop: '12px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '6px',
+              }}>
+                <div style={{
+                  fontSize: '10.5px',
+                  fontWeight: 800,
+                  color: '#94A3B8',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}>
+                  <span>📉</span>
+                  <span>24-Hour Dynamic Safety Buffer Depletion Trajectory</span>
+                </div>
+                <div style={{ fontSize: '9.5px', color: '#FCA5A5', fontWeight: 700 }}>
+                  ● Threshold Alert: On-Hand Stock Dips Below 40% Minimum Buffer at Shift B (14:00)
+                </div>
+              </div>
+
+              {/* High-Tech Shaded Waveform Chart */}
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.45)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '10px',
+                padding: '8px 12px 6px 12px',
+                height: '68px',
+                position: 'relative',
+                overflow: 'hidden',
+              }}>
+                <svg width="100%" height="100%" viewBox="0 0 600 55" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+                  <defs>
+                    <linearGradient id="depletionAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.35" />
+                      <stop offset="50%" stopColor="#F59E0B" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#EF4444" stopOpacity="0.45" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Safety Threshold Line */}
+                  <line x1="0" y1="28" x2="600" y2="28" stroke="#EF4444" strokeWidth="1.2" strokeDasharray="4 3" opacity="0.75" />
+
+                  {/* Filled Shaded Area */}
+                  <path
+                    d="M 0 16 Q 40 8, 80 18 T 160 14 T 240 26 T 320 22 T 400 34 T 480 32 T 540 42 T 600 45 L 600 55 L 0 55 Z"
+                    fill="url(#depletionAreaGrad)"
+                  />
+
+                  {/* Main Depletion Line */}
+                  <path
+                    d="M 0 16 Q 40 8, 80 18 T 160 14 T 240 26 T 320 22 T 400 34 T 480 32 T 540 42 T 600 45"
+                    fill="none"
+                    stroke="#38BDF8"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Critical Breach Point Marker */}
+                  <circle cx="540" cy="42" r="5" fill="#EF4444" stroke="#FFFFFF" strokeWidth="1.5">
+                    <animate attributeName="r" values="4;7;4" dur="1.8s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx="600" cy="45" r="4" fill="#EF4444" />
+                </svg>
+
+                {/* Production Shift Timeline Overlays */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '8.5px',
+                  color: '#64748B',
+                  fontWeight: 700,
+                  marginTop: '2px',
+                  borderTop: '1px dashed rgba(255, 255, 255, 0.05)',
+                  paddingTop: '2px',
+                }}>
+                  <span>06:00 Shift A (Nominal)</span>
+                  <span>10:00 Sewing Peak</span>
+                  <span style={{ color: '#F59E0B' }}>14:00 Shift B (Buffer Breach)</span>
+                  <span>18:00 Finishing Bay</span>
+                  <span style={{ color: '#EF4444' }}>22:00 Shift C (Line Halt Risk)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+
+
+      {/* ═══ ENTERPRISE MONOLITHIC COCKPIT (Zero-Gap Integrated Tabs & Active Deck) ═══ */}
+      {(() => {
+        const tabsConfig = [
+          {
+            id: 'operations',
+            icon: '📊',
+            label: 'Operations & Cockpit',
+            desc: 'Live telemetry & material inventory',
+            theme: {
+              activeBg: isDark ? 'linear-gradient(135deg, #059669 0%, #047857 100%)' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+              glow: 'rgba(16,185,129,0.35)',
+              border: '#10B981',
+              color: '#10B981',
+            }
+          },
+          {
+            id: 'simulator',
+            icon: '⚡',
+            label: 'What-If Simulator',
+            desc: 'Disruption stress-testing engine',
+            theme: {
+              activeBg: isDark ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+              glow: 'rgba(245,158,11,0.35)',
+              border: '#F59E0B',
+              color: '#F59E0B',
+            }
+          },
+          {
+            id: 'readiness',
+            icon: '🏭',
+            label: 'Production Readiness',
+            desc: 'Module 4 MAS line handoff',
+            theme: {
+              activeBg: isDark ? 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' : 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
+              glow: 'rgba(139,92,246,0.35)',
+              border: '#8B5CF6',
+              color: '#8B5CF6',
+            }
+          },
+          {
+            id: 'research',
+            icon: '📈',
+            label: 'Research & ML Benchmarks',
+            desc: '171K DataCo dataset & XGBoost',
+            theme: {
+              activeBg: isDark ? 'linear-gradient(135deg, #BE185D 0%, #9D174D 100%)' : 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)',
+              glow: 'rgba(236,72,153,0.35)',
+              border: '#EC4899',
+              color: '#EC4899',
+            }
+          },
+        ];
+
+        const curTabConfig = tabsConfig.find(t => t.id === activeTab) || tabsConfig[0];
+
+        return (
+          <div
+            style={{
+              background: isDark ? '#09101F' : '#FFFFFF',
+              border: `2px solid ${curTabConfig.theme.border}`,
+              borderRadius: '24px',
+              boxShadow: isDark
+                ? `0 20px 50px rgba(0,0,0,0.6), 0 0 32px ${curTabConfig.theme.glow}`
+                : `0 12px 36px rgba(15,23,42,0.06), 0 0 24px ${curTabConfig.theme.glow}`,
+              transition: 'border-color 0.35s ease, box-shadow 0.35s ease',
+              position: 'relative',
+              overflow: 'hidden',
+              marginBottom: '28px',
+            }}
+          >
+            {/* Integrated Top Navigation Deck Bar */}
+            <div style={{
+              background: isDark ? 'rgba(15,23,42,0.95)' : '#F8FAFC',
+              borderBottom: `1.5px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+              padding: '12px 14px 10px 14px',
+            }}>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gap: '8px',
+              }}>
+                {tabsConfig.map(tab => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      className="luxury-tab-btn"
+                      onClick={() => setActiveTab(tab.id)}
+                      style={{
+                        position: 'relative',
+                        background: isActive ? tab.theme.activeBg : (isDark ? 'rgba(255,255,255,0.02)' : '#FFFFFF'),
+                        border: isActive ? `1.5px solid ${tab.theme.border}` : `1.5px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
+                        borderRadius: '14px',
+                        padding: '10px 16px',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        boxShadow: isActive ? `0 6px 20px ${tab.theme.glow}` : 'none',
+                        animation: isActive ? 'tab-pop-bounce 0.32s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
+                        color: isActive ? '#FFFFFF' : (isDark ? '#E2E8F0' : '#1E293B'),
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '10px',
+                        background: isActive ? 'rgba(0,0,0,0.22)' : (isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9'),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '18px',
+                        flexShrink: 0,
+                      }}>
+                        {tab.icon}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{
+                          fontWeight: 900,
+                          fontSize: '13px',
+                          color: isActive ? '#FFFFFF' : (isDark ? '#F1F5F9' : '#0F172A'),
+                          lineHeight: 1.2,
+                        }}>
+                          {tab.label}
+                        </div>
+                        <div style={{
+                          fontSize: '10px',
+                          color: isActive ? 'rgba(255,255,255,0.92)' : (isDark ? '#94A3B8' : '#64748B'),
+                          marginTop: '2px',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          fontWeight: isActive ? 600 : 500,
+                        }}>
+                          {tab.desc}
+                        </div>
+                      </div>
+
+                      {isActive && (
+                        <span style={{
+                          fontSize: '9px',
+                          fontWeight: 900,
+                          background: '#FFFFFF',
+                          color: '#0F172A',
+                          padding: '2px 7px',
+                          borderRadius: '8px',
+                          letterSpacing: '.06em',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                        }}>
+                          ACTIVE
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active Workspace Status Ribbon */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '8px 12px',
+                background: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.02)',
+                fontSize: '11px',
+                color: isDark ? '#94A3B8' : '#64748B',
+                fontWeight: 600,
+                borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: curTabConfig.theme.color }} />
+                  <span>ACTIVE DECK: <strong style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}>{curTabConfig.label.toUpperCase()}</strong></span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: curTabConfig.theme.color, fontWeight: 700 }}>
+                  {curTabConfig.desc}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ═══ TAB 1: OPERATIONS & INVENTORY COCKPIT ═══════════════════════════ */}
       {activeTab === 'operations' && (
-        <div style={styles.tabContent}>
+        <div className="connected-tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '-18px' }}>
 
-          {/* ── Data Flow Pipeline ── */}
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                <div style={styles.cardIconBadge}>🔄</div>
+          {/* ── Data Flow Pipeline Bar (Edge-to-Edge Flush Aesthetic) ── */}
+                  <div style={{
+                    background: isDark
+                      ? 'linear-gradient(145deg, rgba(15,23,42,0.85) 0%, rgba(10,16,28,0.95) 100%)'
+                      : '#FFFFFF',
+                    border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#E2E8F0'}`,
+                    borderRadius: '16px',
+                    padding: '14px 20px',
+                    boxShadow: isDark
+                      ? '0 6px 20px rgba(0,0,0,0.35)'
+                      : '0 2px 10px rgba(15,23,42,0.04)',
+                    transition: 'all .25s ease',
+                    overflow: 'hidden',
+                  }}>
+                    <div
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setShowPipelineCard(v => !v)}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '10px',
+                          background: isDark ? 'rgba(37,99,235,0.18)' : '#EFF6FF',
+                          border: `1px solid ${isDark ? 'rgba(59,130,246,0.4)' : '#BFDBFE'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '17px',
+                          color: '#60A5FA',
+                          flexShrink: 0,
+                        }}>
+                          🔄
+                        </div>
                 <div>
-                  <div style={styles.cardTitle}>Data Flow & Decision Pipeline</div>
-                  <div style={styles.cardSub}>Upstream signals → Optimization Engine → Policy Deliverables</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 900, color: isDark ? '#FFFFFF' : '#0F172A', letterSpacing: '-0.01em' }}>
+                      Data Flow & Decision Pipeline
+                    </span>
+                    <span style={{
+                      fontSize: '9.5px',
+                      fontWeight: 800,
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      background: showPipelineCard ? 'rgba(16,185,129,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9'),
+                      color: showPipelineCard ? '#34D399' : (isDark ? '#94A3B8' : '#64748B'),
+                      border: `1px solid ${showPipelineCard ? 'rgba(16,185,129,0.35)' : (isDark ? 'rgba(255,255,255,0.1)' : '#CBD5E1')}`,
+                      transition: 'all .2s ease',
+                      letterSpacing: '.04em',
+                    }}>
+                      {showPipelineCard ? '● ENGINE ACTIVE' : '○ CLICK TO REVEAL'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: isDark ? '#94A3B8' : '#64748B', marginTop: '2px' }}>
+                    Upstream signals → Optimization Engine → Policy Deliverables
+                  </div>
                 </div>
               </div>
-              <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
-                {showPolicyOverlay && (
-                  <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-                    {policyValues.map((pv,i)=>(
-                      <div key={i} style={{ fontSize:'10.5px', fontWeight:700, color:pv.color, background:pv.color+'18', border:`1px solid ${pv.color}44`, padding:'3px 10px', borderRadius:'20px' }}>
-                        {pv.label}: {pv.ss.toLocaleString()} kg
-                      </div>
-                    ))}
-                  </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+                {showPipelineCard && (
+                  <button
+                    className="btn-hover"
+                    onClick={() => setShowPolicyOverlay(v => !v)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      borderRadius: '20px',
+                      border: `1px solid ${showPolicyOverlay ? '#10B981' : (isDark ? 'rgba(255,255,255,0.12)' : '#CBD5E1')}`,
+                      fontSize: '11.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      background: showPolicyOverlay ? 'rgba(16,185,129,0.2)' : 'transparent',
+                      color: showPolicyOverlay ? '#10B981' : (isDark ? '#CBD5E1' : '#475569'),
+                    }}
+                  >
+                    {showPolicyOverlay ? '✓ Policy Overlay ON' : '⊕ Policy Comparison'}
+                  </button>
                 )}
-                <button className="btn-hover" onClick={()=>setShowPolicyOverlay(v=>!v)} style={{ ...styles.pillBtn, background: showPolicyOverlay?'rgba(16,185,129,0.2)':'rgba(255,255,255,0.05)', borderColor: showPolicyOverlay?'#10B981':c.tagBorder, color: showPolicyOverlay?'#10B981':c.sub }}>
-                  {showPolicyOverlay?'✓ Policy Overlay ON':'⊕ Policy Comparison'}
-                </button>
-                <div style={styles.activeSkuChip}>
+                <div style={{
+                  background: isDark ? 'rgba(37,99,235,0.15)' : '#FFFFFF',
+                  border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.35)' : '#CBD5E1'}`,
+                  borderRadius: '14px',
+                  padding: '6px 14px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  boxShadow: isDark ? 'none' : '0 2px 8px rgba(15,23,42,0.06)',
+                }}>
                   <MaterialThumb category={currentProduct.category} isDark={isDark} />
                   <div>
-                    <span style={{ fontSize:'9.5px', color:c.sub, display:'block', fontWeight:800, letterSpacing:'.04em' }}>ACTIVE MATERIAL</span>
-                    <span style={{ color: isDark ? '#93C5FD' : '#1D4ED8', fontWeight:800, fontSize:'12.5px' }}>{activeOpt.product_id||currentProduct.product_id}</span>
-                    <span style={{ marginLeft:'6px', color:c.title, fontWeight:600, fontSize:'12px' }}>{currentProduct.product_name}</span>
+                    <span style={{ fontSize: '9px', color: isDark ? '#94A3B8' : '#64748B', display: 'block', fontWeight: 800, letterSpacing: '.05em' }}>
+                      ACTIVE MATERIAL
+                    </span>
+                    <span style={{ color: isDark ? '#93C5FD' : '#1D4ED8', fontWeight: 800, fontSize: '12px' }}>
+                      {activeOpt.product_id || currentProduct.product_id}
+                    </span>
+                    <span style={{ marginLeft: '6px', color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: 600, fontSize: '11.5px' }}>
+                      {currentProduct.product_name}
+                    </span>
                   </div>
                 </div>
+
+                <button
+                  onClick={() => setShowPipelineCard(v => !v)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 18px',
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    border: 'none',
+                    background: showPipelineCard
+                      ? (isDark ? 'rgba(239,68,68,0.18)' : '#FEE2E2')
+                      : 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+                    color: showPipelineCard ? (isDark ? '#FCA5A5' : '#DC2626') : '#FFFFFF',
+                    boxShadow: showPipelineCard ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
+                    transition: 'all .25s ease',
+                  }}
+                >
+                  <span>{showPipelineCard ? '✕ Hide Pipeline' : '⚡ View Full Pipeline'}</span>
+                  <span style={{ fontSize: '12px', transform: showPipelineCard ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .3s ease' }}>▼</span>
+                </button>
               </div>
             </div>
 
-            <div style={styles.pipelineGrid}>
-              {/* Col 1 — Inputs */}
-              <div style={styles.pipelineCol}>
-                <div style={styles.pipelineColHead('#60A5FA')}>📥 1. UPSTREAM INPUTS (MOCKED)</div>
-                <div style={styles.pipelineRows}>
-                  {[
-                    ['Forecast Demand (D)',     `${activeOpt.demand.toLocaleString()} ${currentProduct.unit}`, null],
-                    ['Supplier Lead Time (L)',  `${currentProduct.average_lead_time}d (±${leadTimeVar}d)`, null],
-                    ['Disruption Risk P(risk)', `${(disruptionProb*100).toFixed(0)}%`, disruptionProb>=.6?'#F87171':'#FBBF24'],
-                    ['Supplier Trust Score',    `${currentProduct.supplier_trust_score}/100`, null],
-                    ['On-Hand Warehouse Stock', `${currentProduct.current_inventory?.toLocaleString()} ${currentProduct.unit}`, '#34D399'],
-                  ].map(([lbl,val,clr],i)=>(
-                    <div key={i} style={styles.pipelineRow}>
-                      <span style={{ color:c.sub, fontSize:'11.5px' }}>{lbl}</span>
-                      <strong style={{ color:clr||c.title, fontSize:'12px' }}>{val}</strong>
+            {showPipelineCard && (
+              <div style={{ marginTop:'22px', animation:'pipeline-pop .4s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+                <div style={styles.pipelineGrid}>
+
+                  {/* ── COL 1: UPSTREAM INPUT SIGNALS (Dark Indigo Tech Card) ── */}
+                  <div className="pipeline-card-effect col-effect-blue" style={{
+                    ...styles.pipelineCol,
+                    borderRadius: '16px',
+                    background: isDark
+                      ? 'linear-gradient(155deg,#0A192F 0%,#0F2744 100%)'
+                      : 'linear-gradient(155deg,#FFFFFF 0%,#F0F7FF 100%)',
+                    border: `1.5px solid ${isDark ? '#3B82F6' : '#60A5FA'}`,
+                    boxShadow: isDark
+                      ? '0 12px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)'
+                      : '0 8px 24px rgba(37,99,235,0.12), inset 0 1px 0 #FFFFFF',
+                    animation: 'col-stagger-1 .4s ease',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}>
+                    {/* Top Accent Strip */}
+                    <div style={{ height:'4px', background:'linear-gradient(90deg,#2563EB,#60A5FA)', margin:'-18px -18px 14px -18px' }} />
+
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
+                      <div style={{ fontSize:'12px', fontWeight:900, color: isDark ? '#93C5FD' : '#1E40AF', letterSpacing:'.08em', display:'flex', alignItems:'center', gap:'7px' }}>
+                        <span style={{ fontSize:'16px' }}>📥</span> 1. UPSTREAM INPUTS
+                      </div>
+                      <span style={{
+                        fontSize:'10px', padding:'3px 10px', borderRadius:'14px',
+                        background: isDark ? 'rgba(37,99,235,0.3)' : '#DBEAFE',
+                        color: isDark ? '#BFDBFE' : '#1E40AF',
+                        fontWeight:900, border:`1px solid ${isDark ? 'rgba(59,130,246,0.6)' : '#93C5FD'}`
+                      }}>
+                        DEMO MODE
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Col 2 — Engine */}
-              <div style={{ ...styles.pipelineCol, background: isDark?'linear-gradient(160deg,#0C1E3A,#091729)':'linear-gradient(160deg,#EFF6FF,#F0F9FF)', border:`1px solid ${isDark?'rgba(37,99,235,.3)':'#BAE6FD'}`, boxShadow: isDark?'0 0 20px rgba(37,99,235,.08)':'none' }}>
-                <div style={styles.pipelineColHead('#93C5FD')}>⚙️ 2. ADAPTIVE OPTIMIZATION ENGINE</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-                  {[
-                    ['SAFETY STOCK FORMULA',  'SS = z · √(L·σ_D² + D²·σ_L²) · (1 + P_disrupt)'],
-                    ['DYNAMIC REORDER POINT', 'ROP = D · L_adj + Safety_Stock'],
-                    ['REORDER QUANTITY',       'ROQ = D · Cycle_Days · (1 + P_disrupt)'],
-                  ].map(([lbl,f],i)=>(
-                    <div key={i} style={styles.formulaPill}>
-                      <div style={{ fontSize:'9px', fontWeight:800, letterSpacing:'.07em', color:c.sub, marginBottom:'4px' }}>{lbl}</div>
-                      <div style={{ fontFamily:'monospace', fontSize:'11.5px', fontWeight:700, color:'#60A5FA', lineHeight:1.5 }}>{f}</div>
+                    <div style={styles.pipelineRows}>
+                      {[
+                        ['Demand Forecast (D̄)',   `${activeOpt.demand.toLocaleString()} ${currentProduct.unit}`, 'Module 1: Market Prophet', isDark?'#F8FAFC':'#0F172A', '#2563EB'],
+                        ['Lead Time (L̄ ± σL)',      `${currentProduct.average_lead_time}d (±${leadTimeVar}d)`, 'Historical Route Benchmark', isDark?'#F8FAFC':'#0F172A', '#0284C7'],
+                        ['Disruption Risk P(risk)', `${(disruptionProb*100).toFixed(0)}%`, 'Module 2: Procurement Guardian', disruptionProb>=.6?'#DC2626':'#D97706', disruptionProb>=.6?'#EF4444':'#F59E0B'],
+                        ['Supplier Trust Score',    `${currentProduct.supplier_trust_score}/100`, 'Vendor Performance Record', isDark?'#F8FAFC':'#0F172A', '#7C3AED'],
+                        ['On-Hand Warehouse Stock', `${currentProduct.current_inventory?.toLocaleString()} ${currentProduct.unit}`, 'Live SQLite ERP Master', '#059669', '#10B981'],
+                      ].map(([lbl,val,src,clr,accent],i)=>(
+                        <div key={i} style={{
+                          display:'flex', flexDirection:'column', gap:'3px', padding:'9px 11px',
+                          marginBottom:'6px', borderRadius:'10px',
+                          background: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF',
+                          border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
+                          borderLeft: `3.5px solid ${accent}`,
+                          transition:'all .2s ease',
+                        }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                            <span style={{ color: isDark?'#CBD5E1':'#334155', fontSize:'12px', fontWeight:700 }}>{lbl}</span>
+                            <strong style={{ color:clr, fontSize:'14px', fontWeight:900, fontFamily:'monospace' }}>{val}</strong>
+                          </div>
+                          <div style={{ fontSize:'9.5px', color: isDark?'#64748B':'#64748B', fontWeight:600 }}>↳ Source: {src}</div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Col 3 — Deliverables */}
-              <div style={{ ...styles.pipelineCol, background: isDark?'linear-gradient(160deg,#0A1F1A,#071812)':'linear-gradient(160deg,#F0FDF4,#ECFDF5)', border:`1px solid ${isDark?'rgba(16,185,129,.3)':'#BBF7D0'}`, boxShadow: isDark?'0 0 20px rgba(16,185,129,.08)':'none' }}>
-                <div style={styles.pipelineColHead('#6EE7B7')}>📤 3. POLICY DELIVERABLES</div>
-
-                {/* Gauge row */}
-                <div style={{ display:'flex', justifyContent:'space-around', marginBottom:'12px', paddingBottom:'12px', borderBottom:`1px solid ${c.tableBorder}` }}>
-                  <StockGauge pct={Math.min(1, currentProduct.current_inventory / Math.max(1, activeOpt.rop))} label="Stock/ROP" color="#60A5FA" />
-                  <StockGauge pct={Math.min(1, currentProduct.current_inventory / Math.max(1, activeOpt.ss))} label="Stock/SS" color={currentProduct.current_inventory < activeOpt.ss ? '#F87171' : '#34D399'} />
-                </div>
-
-                {/* Metric rows */}
-                {[
-                  ['Risk-Adj. Lead Time', `${activeOpt.leadAdj} days`, c.title, false],
-                  ['Dynamic Safety Stock', `${activeOpt.ss.toLocaleString()} ${currentProduct.unit}`, '#60A5FA', true],
-                  ['SS Confidence ±σ', `${activeOpt.ssLo.toLocaleString()} – ${activeOpt.ssHi.toLocaleString()} ${currentProduct.unit}`, '#93C5FD', false],
-                  ['Reorder Point (ROP)', `${activeOpt.rop.toLocaleString()} ${currentProduct.unit}`, c.title, false],
-                  ['Reorder Quantity (ROQ)', `${activeOpt.roq.toLocaleString()} ${currentProduct.unit}`, '#34D399', true],
-                  ['Material Availability', activeOpt.avail ? '✓ TRUE — Ready' : '⚠ FALSE — Shortage', activeOpt.avail ? '#34D399' : '#F87171', true],
-                ].map(([lbl,val,clr,hi],i)=>(
-                  <div key={i} style={{ ...styles.pipelineRow, ...(hi?{ background: clr+'10', borderRadius:'6px', padding:'6px 8px', marginLeft:'-8px', marginRight:'-8px', border:'none', borderBottom:`1px solid ${c.tableBorder}` }:{}) }}>
-                    <span style={{ color:c.sub, fontSize:'11px' }}>{lbl}</span>
-                    <strong style={{ color:clr, fontSize:'12px' }}>{val}</strong>
                   </div>
-                ))}
+
+                  {/* ── COL 2: OPTIMIZATION ENGINE (Royal Violet / Sapphire Card) ── */}
+                  <div className="pipeline-card-effect col-effect-purple" style={{
+                    ...styles.pipelineCol,
+                    borderRadius: '16px',
+                    background: isDark
+                      ? 'linear-gradient(155deg,#0E1630 0%,#161A42 100%)'
+                      : 'linear-gradient(155deg,#FFFFFF 0%,#F5F3FF 100%)',
+                    border: `1.5px solid ${isDark ? '#818CF8' : '#A78BFA'}`,
+                    boxShadow: isDark
+                      ? '0 12px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)'
+                      : '0 8px 24px rgba(124,58,237,0.12), inset 0 1px 0 #FFFFFF',
+                    animation: 'col-stagger-2 .45s ease',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}>
+                    {/* Top Accent Strip */}
+                    <div style={{ height:'4px', background:'linear-gradient(90deg,#7C3AED,#A78BFA)', margin:'-18px -18px 14px -18px' }} />
+
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
+                      <div style={{ fontSize:'12px', fontWeight:900, color: isDark ? '#C7D2FE' : '#5B21B6', letterSpacing:'.08em', display:'flex', alignItems:'center', gap:'7px' }}>
+                        <span style={{ fontSize:'16px' }}>⚙️</span> 2. ADAPTIVE OPTIMIZATION ENGINE
+                      </div>
+                      <span style={{
+                        fontSize:'10px', padding:'3px 10px', borderRadius:'14px',
+                        background: isDark ? 'rgba(124,58,237,0.3)' : '#EDE9FE',
+                        color: isDark ? '#DDD6FE' : '#5B21B6',
+                        fontWeight:900, border:`1px solid ${isDark ? 'rgba(167,139,250,0.6)' : '#C4B5FD'}`
+                      }}>
+                        STOCHASTIC
+                      </span>
+                    </div>
+
+                    <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+                      {[
+                        ['SAFETY STOCK (KINGMAN DUAL-VARIANCE)', 'SS = z · √(L·σ_D² + D²·σ_L²) · RF', 'Couples demand jitter with route uncertainty', '#7C3AED'],
+                        ['DYNAMIC REORDER POINT (ROP)',          'ROP = (D̄ · L_adj) + Safety_Stock', 'Automated purchase order dispatch threshold', '#2563EB'],
+                        ['REORDER QUANTITY (ROQ)',                'ROQ = D̄ · Cycle_Days · RF', 'Demand-coverage periodic replenishment', '#059669'],
+                      ].map(([lbl,f,sub,accent],i)=>(
+                        <div key={i} style={{
+                          background: isDark ? 'rgba(15,23,42,0.85)' : '#FFFFFF',
+                          border: `1.5px solid ${isDark ? 'rgba(167,139,250,0.35)' : '#E0E7FF'}`,
+                          borderLeft: `4px solid ${accent}`,
+                          borderRadius: '12px',
+                          padding: '13px 15px',
+                          boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.35)' : '0 2px 10px rgba(99,102,241,0.08)',
+                          transition:'all .2s ease',
+                        }}>
+                          <div style={{ fontSize:'10px', fontWeight:900, letterSpacing:'.06em', color: isDark ? '#A5B4FC' : '#4338CA', marginBottom:'6px' }}>{lbl}</div>
+                          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:'12.5px', fontWeight:800, color: isDark ? '#E0E7FF' : '#1E1B4B', lineHeight:1.5 }}>{f}</div>
+                          <div style={{ fontSize:'10px', color: isDark?'#94A3B8':'#64748B', marginTop:'5px', fontStyle:'italic' }}>{sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── COL 3: POLICY DELIVERABLES (Emerald Action Card) ── */}
+                  <div className="pipeline-card-effect col-effect-emerald" style={{
+                    ...styles.pipelineCol,
+                    borderRadius: '16px',
+                    background: isDark
+                      ? 'linear-gradient(155deg,#061F17 0%,#0C3326 100%)'
+                      : 'linear-gradient(155deg,#FFFFFF 0%,#F0FDF4 100%)',
+                    border: `1.5px solid ${isDark ? '#10B981' : '#34D399'}`,
+                    boxShadow: isDark
+                      ? '0 12px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)'
+                      : '0 8px 24px rgba(16,185,129,0.12), inset 0 1px 0 #FFFFFF',
+                    animation: 'col-stagger-3 .5s ease',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}>
+                    {/* Top Accent Strip */}
+                    <div style={{ height:'4px', background:'linear-gradient(90deg,#059669,#34D399)', margin:'-18px -18px 14px -18px' }} />
+
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
+                      <div style={{ fontSize:'12px', fontWeight:900, color: isDark ? '#6EE7B7' : '#065F46', letterSpacing:'.08em', display:'flex', alignItems:'center', gap:'7px' }}>
+                        <span style={{ fontSize:'16px' }}>📤</span> 3. POLICY DELIVERABLES
+                      </div>
+                      <span style={{
+                        fontSize:'10px', padding:'3px 10px', borderRadius:'14px',
+                        background: isDark ? 'rgba(239,68,68,0.25)' : '#FEE2E2',
+                        color: isDark ? '#FCA5A5' : '#B91C1C',
+                        fontWeight:900, border:`1px solid ${isDark ? 'rgba(239,68,68,0.5)' : '#FCA5A5'}`
+                      }}>
+                        CRITICAL ACTION
+                      </span>
+                    </div>
+
+                    {/* Circular Stock Gauges */}
+                    <div style={{
+                      display:'flex', justifyContent:'space-around', alignItems:'center',
+                      padding:'10px 8px 14px 8px', marginBottom:'12px',
+                      background: isDark ? 'rgba(0,0,0,0.2)' : '#FFFFFF',
+                      borderRadius:'12px', border:`1px solid ${isDark ? 'rgba(255,255,255,0.05)' : '#DCFCE7'}`
+                    }}>
+                      <StockGauge pct={Math.min(1, currentProduct.current_inventory / Math.max(1, activeOpt.rop))} label="Stock/ROP" color="#2563EB" />
+                      <StockGauge pct={Math.min(1, currentProduct.current_inventory / Math.max(1, activeOpt.ss))} label="Stock/SS" color={currentProduct.current_inventory < activeOpt.ss ? '#DC2626' : '#059669'} />
+                    </div>
+
+                    {/* Output Rows */}
+                    <div style={styles.pipelineRows}>
+                      {[
+                        ['Risk-Adj. Lead Time', `${activeOpt.leadAdj} days`, isDark?'#F8FAFC':'#0F172A', false],
+                        ['Dynamic Safety Stock', `${activeOpt.ss.toLocaleString()} ${currentProduct.unit}`, isDark?'#60A5FA':'#1D4ED8', true],
+                        ['SS Confidence ±σ', `${activeOpt.ssLo.toLocaleString()} – ${activeOpt.ssHi.toLocaleString()} ${currentProduct.unit}`, isDark?'#94A3B8':'#475569', false],
+                        ['Reorder Point (ROP)', `${activeOpt.rop.toLocaleString()} ${currentProduct.unit}`, isDark?'#F8FAFC':'#0F172A', false],
+                        ['Reorder Quantity (ROQ)', `${activeOpt.roq.toLocaleString()} ${currentProduct.unit}`, '#059669', true],
+                        ['Material Availability', activeOpt.avail ? '✓ TRUE — Ready' : '⚠ FALSE — Shortage', activeOpt.avail ? '#059669' : '#DC2626', true],
+                      ].map(([lbl,val,clr,hi],i)=>(
+                        <div key={i} style={{
+                          display:'flex', justifyContent:'space-between', alignItems:'center',
+                          padding:'8px 10px', marginBottom:'5px', borderRadius:'9px',
+                          background: hi
+                            ? (isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF')
+                            : (isDark ? 'rgba(255,255,255,0.02)' : 'transparent'),
+                          border: hi
+                            ? `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#BBF7D0'}`
+                            : '1px solid transparent',
+                          boxShadow: hi ? (isDark ? 'none' : '0 2px 6px rgba(16,185,129,0.08)') : 'none',
+                        }}>
+                          <span style={{ color: isDark?'#CBD5E1':'#334155', fontSize:'12px', fontWeight:700 }}>{lbl}</span>
+                          <strong style={{ color:clr, fontSize:'14px', fontWeight:900, fontFamily:'monospace' }}>{val}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* ── Global Supply Network + Activity Feed ── */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 380px', gap:'16px', alignItems:'start' }}>
+          {/* ── Global Supply Network + Activity Feed (Symmetric Equal-Height Deck) ── */}
+          <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.45fr) minmax(360px, 1fr)', gap:'16px', alignItems:'stretch' }}>
 
             {/* Supplier Map Card */}
-            <div style={styles.card}>
-              <div style={styles.cardHeader}>
-                <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                  <div style={styles.cardIconBadge}>🌏</div>
-                  <div>
-                    <div style={styles.cardTitle}>Global Supplier Origin Network</div>
-                    <div style={styles.cardSub}>Live animated freight routes · 4 sourcing hubs · MAS Holdings Colombo Factory</div>
+            <div style={{ ...styles.card, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={styles.cardHeader}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                    <div style={styles.cardIconBadge}>🌏</div>
+                    <div>
+                      <div style={styles.cardTitle}>Global Supplier Origin Network</div>
+                      <div style={styles.cardSub}>Live animated freight routes · 4 sourcing hubs · MAS Holdings Colombo Factory</div>
+                    </div>
                   </div>
-                </div>
-                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:'6px', background: isDark?'rgba(255,255,255,0.06)':'#E2E8F0', padding:'3px 9px', borderRadius:'10px', border:`1px solid ${c.tagBorder}` }}>
-                    <img
-                      src="https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=64&h=64&fit=crop&q=80"
-                      alt="Port of Colombo"
-                      style={{ width:'20px', height:'20px', borderRadius:'5px', objectFit:'cover' }}
-                    />
-                    <span style={{ fontSize:'10.5px', fontWeight:800, color:c.title }}>Port of Colombo (CICT)</span>
+                  <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'6px', background: isDark?'rgba(255,255,255,0.06)':'#E2E8F0', padding:'3px 9px', borderRadius:'10px', border:`1px solid ${c.tagBorder}` }}>
+                      <img
+                        src="https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=64&h=64&fit=crop&q=80"
+                        alt="Port of Colombo"
+                        style={{ width:'20px', height:'20px', borderRadius:'5px', objectFit:'cover' }}
+                      />
+                      <span style={{ fontSize:'10.5px', fontWeight:800, color:c.title }}>Port of Colombo (CICT)</span>
+                    </div>
+                    {[{c:'#F59E0B',l:'🇨🇳 CN'},{c:'#EF4444',l:'🇧🇩 BD'},{c:'#10B981',l:'🇮🇳 IN'},{c:'#60A5FA',l:'🇻🇳 VN'}].map((x,i)=>(
+                      <span key={i} style={{ fontSize:'10.5px', fontWeight:700, color:x.c, background:`${x.c}18`, border:`1px solid ${x.c}40`, padding:'3px 8px', borderRadius:'20px' }}>{x.l}</span>
+                    ))}
                   </div>
-                  {[{c:'#F59E0B',l:'🇨🇳 CN'},{c:'#EF4444',l:'🇧🇩 BD'},{c:'#10B981',l:'🇮🇳 IN'},{c:'#60A5FA',l:'🇻🇳 VN'}].map((x,i)=>(
-                    <span key={i} style={{ fontSize:'10.5px', fontWeight:700, color:x.c, background:`${x.c}18`, border:`1px solid ${x.c}40`, padding:'3px 8px', borderRadius:'20px' }}>{x.l}</span>
-                  ))}
                 </div>
               </div>
-              <SupplierWorldMap isDark={isDark}/>
+              <div style={{ flex: 1, minHeight: '340px', display: 'flex', flexDirection: 'column' }}>
+                <SupplierWorldMap
+                  isDark={isDark}
+                  selectedSku={selectedSku}
+                  isRerouted={isRerouted}
+                  onToggleReroute={() => {
+                    setIsRerouted(v => !v);
+                    showToast(!isRerouted ? '🛡️ AI Sourcing Rerouted via Hambantota Bypass Lane (-4d ETA)' : 'Restored standard maritime shipping lanes', 'info');
+                  }}
+                />
+              </div>
             </div>
 
             {/* Activity Feed Card */}
-            <div style={styles.card}>
+            <div style={{ ...styles.card, display: 'flex', flexDirection: 'column' }}>
               <div style={styles.cardHeader}>
                 <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                   <div style={styles.cardIconBadge}>📡</div>
                   <div>
                     <div style={styles.cardTitle}>Live Event Stream</div>
-                    <div style={styles.cardSub}>Real-time supply chain alerts</div>
+                    <div style={styles.cardSub}>Real-time supply chain alerts & audit telemetry</div>
                   </div>
                 </div>
                 <span style={{ padding:'3px 10px', borderRadius:'20px', fontSize:'10px', fontWeight:700, background:'rgba(16,185,129,0.15)', color:'#34D399', border:'1px solid rgba(16,185,129,0.3)' }}>
                   <span style={{ animation:'pulse-dot 1.5s infinite', display:'inline-block', marginRight:'4px' }}>●</span>LIVE
                 </span>
               </div>
-              <ActivityFeed productsList={productsList} isDark={isDark}/>
+              <ActivityFeed
+                productsList={productsList}
+                isDark={isDark}
+                onSelectSku={(sku) => {
+                  setSelectedSku(sku);
+                  const p = productsList.find(x => x.product_id === sku);
+                  if (p) setDrawerItem(p);
+                }}
+              />
             </div>
           </div>
 
@@ -1687,17 +4001,46 @@ export default function InventoryOptimizationView() {
                           border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1'}`,
                           boxShadow: isDark ? 'inset 0 0 20px rgba(0,0,0,0.5)' : '0 2px 8px rgba(15,23,42,0.06)',
                         }}>
-                          <img
-                            src={SKU_IMAGES[item.product_id] || 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=500&auto=format&fit=crop&q=80'}
-                            alt={item.product_name}
-                            referrerPolicy="no-referrer"
-                            loading="lazy"
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                            }}
-                          />
+                          {(() => {
+                            const media = SKU_CATALOG_MEDIA[item.product_id];
+                            const currentIdx = activeImageIndexes[item.product_id] || 0;
+                            const imgSrc = media?.images?.[currentIdx] || SKU_IMAGES[item.product_id] || 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=500&auto=format&fit=crop&q=80';
+                            return (
+                              <>
+                                <img
+                                  key={imgSrc}
+                                  src={imgSrc}
+                                  alt={item.product_name}
+                                  referrerPolicy="no-referrer"
+                                  loading="lazy"
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    animation: 'fade-backdrop .6s ease',
+                                    transition: 'transform 0.4s ease',
+                                  }}
+                                />
+                                {/* Multi-Image Pagination Dots */}
+                                {media?.images?.length > 1 && (
+                                  <div style={{ position: 'absolute', bottom: '28px', right: '10px', display: 'flex', gap: '4px', zIndex: 3 }}>
+                                    {media.images.map((_, dotIdx) => (
+                                      <span
+                                        key={dotIdx}
+                                        style={{
+                                          width: currentIdx === dotIdx ? '14px' : '5px',
+                                          height: '5px',
+                                          borderRadius: '3px',
+                                          background: currentIdx === dotIdx ? '#60A5FA' : 'rgba(255,255,255,0.4)',
+                                          transition: 'all .3s ease',
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                           {/* Gradient shade overlay for 100% contrast in light and dark mode */}
                           <div style={{
                             position: 'absolute',
@@ -1720,6 +4063,19 @@ export default function InventoryOptimizationView() {
                             }}>
                               {item.category}
                             </span>
+                            {SKU_CATALOG_MEDIA[item.product_id]?.priceEur && (
+                              <span style={{
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                background: 'rgba(0,0,0,0.7)',
+                                color: '#FDE047',
+                                border: '1px solid rgba(253,224,71,0.3)',
+                              }}>
+                                {SKU_CATALOG_MEDIA[item.product_id].priceEur}
+                              </span>
+                            )}
                           </div>
 
                           <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
@@ -1769,6 +4125,30 @@ export default function InventoryOptimizationView() {
                             </span>
                           </div>
                         </div>
+
+                        {/* Fashion Apparel Showcase Spec Tag (As seen in High Fashion Zevana UI) */}
+                        {SKU_CATALOG_MEDIA[item.product_id] && (
+                          <div style={{
+                            marginBottom: '10px',
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            background: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                            border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
+                            fontSize: '11px',
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                              <span style={{ fontWeight: 800, color: isDark ? '#93C5FD' : '#1D4ED8', letterSpacing: '.02em' }}>
+                                👗 {SKU_CATALOG_MEDIA[item.product_id].garmentType}
+                              </span>
+                              <span style={{ color: '#F59E0B', fontWeight: 800, fontSize: '10.5px' }}>
+                                ★ {SKU_CATALOG_MEDIA[item.product_id].rating}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '10px', color: c.sub, lineHeight: 1.35 }}>
+                              {SKU_CATALOG_MEDIA[item.product_id].fabricSpec}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Product Name & Location */}
                         <div style={{ marginBottom: '12px' }}>
@@ -2014,69 +4394,110 @@ export default function InventoryOptimizationView() {
                           </td>
                           <td style={styles.td}><span style={styles.categoryChip}>{item.category}</span></td>
                           <td style={styles.tdRight}>
-                            <div style={{ fontWeight:700, color:c.title }}>{item.current_inventory.toLocaleString()} <span style={{ fontSize:'10px', color:c.sub }}>{item.unit}</span></div>
-                            {/* Stock health bar */}
-                            <div style={{ marginTop:'5px', height:'4px', background: isDark?'#1E293B':'#E2E8F0', borderRadius:'2px', overflow:'hidden', width:'80px', marginLeft:'auto' }}>
-                              <div style={{ height:'100%', width:`${Math.min(100,healthPct*100)}%`, background:healthColor, borderRadius:'2px', transition:'width .6s ease' }} />
+                            <div style={{ fontWeight: 800, color: c.title, fontSize: '13px' }}>
+                              {item.current_inventory.toLocaleString()} <span style={{ fontSize: '10px', color: c.sub }}>{item.unit}</span>
                             </div>
-                            <div style={{ fontSize:'9px', color:healthColor, textAlign:'right', marginTop:'2px', fontWeight:700 }}>{Math.round(healthPct*100)}% of SS</div>
+                            {/* High-density Stock Health Micro-bar */}
+                            <div style={{ marginTop: '5px', height: '5px', background: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', borderRadius: '3px', overflow: 'hidden', width: '90px', marginLeft: 'auto' }}>
+                              <div style={{
+                                height: '100%',
+                                width: `${Math.min(100, healthPct * 100)}%`,
+                                background: healthColor,
+                                borderRadius: '3px',
+                                boxShadow: `0 0 6px ${healthColor}`,
+                                transition: 'width .6s ease',
+                              }} />
+                            </div>
+                            <div style={{ fontSize: '9px', color: healthColor, textAlign: 'right', marginTop: '2px', fontWeight: 800, letterSpacing: '.02em' }}>
+                              {Math.round(healthPct * 100)}% OF SS
+                            </div>
                           </td>
 
                           {/* Availability & Buffer Health Dual-Tier Telemetry Widget */}
-                          <td style={{ ...styles.tdCenter, minWidth:'150px' }}>
-                            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'3px' }}>
+                          <td style={{ ...styles.tdCenter, minWidth: '150px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
                               <span style={{
-                                display:'inline-flex',
-                                alignItems:'center',
-                                gap:'5px',
-                                padding:'4px 11px',
-                                borderRadius:'20px',
-                                fontWeight:800,
-                                fontSize:'11px',
-                                letterSpacing:'.02em',
-                                whiteSpace:'nowrap',
-                                background: hasShortage?(isDark?'rgba(239,68,68,.22)':'#FEE2E2'):(isDark?'rgba(16,185,129,.22)':'#DCFCE7'),
-                                color: hasShortage?(isDark?'#FCA5A5':'#991B1B'):(isDark?'#6EE7B7':'#166534'),
-                                border:`1px solid ${hasShortage?(isDark?'rgba(239,68,68,.45)':'#FCA5A5'):(isDark?'rgba(16,185,129,.45)':'#86EFAC')}`,
-                                boxShadow: hasShortage?'0 0 10px rgba(239,68,68,.2)':'0 0 10px rgba(16,185,129,.2)'
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '3.5px 10px',
+                                borderRadius: '20px',
+                                fontWeight: 900,
+                                fontSize: '10.5px',
+                                letterSpacing: '.03em',
+                                whiteSpace: 'nowrap',
+                                background: hasShortage ? (isDark ? 'rgba(239,68,68,.25)' : '#FEE2E2') : (isDark ? 'rgba(16,185,129,.25)' : '#DCFCE7'),
+                                color: hasShortage ? (isDark ? '#FCA5A5' : '#991B1B') : (isDark ? '#6EE7B7' : '#166534'),
+                                border: `1px solid ${hasShortage ? (isDark ? 'rgba(239,68,68,.5)' : '#FCA5A5') : (isDark ? 'rgba(16,185,129,.5)' : '#86EFAC')}`,
+                                boxShadow: hasShortage ? '0 0 8px rgba(239,68,68,.2)' : '0 0 8px rgba(16,185,129,.2)',
                               }}>
-                                <span style={{ width:'6px', height:'6px', borderRadius:'50%', background: hasShortage?'#EF4444':'#10B981', animation: hasShortage?'pulse-dot 1.8s infinite':'none' }}/>
-                                {hasShortage ? '⚠ Shortage' : '✓ Stock Ready'}
+                                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: hasShortage ? '#EF4444' : '#10B981', animation: hasShortage ? 'pulseRed 1.8s infinite' : 'none' }} />
+                                {hasShortage ? '⚠ SHORTAGE' : '✓ BUFFER NOMINAL'}
                               </span>
-                              <span style={{ fontSize:'10px', fontWeight:700, color: hasShortage?(isDark?'#F87171':'#DC2626'):(isDark?'#34D399':'#059669') }}>
+                              <span style={{ fontSize: '9.5px', fontWeight: 800, color: hasShortage ? (isDark ? '#F87171' : '#DC2626') : (isDark ? '#34D399' : '#059669') }}>
                                 {hasShortage ? `-${(item.forecasted_demand - item.current_inventory).toLocaleString()} ${item.unit} gap` : `+${(item.current_inventory - skuSS).toLocaleString()} ${item.unit} buffer`}
                               </span>
                             </div>
                           </td>
 
-                          <td style={styles.tdRight}><span style={{ color:c.sub }}>{item.forecasted_demand.toLocaleString()} {item.unit}</span></td>
+                          <td style={styles.tdRight}>
+                            <span style={{ color: c.sub, fontWeight: 600, fontSize: '12px' }}>{item.forecasted_demand.toLocaleString()}</span>
+                            <span style={{ fontSize: '10px', color: c.sub, marginLeft: '3px' }}>{item.unit}</span>
+                          </td>
+
+                          {/* Risk Badge with Progress Indicator */}
                           <td style={styles.tdCenter}>
-                            <span style={{ ...styles.badge, background: rp>=.7?(isDark?'rgba(239,68,68,.2)':'#FEE2E2'):rp>=.35?(isDark?'rgba(245,158,11,.2)':'#FEF3C7'):(isDark?'rgba(16,185,129,.2)':'#DCFCE7'), color: rp>=.7?(isDark?'#FCA5A5':'#991B1B'):rp>=.35?(isDark?'#FDE047':'#92400E'):(isDark?'#6EE7B7':'#166534'), border:`1px solid ${rp>=.7?(isDark?'rgba(239,68,68,.4)':'#FCA5A5'):rp>=.35?(isDark?'rgba(245,158,11,.4)':'#FCD34D'):(isDark?'rgba(16,185,129,.4)':'#86EFAC')}` }}>
-                              {(rp*100).toFixed(0)}%
+                            <span style={{
+                              ...styles.badge,
+                              padding: '2.5px 8px',
+                              borderRadius: '12px',
+                              fontWeight: 900,
+                              fontSize: '10.5px',
+                              background: rp >= 0.7 ? (isDark ? 'rgba(239,68,68,.25)' : '#FEE2E2') : rp >= 0.35 ? (isDark ? 'rgba(245,158,11,.25)' : '#FEF3C7') : (isDark ? 'rgba(16,185,129,.25)' : '#DCFCE7'),
+                              color: rp >= 0.7 ? (isDark ? '#FCA5A5' : '#991B1B') : rp >= 0.35 ? (isDark ? '#FDE047' : '#92400E') : (isDark ? '#6EE7B7' : '#166534'),
+                              border: `1px solid ${rp >= 0.7 ? (isDark ? 'rgba(239,68,68,.5)' : '#FCA5A5') : rp >= 0.35 ? (isDark ? 'rgba(245,158,11,.5)' : '#FCD34D') : (isDark ? 'rgba(16,185,129,.5)' : '#86EFAC')}`,
+                            }}>
+                              {(rp * 100).toFixed(0)}%
                             </span>
-                            <div style={{ width:'50px', height:'3px', background: isDark?'#1E293B':'#E2E8F0', borderRadius:'2px', overflow:'hidden', margin:'4px auto 0' }}>
-                              <div style={{ height:'100%', width:`${rp*100}%`, background: rp>=.7?'#EF4444':rp>=.35?'#F59E0B':'#10B981', borderRadius:'2px' }} />
+                            <div style={{ width: '48px', height: '3.5px', background: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', borderRadius: '2px', overflow: 'hidden', margin: '4px auto 0' }}>
+                              <div style={{ height: '100%', width: `${rp * 100}%`, background: rp >= 0.7 ? '#EF4444' : rp >= 0.35 ? '#F59E0B' : '#10B981', borderRadius: '2px' }} />
                             </div>
                           </td>
+
                           <td style={styles.tdRight}>
-                            <span style={{ color: isDark?'#60A5FA':'#2563EB', fontWeight:700 }}>{skuSS.toLocaleString()}</span>
-                            <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
+                            <span style={{ color: isDark ? '#60A5FA' : '#2563EB', fontWeight: 800 }}>{skuSS.toLocaleString()}</span>
+                            <span style={{ fontSize: '10px', color: c.sub, marginLeft: '3px' }}>{item.unit}</span>
                           </td>
-                          <td style={styles.tdRight}><span style={{ color:c.title, fontWeight:600 }}>{Math.round(item.forecasted_demand*1.2).toLocaleString()}</span></td>
                           <td style={styles.tdRight}>
-                            <span style={{ color: isDark?'#6EE7B7':'#059669', fontWeight:700 }}>{roq.toLocaleString()}</span>
-                            <span style={{ fontSize:'10px', color:c.sub, marginLeft:'3px' }}>{item.unit}</span>
-                            <div style={{ fontSize:'9.5px', fontWeight:700, color: hasShortage ? '#EF4444' : '#10B981', marginTop:'2px', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'3px' }}>
+                            <span style={{ color: c.title, fontWeight: 700 }}>{Math.round(item.forecasted_demand * 1.2).toLocaleString()}</span>
+                          </td>
+                          <td style={styles.tdRight}>
+                            <span style={{ color: isDark ? '#34D399' : '#059669', fontWeight: 900, fontSize: '13px' }}>{roq.toLocaleString()}</span>
+                            <span style={{ fontSize: '10px', color: c.sub, marginLeft: '3px' }}>{item.unit}</span>
+                            <div style={{ fontSize: '9.5px', fontWeight: 800, color: hasShortage ? '#EF4444' : '#10B981', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
                               <span>{hasShortage ? '⚡' : '🛡️'}</span>
-                              <span>{hasShortage ? `-$${Math.round(finImpact.downtimeExposure/1000)}k risk` : `+$${Math.round(finImpact.netProtectedValue/1000)}k saved`}</span>
+                              <span>{hasShortage ? `-$${Math.round(finImpact.downtimeExposure / 1000)}k risk` : `+$${Math.round(finImpact.netProtectedValue / 1000)}k saved`}</span>
                             </div>
                           </td>
-                          <td style={{ ...styles.tdCenter, minWidth:'150px' }}>
-                            <div style={{ display:'flex', gap:'5px', justifyContent:'center', alignItems:'center' }}>
-                              <button className="btn-hover" onClick={e=>{e.stopPropagation();setXaiModalSku(item);}} style={styles.xaiBtn} title="XAI Formula Inspector">📐</button>
-                              <button className="btn-hover" onClick={e=>{e.stopPropagation();openEditModal(item);}} style={styles.editBtn} title="Edit Material">✏️</button>
-                              <button className="btn-hover" onClick={e=>{e.stopPropagation();setDeleteConfirmItem(item);}} style={styles.deleteBtn} title="Archive / Delete Material">🗑️</button>
-                              <button className="btn-hover" onClick={e=>{e.stopPropagation();setPoModalItem({...item,reorder_quantity:Math.round(item.forecasted_demand*7*(1+item.disruption_probability))});}} style={{ ...styles.poBtn, background: isDispatched?'#059669':(isDark?'#2563EB':'#0B1F3A') }}>
+
+                          {/* Quick Actions Action Toolbar */}
+                          <td style={{ ...styles.tdCenter, minWidth: '150px' }}>
+                            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', alignItems: 'center' }}>
+                              <button className="btn-hover" onClick={e => { e.stopPropagation(); setXaiModalSku(item); }} style={styles.xaiBtn} title="XAI Formula Inspector">📐</button>
+                              <button className="btn-hover" onClick={e => { e.stopPropagation(); openEditModal(item); }} style={styles.editBtn} title="Edit Material">✏️</button>
+                              <button className="btn-hover" onClick={e => { e.stopPropagation(); setDeleteConfirmItem(item); }} style={styles.deleteBtn} title="Archive / Delete Material">🗑️</button>
+                              <button
+                                className="btn-hover"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setPoModalItem({ ...item, reorder_quantity: Math.round(item.forecasted_demand * 7 * (1 + item.disruption_probability)) });
+                                }}
+                                style={{
+                                  ...styles.poBtn,
+                                  background: isDispatched ? '#059669' : (isDark ? 'linear-gradient(135deg,#2563EB,#1D4ED8)' : 'linear-gradient(135deg,#1E40AF,#2563EB)'),
+                                  boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
+                                }}
+                              >
                                 {isDispatched ? '✓' : '⚡ PO'}
                               </button>
                             </div>
@@ -2094,12 +4515,340 @@ export default function InventoryOptimizationView() {
 
       {/* ═══ TAB 2: WHAT-IF SIMULATOR ════════════════════════════════════════ */}
       {activeTab === 'simulator' && (
-        <div style={styles.tabContent}>
+        <div style={{ ...styles.tabContent, animation: 'content-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+
+          {/* Primary Architecture: Adaptive Policy Optimizer (Module 3 Engine) */}
+          <div style={{
+            ...styles.card,
+            border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.35)' : '#BFDBFE'}`,
+            boxShadow: isDark ? '0 16px 40px rgba(0,0,0,0.45)' : '0 8px 24px rgba(37,99,235,0.06)',
+            padding: '20px 24px',
+            marginBottom: '20px',
+          }}>
+            {/* Header / Launch Bar */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '14px',
+            }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '20px',
+                  color: '#fff',
+                  boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
+                }}>
+                  🛡️
+                </div>
+                <div>
+                  <div style={{ fontSize:'15.5px', fontWeight:800, color:c.title, display:'flex', alignItems:'center', gap:'8px' }}>
+                    <span>Adaptive Policy Optimizer</span>
+                    <span style={{ fontSize:'10px', padding:'2px 8px', borderRadius:'12px', background: isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF', color: '#60A5FA', fontWeight: 700, border: '1px solid rgba(59,130,246,0.3)' }}>
+                      Module 3 Engine
+                    </span>
+                  </div>
+                  <div style={{ fontSize:'12px', color:c.sub, marginTop:'2px' }}>
+                    Active SKU: <strong style={{ color: '#2563EB' }}>{directParams.product_id}</strong> · Current On-Hand: <strong>{directParams.current_inventory.toLocaleString()}</strong> units · Disruption Risk: <strong style={{ color: directParams.disruption_probability > 0.6 ? '#EF4444' : '#10B981' }}>{(directParams.disruption_probability * 100).toFixed(0)}%</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
+                <button
+                  className="btn-hover"
+                  onClick={() => setShowOptimizerModal(true)}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '10px',
+                    border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.5)' : '#BFDBFE'}`,
+                    background: isDark ? 'rgba(59,130,246,0.12)' : '#EFF6FF',
+                    color: isDark ? '#93C5FD' : '#1D4ED8',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '7px',
+                  }}
+                >
+                  <span>⚙️</span> 1. Configure Inputs
+                </button>
+
+                <button
+                  className="btn-hover"
+                  onClick={async()=>{
+                    setIsExecutingDirectApi(true);
+                    try{
+                      const r=await optimizeInventoryDetailed(directParams);
+                      setDirectApiResult(r);
+                      showToast(`✓ Optimal policy computed for ${directParams.product_id}`);
+                    } catch(e){
+                      showToast(`Optimization error: ${e.message||'Unknown'}`, 'error');
+                    } finally{
+                      setIsExecutingDirectApi(false);
+                    }
+                  }}
+                  disabled={isExecutingDirectApi}
+                  style={{
+                    ...styles.execBtn,
+                    background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+                    boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
+                    padding: '9px 22px',
+                    fontSize: '12.5px',
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  {isExecutingDirectApi ? '⟳ Validating & Optimizing...' : '⚡ Run Optimization'}
+                </button>
+              </div>
+            </div>
+
+            {/* ═══ 4-STEP OPERATIONAL FLOW ARCHITECTURE (MATCHING METHODOLOGY) ═══ */}
+            <div style={{
+              marginTop: '16px',
+              padding: '14px 16px',
+              background: isDark ? 'rgba(0,0,0,0.22)' : '#F8FAFC',
+              borderRadius: '14px',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
+                {/* Step 1 */}
+                <div
+                  onClick={() => setShowOptimizerModal(true)}
+                  style={{
+                    background: isDark ? 'rgba(37,99,235,0.12)' : '#EFF6FF',
+                    border: `1px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`,
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    transition: 'all .2s ease',
+                  }}
+                >
+                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: isDark ? '#93C5FD' : '#1D4ED8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>1.</span> Configure Inputs
+                  </div>
+                  <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
+                    Inventory + forecast + supply risk + policy settings
+                  </div>
+                </div>
+
+                {/* Step 2 */}
+                <div
+                  onClick={async()=>{
+                    setIsExecutingDirectApi(true);
+                    try{
+                      const r=await optimizeInventoryDetailed(directParams);
+                      setDirectApiResult(r);
+                      showToast(`✓ Optimal policy computed for ${directParams.product_id}`);
+                    } catch(e){
+                      showToast(`Optimization error: ${e.message||'Unknown'}`, 'error');
+                    } finally{
+                      setIsExecutingDirectApi(false);
+                    }
+                  }}
+                  style={{
+                    background: isDark ? 'rgba(16,185,129,0.12)' : '#F0FDF4',
+                    border: `1px solid ${isDark ? 'rgba(16,185,129,0.3)' : '#BBF7D0'}`,
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    transition: 'all .2s ease',
+                  }}
+                >
+                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: isDark ? '#6EE7B7' : '#15803D', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>2.</span> Validate & Optimize
+                  </div>
+                  <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
+                    Check data, calculate safety stock, ROP and ROQ
+                  </div>
+                </div>
+
+                {/* Step 3 */}
+                <div style={{
+                  background: isDark ? 'rgba(168,85,247,0.12)' : '#FAF5FF',
+                  border: `1px solid ${isDark ? 'rgba(168,85,247,0.3)' : '#E9D5FF'}`,
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: isDark ? '#C084FC' : '#7E22CE', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>3.</span> Review Results
+                  </div>
+                  <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
+                    Show baseline vs adaptive recommendations & shortage
+                  </div>
+                </div>
+
+                {/* Step 4 */}
+                <div
+                  onClick={() => {
+                    if (directApiResult) {
+                      setReleasedGates(prev => ({ ...prev, [directParams.product_id]: true }));
+                      setActiveTab('readiness');
+                      showToast(`🚀 Dispatched to Self-Healing Production! Opening Module 4 handoff...`);
+                    } else {
+                      showToast(`Please run optimization first before dispatching handoff`, 'warning');
+                    }
+                  }}
+                  style={{
+                    background: isDark ? 'rgba(245,158,11,0.12)' : '#FEF3C7',
+                    border: `1px solid ${isDark ? 'rgba(245,158,11,0.3)' : '#FDE68A'}`,
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    transition: 'all .2s ease',
+                  }}
+                >
+                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: isDark ? '#FCD34D' : '#B45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>4.</span> Send Production Handoff
+                  </div>
+                  <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
+                    Provide material availability & shortage to Line Optimizer
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Dedicated Results Section */}
+            {directApiResult && (
+              <div style={{
+                marginTop:'18px',
+                background: isDark ? 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(37,99,235,0.05))' : 'linear-gradient(135deg, #F0FDF4, #EFF6FF)',
+                border: `1.5px solid ${isDark ? 'rgba(16,185,129,0.3)' : '#BBF7D0'}`,
+                borderRadius: '14px',
+                padding: '18px 20px',
+                animation: 'content-fade-in 0.3s ease-out',
+              }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'10px' }}>
+                  <div style={{ fontWeight:800, color:'#10B981', fontSize:'13px', display:'flex', alignItems:'center', gap:'7px' }}>
+                    <span>✓</span> Optimal Adaptive Policy Calculated (FastAPI Engine 200 OK)
+                  </div>
+                  <div style={{ fontSize:'11.5px', color:c.sub }}>
+                    Risk Tier: <strong style={{ color: directApiResult.risk_level==='CRITICAL'?'#EF4444':directApiResult.risk_level==='HIGH'?'#F59E0B':'#10B981' }}>{directApiResult.risk_level}</strong> (Factor: {directApiResult.risk_factor?.toFixed(2)})
+                  </div>
+                </div>
+
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:'10px' }}>
+                  {[
+                    ['Adaptive Safety Stock',  Math.round(directApiResult.safety_stock).toLocaleString()+' units', '#60A5FA'],
+                    ['Adaptive Reorder Point', Math.round(directApiResult.reorder_point).toLocaleString()+' units', c.title],
+                    ['Recommended ROQ',        Math.round(directApiResult.reorder_quantity).toLocaleString()+' units', '#34D399'],
+                    ['Risk-Adjusted Lead Time', directApiResult.risk_adjusted_lead_time+' days', '#F59E0B'],
+                    ['Backorder Probability',  (directApiResult.backorder_risk*100).toFixed(1)+'%', directApiResult.backorder_risk>0.3?'#F87171':'#34D399'],
+                    ['Production Shortage',    Math.round(directApiResult.material_shortage).toLocaleString()+' units', directApiResult.material_shortage>0?'#F87171':'#34D399'],
+                  ].map(([l,v,col],i)=>(
+                    <div key={i} style={{ background: isDark?'rgba(0,0,0,.28)':'#FFFFFF', borderRadius:'10px', padding:'12px', border:`1px solid ${c.tableBorder}`, textAlign:'center' }}>
+                      <div style={{ fontSize:'9.5px', fontWeight:800, color:c.sub, letterSpacing:'.04em' }}>{l}</div>
+                      <div style={{ fontSize:'17px', fontWeight:900, color:col, marginTop:'4px' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Directive & Downstream Actions */}
+                <div style={{
+                  marginTop:'14px',
+                  background: isDark?'rgba(0,0,0,.35)':'#FFFFFF',
+                  padding:'12px 16px',
+                  borderRadius:'10px',
+                  border:`1px solid ${c.tableBorder}`,
+                  display:'flex',
+                  justifyContent:'space-between',
+                  alignItems:'center',
+                  flexWrap:'wrap',
+                  gap:'12px',
+                }}>
+                  <div style={{ flex: 1, minWidth: '260px', fontSize:'12px', color:c.sub }}>
+                    <strong style={{ color:c.title }}>Action Directive:</strong> {directApiResult.reorder_recommendation}
+                  </div>
+                  
+                  {/* Action Handlers: Download & Send to Self-Healing Production */}
+                  <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
+                    <button
+                      className="btn-hover"
+                      onClick={() => {
+                        const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify({
+                          timestamp: new Date().toISOString(),
+                          product_id: directParams.product_id,
+                          inputs: directParams,
+                          computed_policy: directApiResult,
+                        }, null, 2))}`;
+                        const downloadAnchor = document.createElement('a');
+                        downloadAnchor.setAttribute('href', jsonString);
+                        downloadAnchor.setAttribute('download', `OptiChain_Policy_${directParams.product_id}_${new Date().toISOString().slice(0,10)}.json`);
+                        document.body.appendChild(downloadAnchor);
+                        downloadAnchor.click();
+                        downloadAnchor.remove();
+                        showToast(`✓ Policy report exported as JSON`);
+                      }}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '8px',
+                        border: `1px solid ${c.tagBorder}`,
+                        background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+                        color: c.title,
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <span>📥</span> Download Policy (JSON)
+                    </button>
+
+                    <button
+                      className="btn-hover"
+                      onClick={() => {
+                        // Mark material availability and release gate for this product
+                        setReleasedGates(prev => ({ ...prev, [directParams.product_id]: true }));
+                        // Switch active tab to Module 4 Production Readiness
+                        setActiveTab('readiness');
+                        showToast(`🚀 Dispatched to Self-Healing Production! Opening Module 4 handoff...`);
+                      }}
+                      style={{
+                        padding: '7px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: 'linear-gradient(135deg, #10B981, #059669)',
+                        color: '#FFFFFF',
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+                      }}
+                    >
+                      <span>🏭</span> Send to Self-Healing Production ➔
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Input Controls */}
-          <div style={{ ...styles.card, border:`1px solid ${isDark?'rgba(59,130,246,.35)':'#BFDBFE'}`, boxShadow: isDark?'0 0 32px rgba(37,99,235,.12)':'none' }}>
+          <div style={{
+            ...styles.card,
+            border: `1.5px solid ${isDark ? 'rgba(245,158,11,0.4)' : '#FDE68A'}`,
+            boxShadow: isDark ? '0 0 36px rgba(245,158,11,0.15), 0 12px 36px rgba(0,0,0,0.45)' : '0 8px 24px rgba(245,158,11,0.08)',
+          }}>
             <div style={styles.cardHeader}>
               <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                <div style={styles.cardIconBadge}>🎛️</div>
+                <div style={{ ...styles.cardIconBadge, background: isDark ? 'rgba(245,158,11,0.18)' : '#FEF3C7', color: '#F59E0B' }}>🎛️</div>
                 <div>
                   <div style={styles.cardTitle}>Live Disruption Controls</div>
                   <div style={styles.cardSub}>Drag sliders to instantly recalculate — before/after comparison shown below</div>
@@ -2165,8 +4914,230 @@ export default function InventoryOptimizationView() {
               ))}
             </div>
 
-            {/* Before / After comparison */}
-            <div style={{ marginTop:'24px', display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:'16px', alignItems:'center' }}>
+            {/* ═══ INTERACTIVE AI BEFORE / AFTER SPLIT COMPARISON SLIDER ═══ */}
+            <div style={{ marginTop:'24px' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px', flexWrap:'wrap', gap:'10px' }}>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:'13px', color:c.title, display:'flex', alignItems:'center', gap:'7px' }}>
+                    <span>⚡</span> Interactive Split Lens: Static Policy vs. AI Adaptive Guardian
+                  </div>
+                  <div style={{ fontSize:'11px', color:c.sub, marginTop:'2px' }}>
+                    Drag the slider below to visually inspect how OptiChain dynamically recalculates inventory buffers under disruption
+                  </div>
+                </div>
+                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                  <button
+                    onClick={() => setSplitSliderPos(0)}
+                    style={{ padding:'4px 10px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 0 ? '#EF4444' : 'transparent', color: splitSliderPos === 0 ? '#fff' : c.sub, fontSize:'10.5px', fontWeight:700, cursor:'pointer' }}
+                  >
+                    100% Static
+                  </button>
+                  <button
+                    onClick={() => setSplitSliderPos(50)}
+                    style={{ padding:'4px 10px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 50 ? '#2563EB' : 'transparent', color: splitSliderPos === 50 ? '#fff' : c.sub, fontSize:'10.5px', fontWeight:700, cursor:'pointer' }}
+                  >
+                    50 / 50 Split
+                  </button>
+                  <button
+                    onClick={() => setSplitSliderPos(100)}
+                    style={{ padding:'4px 10px', borderRadius:'6px', border:`1px solid ${c.tagBorder}`, background: splitSliderPos === 100 ? '#10B981' : 'transparent', color: splitSliderPos === 100 ? '#fff' : c.sub, fontSize:'10.5px', fontWeight:700, cursor:'pointer' }}
+                  >
+                    100% AI Guardian
+                  </button>
+                </div>
+              </div>
+
+              {/* Visual Split Dual-Lens Display */}
+              <div style={{
+                position:'relative',
+                borderRadius:'16px',
+                overflow:'hidden',
+                border:`1.5px solid ${isDark ? 'rgba(59,130,246,0.35)' : '#CBD5E1'}`,
+                background: isDark ? '#0A1224' : '#F8FAFC',
+                boxShadow: isDark ? '0 12px 36px rgba(0,0,0,0.45)' : '0 6px 24px rgba(15,23,42,0.08)',
+                minHeight:'220px',
+                display:'flex',
+              }}>
+                {/* Left Side: Static Legacy Policy */}
+                <div style={{
+                  flex: `${splitSliderPos}`,
+                  padding: '18px 22px',
+                  background: isDark ? 'linear-gradient(135deg, rgba(239,68,68,0.12), rgba(15,23,42,0.6))' : 'linear-gradient(135deg, #FEF2F2, #FFFFFF)',
+                  borderRight: `2px solid ${isDark ? '#EF4444' : '#DC2626'}`,
+                  transition: 'flex 0.1s ease-out',
+                  overflow: 'hidden',
+                  minWidth: splitSliderPos > 10 ? '180px' : '0px',
+                  opacity: splitSliderPos < 15 ? 0.2 : 1,
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
+                    <span style={{ fontSize:'16px' }}>🏛️</span>
+                    <div>
+                      <div style={{ fontSize:'11.5px', fontWeight:900, color: isDark ? '#FCA5A5' : '#B91C1C', letterSpacing:'.06em' }}>
+                        STATIC INVENTORY POLICY
+                      </div>
+                      <div style={{ fontSize:'10px', color:c.sub }}>Fixed Reorder Cycles · Unadjusted</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px' }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                      <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>STATIC BUFFER</div>
+                      <div style={{ fontSize:'18px', fontWeight:900, color: isDark ? '#F87171' : '#DC2626', marginTop:'3px' }}>
+                        {(baselineSnap?.ss || Math.round(currentProduct.forecasted_demand * 0.2)).toLocaleString()}
+                      </div>
+                      <div style={{ fontSize:'9px', color:c.sub }}>{currentProduct.unit}</div>
+                    </div>
+
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                      <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>STOCKOUT RISK</div>
+                      <div style={{ fontSize:'18px', fontWeight:900, color:'#EF4444', marginTop:'3px' }}>
+                        {(disruptionProb * 100).toFixed(0)}%
+                      </div>
+                      <div style={{ fontSize:'9px', color:'#F87171' }}>Line Starvation Imminent</div>
+                    </div>
+
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                      <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>IDLE EXPOSURE</div>
+                      <div style={{ fontSize:'18px', fontWeight:900, color:'#EF4444', marginTop:'3px' }}>
+                        ${(calculateFinancialImpact(currentProduct, activeOpt.roq, activeOpt.ss).downtimeExposure).toLocaleString()}
+                      </div>
+                      <div style={{ fontSize:'9px', color:c.sub }}>12h Stoppage Penalty</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Side: OptiChain AI Adaptive Guardian */}
+                <div style={{
+                  flex: `${100 - splitSliderPos}`,
+                  padding: '18px 22px',
+                  background: isDark ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(37,99,235,0.1))' : 'linear-gradient(135deg, #F0FDF4, #EFF6FF)',
+                  transition: 'flex 0.1s ease-out',
+                  overflow: 'hidden',
+                  minWidth: (100 - splitSliderPos) > 10 ? '180px' : '0px',
+                  opacity: (100 - splitSliderPos) < 15 ? 0.2 : 1,
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
+                    <span style={{ fontSize:'16px' }}>🛡️</span>
+                    <div>
+                      <div style={{ fontSize:'11.5px', fontWeight:900, color: isDark ? '#6EE7B7' : '#15803D', letterSpacing:'.06em' }}>
+                        OPTICHAIN AI ADAPTIVE GUARDIAN
+                      </div>
+                      <div style={{ fontSize:'10px', color:c.sub }}>Dynamic Variance Buffer · Disruption Compensated</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px' }}>
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                      <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>ADAPTIVE BUFFER</div>
+                      <div style={{ fontSize:'18px', fontWeight:900, color: '#10B981', marginTop:'3px' }}>
+                        {activeOpt.ss.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize:'9px', color:c.sub }}>+{Math.round(activeOpt.ss - (baselineSnap?.ss || currentProduct.forecasted_demand * 0.2)).toLocaleString()} protected</div>
+                    </div>
+
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                      <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>SERVICE LEVEL</div>
+                      <div style={{ fontSize:'18px', fontWeight:900, color:'#34D399', marginTop:'3px' }}>
+                        {(serviceLevel * 100).toFixed(1)}%
+                      </div>
+                      <div style={{ fontSize:'9px', color:'#10B981' }}>Full SLA Secured</div>
+                    </div>
+
+                    <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', padding:'10px', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+                      <div style={{ fontSize:'9.5px', color:c.sub, fontWeight:700 }}>PROTECTED ROI</div>
+                      <div style={{ fontSize:'18px', fontWeight:900, color:'#10B981', marginTop:'3px' }}>
+                        {calculateFinancialImpact(currentProduct, activeOpt.roq, activeOpt.ss).roiMultiplier}×
+                      </div>
+                      <div style={{ fontSize:'9px', color:'#10B981' }}>+${(calculateFinancialImpact(currentProduct, activeOpt.roq, activeOpt.ss).netProtectedValue).toLocaleString()} net</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Luxury Drag Slider Control with Pop-up HUD and Dynamic Drag Indicator */}
+              <div style={{
+                marginTop: '16px',
+                background: isDark ? 'rgba(15,23,42,0.8)' : '#FFFFFF',
+                border: `1.5px solid ${isDark ? 'rgba(245,158,11,0.3)' : '#FDE68A'}`,
+                borderRadius: '18px',
+                padding: '14px 20px',
+                boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 2px 12px rgba(15,23,42,0.05)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 900,
+                      color: '#EF4444',
+                      background: 'rgba(239,68,68,0.15)',
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(239,68,68,0.35)',
+                    }}>
+                      🏛️ Static Policy ({splitSliderPos}%)
+                    </span>
+                  </div>
+
+                  {/* Centered Floating Drag Prompt & Live Lens Status */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: isDark ? '#FDE047' : '#D97706',
+                    background: isDark ? 'rgba(245,158,11,0.15)' : '#FEF3C7',
+                    padding: '4px 14px',
+                    borderRadius: '20px',
+                    border: '1px solid rgba(245,158,11,0.4)',
+                    boxShadow: '0 2px 8px rgba(245,158,11,0.2)',
+                  }}>
+                    <span style={{ animation: 'float-subtle 1.5s ease-in-out infinite' }}>👈 Drag Slider 👉</span>
+                    <span style={{ opacity: 0.7 }}>|</span>
+                    <span>{splitSliderPos < 50 ? '🛡️ AI Buffer Dominant' : splitSliderPos > 50 ? '⚠️ Static Exposure High' : '⚖️ 50/50 Balanced Comparison'}</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 900,
+                      color: '#10B981',
+                      background: 'rgba(16,185,129,0.15)',
+                      padding: '3px 10px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(16,185,129,0.35)',
+                    }}>
+                      🛡️ AI Guardian ({100 - splitSliderPos}%)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Range Slider Track */}
+                <div style={{ position: 'relative', width: '100%', padding: '6px 0' }}>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={splitSliderPos}
+                    onChange={(e) => setSplitSliderPos(parseInt(e.target.value))}
+                    className="split-drag-thumb"
+                    style={{
+                      width: '100%',
+                      height: '12px',
+                      borderRadius: '6px',
+                      appearance: 'none',
+                      background: 'linear-gradient(to right, #EF4444 0%, #F59E0B 50%, #10B981 100%)',
+                      outline: 'none',
+                      cursor: 'grab',
+                      boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5)',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Before / After comparison tabular breakdown */}
+            <div style={{ marginTop:'20px', display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:'16px', alignItems:'center' }}>
               {/* Before */}
               <div style={{ ...styles.subCard, opacity: baselineSnap?1:0.5 }}>
                 <div style={{ fontSize:'10px', fontWeight:800, color:c.sub, letterSpacing:'.07em', marginBottom:'10px' }}>
@@ -2259,60 +5230,6 @@ export default function InventoryOptimizationView() {
               })}
             </div>
           </div>
-
-          {/* Direct API Tester */}
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                <div style={styles.cardIconBadge}>🔌</div>
-                <div>
-                  <div style={styles.cardTitle}>Live FastAPI Optimization Tester</div>
-                  <div style={styles.cardSub}>POST /api/inventory/optimize/detailed — 10-step Python engine · Fields marked * are primary inputs</div>
-                </div>
-              </div>
-              <button className="btn-hover" onClick={async()=>{ setIsExecutingDirectApi(true); try{ const r=await optimizeInventoryDetailed(directParams); setDirectApiResult(r); showToast(`✓ Optimization for ${directParams.product_id} complete`); }catch(e){ showToast(`API error: ${e.message||'Unknown'}`, 'error'); } finally{ setIsExecutingDirectApi(false); } }} disabled={isExecutingDirectApi} style={styles.execBtn}>
-                {isExecutingDirectApi ? '⟳ Executing...' : '⚡ Run POST /optimize'}
-              </button>
-            </div>
-            <div style={styles.inputGrid}>
-              {[
-                { k:'current_inventory',    l:'Current Inventory *',    icon:'📦', u:'units', hi:true },
-                { k:'forecasted_demand',    l:'Forecasted Demand (D) *',icon:'📈', u:'units', hi:true },
-                { k:'demand_std_dev',       l:'Demand Std Dev (σ_D)',   icon:'📊', u:'units', hi:false },
-                { k:'average_lead_time',    l:'Lead Time (L) *',        icon:'⏱️', u:'days',  hi:true },
-                { k:'lead_time_std_dev',    l:'Lead Time Std Dev (σ_L)',icon:'📉', u:'days',  hi:false },
-                { k:'disruption_probability',l:'Disruption Prob. *',   icon:'⚠️', u:'0–1',   hi:true },
-              ].map(f=>(
-                <div key={f.k} style={{ ...styles.inputField, ...(f.hi?{ padding:'12px', background: isDark?'rgba(59,130,246,.06)':'rgba(37,99,235,.03)', borderRadius:'12px', border:`1px solid ${isDark?'rgba(59,130,246,.2)':'rgba(37,99,235,.1)'}` }:{}) }}>
-                  <label style={styles.inputLabel}><span>{f.icon}</span> {f.l} <span style={{ color:c.sub, fontWeight:400 }}>({f.u})</span></label>
-                  <input type="number" value={directParams[f.k]} onChange={e=>setDirectParams(p=>({...p,[f.k]:parseFloat(e.target.value)||0}))} className="input-focus" style={{ ...styles.textInput, ...(f.hi?{ border:`2px solid ${isDark?'rgba(59,130,246,.5)':'#BFDBFE'}` }:{}) }} />
-                </div>
-              ))}
-            </div>
-            {directApiResult && (
-              <div style={{ marginTop:'20px', background: isDark?'rgba(16,185,129,.07)':'#F0FDF4', border:`1px solid ${isDark?'rgba(16,185,129,.25)':'#BBF7D0'}`, borderRadius:'14px', padding:'18px' }}>
-                <div style={{ fontWeight:800, color:'#34D399', marginBottom:'14px', fontSize:'13px' }}>✓ FastAPI 200 OK — Response Payload</div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:'10px' }}>
-                  {[
-                    ['Safety Stock',  directApiResult.safety_stock+' units', '#60A5FA'],
-                    ['Reorder Point', directApiResult.reorder_point+' units', c.title],
-                    ['Reorder Qty',   directApiResult.reorder_quantity+' units', '#34D399'],
-                    ['Backorder Risk',(directApiResult.backorder_risk*100).toFixed(1)+'%', '#F87171'],
-                    ['Shortage',      directApiResult.material_shortage+' units', directApiResult.material_shortage>0?'#F87171':'#34D399'],
-                    ['Availability',  directApiResult.material_availability_flag?'TRUE':'FALSE', directApiResult.material_availability_flag?'#34D399':'#F87171'],
-                  ].map(([l,v,col],i)=>(
-                    <div key={i} style={{ background: isDark?'rgba(0,0,0,.3)':'#FFFFFF', borderRadius:'10px', padding:'12px', border:`1px solid ${c.tableBorder}`, textAlign:'center' }}>
-                      <div style={{ fontSize:'9.5px', fontWeight:800, color:c.sub, letterSpacing:'.06em' }}>{l}</div>
-                      <div style={{ fontSize:'18px', fontWeight:800, color:col, marginTop:'5px' }}>{v}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ marginTop:'12px', fontSize:'11.5px', color:c.sub, background: isDark?'rgba(0,0,0,.2)':'#F1F5F9', padding:'8px 12px', borderRadius:'8px' }}>
-                  <strong style={{ color:c.title }}>Directive:</strong> {directApiResult.reorder_recommendation}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -2366,7 +5283,7 @@ export default function InventoryOptimizationView() {
         const totalDowntimeRisk = enrichedList.filter(d => !d.isReady).reduce((acc, d) => acc + d.meta.downtimeCost, 0);
 
         return (
-          <div style={styles.tabContent}>
+          <div className="connected-tab-content" style={styles.tabContent}>
             {/* 1. Module 3 -> Module 4 Handoff Architecture Ribbon */}
             <div style={{
               background: isDark ? 'linear-gradient(135deg,rgba(37,99,235,0.14),rgba(124,58,237,0.08))' : 'linear-gradient(135deg,#EFF6FF,#F5F3FF)',
@@ -3071,7 +5988,7 @@ export default function InventoryOptimizationView() {
 
       {/* ═══ TAB 4: RESEARCH & ML BENCHMARKS ════════════════════════════════ */}
       {activeTab === 'research' && (
-        <div style={styles.tabContent}>
+        <div className="connected-tab-content" style={styles.tabContent}>
           {/* 3-Policy Benchmark */}
           <div style={styles.card}>
             <div style={styles.cardHeader}>
@@ -3154,254 +6071,380 @@ export default function InventoryOptimizationView() {
               <strong style={{ color:c.title }}>Research Integrity (Section 19 & 62):</strong> The XGBoost backorder model was trained on the public industrial backorder benchmark (1,687,860 clean records). Extreme class imbalance (~1.1% positive backorders) means ROC-AUC and PR-AUC are the primary evaluation metrics — not raw accuracy.
             </div>
           </div>
+
+          {/* ── PANEL 10.5: Policy Comparison Table ── */}
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                <div style={styles.cardIconBadge}>📊</div>
+                <div>
+                  <div style={styles.cardTitle}>Policy Comparison Table — Absolute & Relative Changes</div>
+                  <div style={styles.cardSub}>Panel Req 10.5 · Baseline vs Adaptive vs Forecast-Risk-Aware · Simulation on 171,962 records</div>
+                </div>
+              </div>
+              <span style={{ ...styles.badge, padding:'4px 12px', background:'rgba(16,185,129,.12)', color:'#34D399', border:'1px solid rgba(16,185,129,.35)', fontSize:'10.5px' }}>Authentic Results</span>
+            </div>
+            <div style={{ overflowX:'auto', borderRadius:'10px', border:`1px solid ${c.tableBorder}` }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px', minWidth:'750px' }}>
+                <thead>
+                  <tr style={{ background: isDark?'#0A1626':'#E2E8F0', borderBottom:`2px solid ${c.tableBorder}` }}>
+                    {['Metric','Policy A — Static (s,S)','Policy B — Std Adaptive','Policy C — OPTICHAIN ⭐','B→C Absolute Δ','B→C Relative %'].map((h,i) => (
+                      <th key={i} style={{ padding:'11px 14px', textAlign:i===0?'left':'right', color:isDark?c.sub:'#0F172A', fontWeight:800, fontSize:'10.5px', letterSpacing:'.04em', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { metric:'Service Level',         a:'99.9988%',      b:'99.4624%',       c:'99.9567%',      delta:'+0.4943 pp', rel:'+0.50%',   good:true  },
+                    { metric:'Stockout Rate',          a:'0.0012%',       b:'0.5376%',        c:'0.0433%',       delta:'−0.4943 pp', rel:'−91.9%',   good:true  },
+                    { metric:'Stockout Units (total)', a:'4.36 units',    b:'1,994.05 units', c:'160.45 units',  delta:'−1,833.60',  rel:'−91.95%',  good:true  },
+                    { metric:'Average Inventory',      a:'62.70 units',   b:'45.43 units',    c:'77.70 units',   delta:'+32.27',     rel:'+71.0%',   good:false },
+                    { metric:'Replenishment Orders',   a:'2,916',         b:'6,415',          c:'6,478',         delta:'+63',        rel:'+0.98%',   good:false },
+                    { metric:'Fulfilled Demand',       a:'370,941.64',    b:'368,951.95',     c:'370,785.55',    delta:'+1,833.60',  rel:'+0.50%',   good:true  },
+                  ].map((row, i) => (
+                    <tr key={i} style={{ borderBottom:`1px solid ${c.tableBorder}`, background:i%2===0?'transparent':(isDark?'rgba(255,255,255,0.015)':'rgba(0,0,0,0.013)') }}>
+                      <td style={{ padding:'11px 14px', fontWeight:700, color:c.title, whiteSpace:'nowrap' }}>{row.metric}</td>
+                      <td style={{ padding:'11px 14px', textAlign:'right', color:c.sub, fontFamily:'monospace', fontSize:'11.5px' }}>{row.a}</td>
+                      <td style={{ padding:'11px 14px', textAlign:'right', color:'#FBBF24', fontFamily:'monospace', fontSize:'11.5px' }}>{row.b}</td>
+                      <td style={{ padding:'11px 14px', textAlign:'right', color:'#10B981', fontFamily:'monospace', fontSize:'11.5px', fontWeight:800 }}>{row.c}</td>
+                      <td style={{ padding:'11px 14px', textAlign:'right', fontFamily:'monospace', fontSize:'11.5px', fontWeight:700, color:row.good===null?c.sub:row.good?'#34D399':'#FBBF24' }}>{row.delta}</td>
+                      <td style={{ padding:'11px 14px', textAlign:'right', fontFamily:'monospace', fontSize:'11.5px', fontWeight:700, color:row.good===null?c.sub:row.good?'#34D399':'#FBBF24' }}>{row.rel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop:'10px', fontSize:'11px', color:c.sub, lineHeight:1.6, padding:'10px 14px', background:isDark?'rgba(255,255,255,0.02)':'#F8FAFC', borderRadius:'8px', border:`1px solid ${c.subCardBorder}` }}>
+              <strong style={{ color:c.title }}>Trade-off:</strong> Policy C carries <strong style={{ color:'#FBBF24' }}>+71% more average inventory</strong> than Policy B — an intentional investment delivering a <strong style={{ color:'#34D399' }}>91.95% reduction in stockout units</strong> and <strong style={{ color:'#34D399' }}>+0.49 pp higher service level</strong>. Absolute (pp) and relative (%) changes are reported separately to maintain statistical accuracy.
+            </div>
+          </div>
+
+          {/* ── PANEL 10.8: Research Transparency (Expandable) ── */}
+          <div style={styles.card}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer', userSelect:'none' }} onClick={() => setShowResearchTransparency(v => !v)}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                    <div style={styles.cardIconBadge}>🔎</div>
+                    <div>
+                      <div style={styles.cardTitle}>Research Transparency & Methodology (Panel Req 10.8)</div>
+                      <div style={styles.cardSub}>Click to expand — Formulas · Data sources · Assumptions · Limitations · Model version · Timestamp</div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize:'20px', color:c.sub, display:'inline-block', transition:'transform .3s', transform:showResearchTransparency?'rotate(180deg)':'rotate(0deg)' }}>⌄</span>
+                </div>
+                {showResearchTransparency && (
+                  <div style={{ marginTop:'20px', display:'flex', flexDirection:'column', gap:'16px', animation:'slide-up .3s ease' }}>
+                    {/* Formulas */}
+                    <div style={styles.subCard}>
+                      <div style={{ fontWeight:800, fontSize:'11px', color:'#60A5FA', letterSpacing:'.07em', marginBottom:'12px' }}>📐 OPTIMIZATION FORMULAS & ASSUMPTIONS</div>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(310px,1fr))', gap:'10px' }}>
+                        {[
+                          ['Risk Factor (RF)', 'RF = 1 + (P_disrupt × (1 − Trust/100))', 'Penalises lead time based on disruption probability and supplier trust score (0–100)'],
+                          ['Risk-Adjusted Lead Time', 'L_adj = L̄ × RF', 'Extends expected delivery window proportionally under disruption'],
+                          ['Kingman Safety Stock', 'SS = Z × √( L_adj·σ_D² + D̄²·σ_L² )', 'Dual-variance formula — accounts for both demand AND lead-time stochasticity'],
+                          ['Reorder Point (ROP)', 'ROP = (D̄ × L_adj) + SS', 'Order trigger: when position falls to ROP, dispatch Purchase Order immediately'],
+                          ['Reorder Quantity (ROQ)', 'ROQ = D̄ × Cycle_Days × RF', 'Periodic-review demand coverage; EOQ excluded (no static cost inputs in apparel)'],
+                          ['Material Shortage', 'Shortage = max(0, Demand − On-Hand)', 'Production floor material deficit in physical units; feeds Module 4 Line Optimizer'],
+                        ].map(([name, f, note], i) => (
+                          <div key={i} style={{ background:isDark?'rgba(255,255,255,0.03)':'#FFFFFF', border:`1px solid ${isDark?'rgba(59,130,246,0.2)':'#E0F2FE'}`, borderRadius:'8px', padding:'12px' }}>
+                            <div style={{ fontSize:'10px', fontWeight:800, color:c.sub, letterSpacing:'.06em', marginBottom:'5px' }}>{name}</div>
+                            <div style={{ fontFamily:'monospace', fontSize:'12px', fontWeight:700, color:'#60A5FA', lineHeight:1.6, marginBottom:'5px' }}>{f}</div>
+                            <div style={{ fontSize:'10.5px', color:c.sub, lineHeight:1.4, fontStyle:'italic' }}>{note}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Service Level Trade-off */}
+                    <div style={styles.subCard}>
+                      <div style={{ fontWeight:800, fontSize:'11px', color:'#A78BFA', letterSpacing:'.07em', marginBottom:'10px' }}>📊 SERVICE LEVEL → Z-VALUE TRADE-OFF (Section 8.3)</div>
+                      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
+                        <thead>
+                          <tr style={{ borderBottom:`1px solid ${c.tableBorder}` }}>
+                            {['Service Level','Z-value','Safety Stock Effect','Use Case'].map(h => (
+                              <th key={h} style={{ padding:'8px 10px', textAlign:'left', color:c.sub, fontWeight:700, fontSize:'10.5px' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            ['90%',   '1.282', 'Smallest buffer → lowest cost',          'Low-risk local suppliers (YRN-042, TRM-022)'],
+                            ['95% ★', '1.645', 'Balanced → OptiChain default',            'Standard for most SKUs; default factory setting'],
+                            ['97.5%', '1.960', 'Larger buffer → moderate premium',        'Critical fabrics with long lead times (FAB-001)'],
+                            ['99%',   '2.326', 'Maximum buffer → highest holding cost',   'Severe disruption scenarios (Red Sea crisis)'],
+                          ].map(([sl, z, eff, use], i) => (
+                            <tr key={i} style={{ borderBottom:`1px solid ${c.tableBorder}`, background:sl.includes('★')?(isDark?'rgba(37,99,235,0.08)':'rgba(37,99,235,0.04)'):'' }}>
+                              <td style={{ padding:'8px 10px', fontWeight:800, color:sl.includes('★')?'#60A5FA':c.title }}>{sl}</td>
+                              <td style={{ padding:'8px 10px', fontFamily:'monospace', fontWeight:700, color:c.title }}>{z}</td>
+                              <td style={{ padding:'8px 10px', color:'#A78BFA', fontSize:'11.5px' }}>{eff}</td>
+                              <td style={{ padding:'8px 10px', color:c.sub, fontSize:'11px' }}>{use}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* Data sources + Limitations */}
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px' }}>
+                      <div style={styles.subCard}>
+                        <div style={{ fontWeight:800, fontSize:'11px', color:'#34D399', letterSpacing:'.07em', marginBottom:'10px' }}>📂 DATA SOURCES & INPUT LABELS</div>
+                        {[
+                          ['Demand Feed', 'DEMO — Module 1 sim output', 'dummy_demand_forecasts.csv'],
+                          ['Risk Feed', 'DEMO — Module 2 sim output', 'dummy_supplier_risk_scores.csv'],
+                          ['ML Training Data', 'Kaggle Industrial Backorder Benchmark', 'Training_BOP.csv / Testing_BOP.csv'],
+                          ['Simulation Data', 'DataCo Smart Supply Chain (public)', '171,962 records · 2015–2017'],
+                          ['Product Catalog', 'SQLite — persistent across sessions', 'optichain_inventory.db'],
+                        ].map(([label, src, file], i) => (
+                          <div key={i} style={{ borderBottom:`1px solid ${c.tableBorder}`, padding:'7px 0' }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11.5px' }}>
+                              <span style={{ color:c.sub, fontWeight:700 }}>{label}:</span>
+                              <code style={{ color:'#34D399', fontSize:'10px', fontFamily:'monospace' }}>{file}</code>
+                            </div>
+                            <div style={{ fontSize:'10px', color:c.sub, marginTop:'2px', opacity:.75 }}>{src}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={styles.subCard}>
+                        <div style={{ fontWeight:800, fontSize:'11px', color:'#F87171', letterSpacing:'.07em', marginBottom:'10px' }}>⚠️ KNOWN LIMITATIONS</div>
+                        {[
+                          'Supplier identifiers are synthetic demo labels — not real MAS Holdings vendor records.',
+                          'DataCo dataset is global e-commerce logistics; used for ML benchmark only, not garment-specific.',
+                          'XGBoost outputs are auxiliary warning signals — not the primary inventory policy driver.',
+                          'Demo feeds use a static 14-day forecast horizon; live integration would use rolling windows.',
+                          'EOQ excluded — no reliable static holding/ordering cost data available for Sri Lankan apparel.',
+                          'Inventory position = On-Hand + In-Transit; full backorder data unavailable for complete IP.',
+                        ].map((lim, i) => (
+                          <div key={i} style={{ fontSize:'11px', color:c.sub, padding:'5px 0', borderBottom:`1px dashed ${c.tableBorder}`, display:'flex', gap:'6px', lineHeight:1.4 }}>
+                            <span style={{ color:'#F87171', flexShrink:0 }}>•</span>{lim}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Metadata */}
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:'10px' }}>
+                      {[
+                        ['Upstream Data Mode',    'DEMO (Simulated — not real trained-model outputs)', '#FBBF24'],
+                        ['Policy Engine Version', 'inventory-policy-v1.0', '#60A5FA'],
+                        ['ML Model Version',      'backorder-xgb-v1.0', '#A78BFA'],
+                        ['Calculation Timestamp', new Date().toLocaleString('en-LK'), '#34D399'],
+                        ['Simulation Assumption', 'Instantaneous replenishment (no transit delay in sim)', '#F87171'],
+                        ['Git Branch',            'Disruption_Aware_Adaptive_Inventory_Module', '#10B981'],
+                      ].map(([label, val, color], i) => (
+                        <div key={i} style={{ background:isDark?'rgba(255,255,255,0.02)':'#F8FAFC', border:`1px solid ${c.subCardBorder}`, borderRadius:'8px', padding:'10px 12px' }}>
+                          <div style={{ fontSize:'9px', fontWeight:800, color:c.sub, letterSpacing:'.07em', marginBottom:'4px' }}>{label}</div>
+                          <div style={{ fontSize:'11px', fontWeight:700, color, wordBreak:'break-word' }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
         </div>
       )}
 
-      {/* ═══ TAB 5: FASTAPI LIVE TESTER ══════════════════════════════════════ */}
-      {activeTab === 'apitester' && (() => {
-        const methodColor = { GET:'#34D399', POST:'#60A5FA', PUT:'#FBBF24', DELETE:'#F87171' };
-        const mc = methodColor[directMethod] || '#94A3B8';
-        const resultStr = directApiResult ? JSON.stringify(directApiResult.data, null, 2) : '';
 
-        // Syntax-highlight JSON for display
-        const highlight = (json) => {
-          if (!json) return '';
-          return json
-            .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)/g, (m) => {
-              const cls = /:$/.test(m) ? '#93C5FD' : '#86EFAC';
-              return `<span style="color:${cls}">${m}</span>`;
-            })
-            .replace(/\b(true|false)\b/g, '<span style="color:#FDE68A">$1</span>')
-            .replace(/\b(null)\b/g,        '<span style="color:#FDA4AF">$1</span>')
-            .replace(/(-?\d+\.?\d*)/g,     '<span style="color:#C4B5FD">$1</span>');
-        };
 
+
+      {/* ═══ 3D MATERIAL LABORATORY & 360 INSPECTION MODAL ════════════════ */}
+      {selectedHero3DModal && (() => {
+        const p = selectedHero3DModal;
+        const media = SKU_CATALOG_MEDIA[p.product_id];
+        const fullCover = media?.images?.[0] || 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1600&auto=format&fit=crop&q=80';
         return (
-          <div style={styles.tabContent}>
+          <div style={styles.modalOverlay} onClick={() => setSelectedHero3DModal(null)}>
+            <div
+              style={{
+                ...styles.modalBox,
+                maxWidth: '840px',
+                padding: '0',
+                overflow: 'hidden',
+                background: isDark ? '#0A1224' : '#FFFFFF',
+                borderRadius: '24px',
+                animation: 'modal-scale-pop 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.4)' : '#CBD5E1'}`,
+                boxShadow: '0 24px 60px rgba(0,0,0,0.65)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal Top Header with 3D Photography Hero */}
+              <div style={{ position: 'relative', height: '260px', overflow: 'hidden' }}>
+                <img
+                  src={fullCover}
+                  alt={p.product_name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.7) contrast(1.1)' }}
+                />
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'linear-gradient(to top, rgba(10,18,36,0.95) 0%, rgba(10,18,36,0.4) 60%, transparent 100%)',
+                }} />
 
-            {/* Header card */}
-            <div style={styles.card}>
-              <div style={styles.cardHeader}>
-                <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                  <div style={styles.cardIconBadge}>🔌</div>
-                  <div>
-                    <div style={styles.cardTitle}>FastAPI Live Tester — Direct Backend API Console</div>
-                    <div style={styles.cardSub}>Hit the real FastAPI endpoints · Inspect raw JSON · Demonstrate backend intelligence during viva</div>
-                  </div>
-                </div>
-                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
-                  <span style={{ padding:'4px 12px', borderRadius:'20px', fontSize:'10.5px', fontWeight:700, background:'rgba(16,185,129,0.15)', color:'#34D399', border:'1px solid rgba(16,185,129,0.3)' }}>
-                    <span style={{ animation:'pulse-dot 2s infinite', display:'inline-block', marginRight:'5px' }}>●</span>
-                    http://localhost:8000
-                  </span>
-                  <span style={{ padding:'4px 12px', borderRadius:'20px', fontSize:'10.5px', fontWeight:700, background:'rgba(37,99,235,0.15)', color:'#60A5FA', border:'1px solid rgba(37,99,235,0.3)' }}>
-                    FastAPI · Python 3.x
-                  </span>
-                </div>
-              </div>
-
-              {/* Preset buttons */}
-              <div style={{ marginBottom:'18px' }}>
-                <div style={{ fontSize:'11px', fontWeight:700, color:c.sub, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'10px' }}>
-                  Quick Presets — click to load
-                </div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
-                  {Object.entries(DIRECT_PRESETS).map(([key, p]) => (
-                    <button key={key} className="btn-hover chip-hover" onClick={() => applyDirectPreset(key)} style={{
-                      padding:'6px 14px', borderRadius:'8px', fontSize:'11.5px', fontWeight:700, cursor:'pointer',
-                      border:`1px solid ${methodColor[p.method] || '#94A3B8'}40`,
-                      background: isDark ? `${methodColor[p.method] || '#94A3B8'}15` : `${methodColor[p.method] || '#94A3B8'}20`,
-                      color: methodColor[p.method] || '#94A3B8',
-                    }}>
-                      <span style={{ fontSize:'10px', fontWeight:900, marginRight:'5px' }}>{p.method}</span>
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Method + Endpoint bar */}
-              <div style={{ display:'flex', gap:'10px', alignItems:'center', marginBottom:'14px', flexWrap:'wrap' }}>
-                <select
-                  value={directMethod}
-                  onChange={e => setDirectMethod(e.target.value)}
+                {/* Close Button */}
+                <button
+                  onClick={() => setSelectedHero3DModal(null)}
                   style={{
-                    padding:'8px 12px', borderRadius:'8px', fontWeight:800, fontSize:'12px',
-                    border:`2px solid ${mc}60`, background: isDark ? '#0D1B2E' : '#F8FAFC',
-                    color: mc, cursor:'pointer', minWidth:'90px',
+                    position: 'absolute',
+                    top: '16px',
+                    right: '16px',
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.65)',
+                    border: '1px solid rgba(255,255,255,0.25)',
+                    color: '#FFFFFF',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backdropFilter: 'blur(8px)',
                   }}
                 >
-                  {['GET','POST','PUT','DELETE'].map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-
-                <div style={{ flex:1, display:'flex', alignItems:'center', background: isDark?'rgba(255,255,255,0.04)':'#F8FAFC', border:`1px solid ${c.tableBorder}`, borderRadius:'8px', padding:'0 12px', minWidth:'240px' }}>
-                  <span style={{ fontSize:'11px', color:c.sub, whiteSpace:'nowrap', marginRight:'6px' }}>localhost:8000</span>
-                  <input
-                    className="input-focus"
-                    value={directEndpoint}
-                    onChange={e => setDirectEndpoint(e.target.value)}
-                    style={{ flex:1, background:'transparent', border:'none', outline:'none', fontSize:'13px', fontWeight:600, color:c.title, padding:'10px 0', fontFamily:'monospace' }}
-                    placeholder="/api/inventory/optimize"
-                  />
-                </div>
-
-                <button className="btn-hover" onClick={handleDirectApiCall} disabled={isExecutingDirectApi} style={{
-                  padding:'9px 22px', borderRadius:'8px', fontWeight:800, fontSize:'13px', cursor:'pointer', border:'none',
-                  background: isExecutingDirectApi ? '#374151' : `linear-gradient(135deg,${mc},${mc}CC)`,
-                  color:'#fff', display:'flex', alignItems:'center', gap:'8px', whiteSpace:'nowrap',
-                  boxShadow: isExecutingDirectApi ? 'none' : `0 4px 16px ${mc}40`,
-                  transition:'all .2s',
-                }}>
-                  {isExecutingDirectApi
-                    ? <><span style={{ animation:'pulse-dot 1s infinite', fontSize:'12px' }}>●</span> Executing...</>
-                    : <><span style={{ fontSize:'15px' }}>▶</span> Execute</>
-                  }
+                  ✕
                 </button>
 
-                {directApiMs !== null && (
-                  <span style={{ fontSize:'12px', fontWeight:700, color: directApiMs < 100 ? '#34D399' : directApiMs < 300 ? '#FBBF24' : '#F87171', background: isDark?'rgba(0,0,0,0.3)':'#F1F5F9', padding:'6px 12px', borderRadius:'8px', border:`1px solid ${c.tableBorder}` }}>
-                    ⏱ {directApiMs}ms
-                  </span>
-                )}
-              </div>
-
-              {/* Two-column layout: request + response */}
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', alignItems:'start' }}>
-
-                {/* LEFT: Request body editor */}
-                <div>
-                  <div style={{ fontSize:'11px', fontWeight:700, color:c.sub, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span>Request Body (JSON)</span>
-                    {directMethod === 'GET' && <span style={{ color:'#64748B', fontStyle:'italic', fontSize:'10px', textTransform:'none' }}>GET requests have no body</span>}
-                  </div>
-                  <textarea
-                    className="input-focus"
-                    value={directRawJson}
-                    onChange={e => setDirectRawJson(e.target.value)}
-                    disabled={directMethod === 'GET'}
-                    rows={20}
-                    spellCheck={false}
-                    style={{
-                      width:'100%', boxSizing:'border-box',
-                      background: isDark ? '#0A1628' : '#F8FAFC',
-                      border:`1px solid ${c.tableBorder}`,
-                      borderRadius:'10px', padding:'14px', resize:'vertical',
-                      fontFamily:'JetBrains Mono, Cascadia Code, Consolas, monospace',
-                      fontSize:'12px', lineHeight:1.6, color: isDark?'#E2E8F0':'#1E293B',
-                      outline:'none', opacity: directMethod === 'GET' ? 0.4 : 1,
-                    }}
-                    placeholder={'{\n  "product_id": "FAB-001",\n  "disruption_probability": 0.85,\n  ...\n}'}
-                  />
-                </div>
-
-                {/* RIGHT: Response panel */}
-                <div>
-                  <div style={{ fontSize:'11px', fontWeight:700, color:c.sub, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span>Response</span>
-                    {directApiResult && (
-                      <span style={{
-                        padding:'3px 10px', borderRadius:'20px', fontSize:'10.5px', fontWeight:800,
-                        background: directApiResult.ok ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                        color: directApiResult.ok ? '#34D399' : '#F87171',
-                        border: `1px solid ${directApiResult.ok ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
-                      }}>
-                        {directApiResult.status} {directApiResult.ok ? 'OK' : 'Error'}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Idle state */}
-                  {!directApiResult && !directApiError && !isExecutingDirectApi && (
-                    <div style={{ background: isDark?'#0A1628':'#F8FAFC', border:`1px dashed ${c.tableBorder}`, borderRadius:'10px', padding:'40px 20px', textAlign:'center', minHeight:'300px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'10px' }}>
-                      <span style={{ fontSize:'36px', opacity:.3 }}>🔌</span>
-                      <div style={{ fontSize:'13px', color:c.sub, opacity:.6 }}>Select a preset or type a request,<br/>then click Execute</div>
-                    </div>
-                  )}
-
-                  {/* Loading */}
-                  {isExecutingDirectApi && (
-                    <div style={{ background: isDark?'#0A1628':'#F8FAFC', border:`1px solid ${c.tableBorder}`, borderRadius:'10px', padding:'40px 20px', textAlign:'center', minHeight:'300px', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}>
-                      <span style={{ fontSize:'28px', animation:'pulse-dot 1s infinite' }}>⚡</span>
-                      <div style={{ fontSize:'13px', color:c.sub }}>Calling FastAPI backend...</div>
-                    </div>
-                  )}
-
-                  {/* Error */}
-                  {directApiError && (
-                    <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.4)', borderRadius:'10px', padding:'20px', minHeight:'300px' }}>
-                      <div style={{ fontWeight:800, color:'#F87171', fontSize:'13px', marginBottom:'10px' }}>❌ Connection Error</div>
-                      <div style={{ fontFamily:'monospace', fontSize:'12px', color:'#FCA5A5', lineHeight:1.6, whiteSpace:'pre-wrap', wordBreak:'break-all' }}>{directApiError}</div>
-                      <div style={{ marginTop:'14px', fontSize:'11px', color:'#94A3B8' }}>Ensure the backend is running: <code style={{ color:'#60A5FA' }}>uvicorn app.main:app --port 8000</code></div>
-                    </div>
-                  )}
-
-                  {/* Success response */}
-                  {directApiResult && (
-                    <div style={{ background: isDark?'#0A1628':'#F8FAFC', border:`1px solid ${directApiResult.ok ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`, borderRadius:'10px', overflow:'hidden' }}>
-                      {/* response meta bar */}
-                      <div style={{ padding:'8px 14px', background: directApiResult.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:`1px solid ${c.tableBorder}` }}>
-                        <span style={{ fontFamily:'monospace', fontSize:'11px', color:c.sub }}>
-                          {directMethod} {directEndpoint}
-                        </span>
-                        <div style={{ display:'flex', gap:'8px' }}>
-                          <button className="btn-hover" onClick={() => navigator.clipboard.writeText(resultStr).then(() => showToast('✓ Copied to clipboard'))} style={{ padding:'3px 10px', borderRadius:'6px', fontSize:'10px', fontWeight:700, border:`1px solid ${c.tableBorder}`, background:'transparent', color:c.sub, cursor:'pointer' }}>
-                            📋 Copy
-                          </button>
-                        </div>
-                      </div>
-                      {/* highlighted JSON */}
-                      <pre style={{ margin:0, padding:'14px', fontFamily:'JetBrains Mono, Cascadia Code, Consolas, monospace', fontSize:'11.5px', lineHeight:1.65, color: isDark?'#E2E8F0':'#1E293B', overflowX:'auto', maxHeight:'420px', overflowY:'auto', whiteSpace:'pre-wrap', wordBreak:'break-word' }}
-                        dangerouslySetInnerHTML={{ __html: highlight(resultStr) }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Endpoint reference card */}
-            <div style={styles.card}>
-              <div style={styles.cardHeader}>
-                <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                  <div style={styles.cardIconBadge}>📚</div>
-                  <div>
-                    <div style={styles.cardTitle}>Endpoint Reference — Inventory Guardian API</div>
-                    <div style={styles.cardSub}>All routes prefixed with /api/inventory · FastAPI auto-docs at /docs</div>
-                  </div>
-                </div>
-                <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer" style={{ padding:'6px 14px', borderRadius:'8px', fontSize:'11.5px', fontWeight:700, background:'rgba(37,99,235,0.15)', color:'#60A5FA', border:'1px solid rgba(37,99,235,0.3)', textDecoration:'none' }}>
-                  Open Swagger UI ↗
-                </a>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))', gap:'12px' }}>
-                {[
-                  { method:'GET',  path:'/api/inventory/health',              desc:'Module health, version, upstream mode' },
-                  { method:'GET',  path:'/api/inventory/products',             desc:'Full monitored SKU catalog with demand & risk feeds' },
-                  { method:'POST', path:'/api/inventory/products',             desc:'Create new raw material SKU (CRUD)' },
-                  { method:'PUT',  path:'/api/inventory/products/{id}',        desc:'Update existing SKU parameters (CRUD)' },
-                  { method:'DELETE',path:'/api/inventory/products/{id}',       desc:'Remove SKU from monitoring (CRUD)' },
-                  { method:'GET',  path:'/api/inventory/summary',              desc:'Executive KPI summary (service level, shortages)' },
-                  { method:'POST', path:'/api/inventory/optimize',             desc:'Run disruption-aware inventory optimization' },
-                  { method:'POST', path:'/api/inventory/optimize/detailed',    desc:'Full policy metadata: SS, ROP, ROQ, risk level' },
-                  { method:'POST', path:'/api/inventory/scenario',             desc:'Stress-test across Normal / Moderate / Severe scenarios' },
-                  { method:'GET',  path:'/api/inventory/production-interface', desc:'Module 4 (Line Optimizer) handoff contract records' },
-                  { method:'GET',  path:'/api/inventory/research-results',     desc:'Benchmark metrics: 3-policy comparison, XGBoost scores' },
-                ].map((ep, i) => (
-                  <div key={i} style={{ background:c.subCard, border:`1px solid ${c.subCardBorder}`, borderRadius:'10px', padding:'12px 14px', display:'flex', gap:'10px', alignItems:'flex-start', cursor:'pointer' }}
-                    onClick={() => { setDirectEndpoint(ep.path.replace(/{id}/g, 'FAB-001')); setDirectMethod(ep.method); setDirectRawJson(''); setDirectApiResult(null); }}
-                  >
-                    <span style={{ padding:'3px 8px', borderRadius:'5px', fontSize:'9.5px', fontWeight:900, background:`${methodColor[ep.method]}20`, color:methodColor[ep.method] || '#94A3B8', border:`1px solid ${methodColor[ep.method] || '#94A3B8'}40`, flexShrink:0, marginTop:'1px' }}>
-                      {ep.method}
+                {/* Title Overlay */}
+                <div style={{ position: 'absolute', bottom: '20px', left: '26px', right: '26px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ background: '#2563EB', color: '#FFFFFF', fontSize: '11px', fontWeight: 900, padding: '3px 12px', borderRadius: '14px' }}>
+                      {p.product_id}
                     </span>
-                    <div>
-                      <div style={{ fontFamily:'monospace', fontSize:'11.5px', fontWeight:700, color:c.title, marginBottom:'3px' }}>{ep.path}</div>
-                      <div style={{ fontSize:'10.5px', color:c.sub }}>{ep.desc}</div>
+                    <span style={{ color: '#6EE7B7', fontSize: '11px', fontWeight: 800, background: 'rgba(16,185,129,0.2)', padding: '3px 10px', borderRadius: '12px' }}>
+                      ✓ OEKO-TEX Standard 100 Verified
+                    </span>
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#FFFFFF', letterSpacing: '-0.02em' }}>
+                    {p.product_name}
+                  </h2>
+                  <div style={{ fontSize: '12px', color: '#CBD5E1', marginTop: '4px' }}>
+                    {media?.fabricSpec || 'High-Resiliency Technical Apparel Material milled for MAS Colombo Hub'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Body: 3D Weave Texture & Detailed Laboratory Metrics */}
+              <div style={{ padding: '24px 26px', display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '55vh', overflowY: 'auto' }}>
+                {/* 3D Tactile Weave Swatch Visualizer */}
+                <div style={{
+                  background: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                  borderRadius: '16px',
+                  padding: '16px 20px',
+                  border: `1px solid ${c.cardBorder}`,
+                  display: 'grid',
+                  gridTemplateColumns: '150px 1fr',
+                  gap: '18px',
+                  alignItems: 'center',
+                }}>
+                  {/* Warp/Weft Micro Pattern */}
+                  <div style={{
+                    width: '150px',
+                    height: '110px',
+                    borderRadius: '12px',
+                    border: '1.5px solid rgba(59,130,246,0.4)',
+                    boxShadow: '0 8px 20px rgba(0,0,0,0.3), inset 0 0 15px rgba(0,0,0,0.5)',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    background: isDark ? '#0D1B2E' : '#EFF6FF',
+                  }}>
+                    <svg width="100%" height="100%">
+                      <defs>
+                        <pattern id={`modal-weave-${p.product_id}`} width="14" height="14" patternUnits="userSpaceOnUse">
+                          <path d="M 0,7 L 14,7 M 7,0 L 7,14" stroke="#3B82F6" strokeWidth="2.8" strokeLinecap="round" opacity="0.6" />
+                          <circle cx="7" cy="7" r="2.2" fill="#60A5FA" />
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="100%" fill={`url(#modal-weave-${p.product_id})`} />
+                    </svg>
+                    <div style={{ position: 'absolute', bottom: '6px', right: '6px', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '8px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px' }}>
+                      3D SCAN
                     </div>
                   </div>
-                ))}
+
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: isDark ? '#93C5FD' : '#1D4ED8', letterSpacing: '.06em' }}>
+                      MICRO-TACTILE YARN DENSITY SCAN
+                    </div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: c.title, marginTop: '3px' }}>
+                      {media?.endUse || 'Optimized for high-throughput automated circular knitting lines'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: c.sub, marginTop: '4px', lineHeight: 1.5 }}>
+                      Tested across MAS Biyagama Lab with tensile elongation variance of &lt;1.8%. Dual-filament twist delivers enhanced wrinkle recovery and rich saturation under reactive dyes.
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4 Laboratory Metric Bento Tiles */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                  <div style={{ background: isDark ? '#0D1B2E' : '#F1F5F9', padding: '12px', borderRadius: '12px', border: `1px solid ${c.cardBorder}` }}>
+                    <div style={{ fontSize: '9px', color: c.sub, fontWeight: 800 }}>PHYSICAL STOCK</div>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#38BDF8', marginTop: '2px' }}>
+                      {p.current_inventory.toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: '9px', color: c.sub }}>{p.unit} in Colombo</div>
+                  </div>
+
+                  <div style={{ background: isDark ? '#0D1B2E' : '#F1F5F9', padding: '12px', borderRadius: '12px', border: `1px solid ${c.cardBorder}` }}>
+                    <div style={{ fontSize: '9px', color: c.sub, fontWeight: 800 }}>ADAPTIVE BUFFER</div>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: '#34D399', marginTop: '2px' }}>
+                      {Math.round(p.forecasted_demand * 0.35 * (1 + p.disruption_probability)).toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: '9px', color: c.sub }}>AI Protected</div>
+                  </div>
+
+                  <div style={{ background: isDark ? '#0D1B2E' : '#F1F5F9', padding: '12px', borderRadius: '12px', border: `1px solid ${c.cardBorder}` }}>
+                    <div style={{ fontSize: '9px', color: c.sub, fontWeight: 800 }}>DISRUPTION RISK</div>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: p.disruption_probability >= 0.7 ? '#EF4444' : '#F59E0B', marginTop: '2px' }}>
+                      {(p.disruption_probability * 100).toFixed(0)}%
+                    </div>
+                    <div style={{ fontSize: '9px', color: c.sub }}>Upstream Variance</div>
+                  </div>
+
+                  <div style={{ background: isDark ? '#0D1B2E' : '#F1F5F9', padding: '12px', borderRadius: '12px', border: `1px solid ${c.cardBorder}` }}>
+                    <div style={{ fontSize: '9px', color: c.sub, fontWeight: 800 }}>LEAD TIME</div>
+                    <div style={{ fontSize: '16px', fontWeight: 900, color: c.title, marginTop: '2px' }}>
+                      {p.average_lead_time} days
+                    </div>
+                    <div style={{ fontSize: '9px', color: c.sub }}>±{p.lead_time_std_dev}d jitter</div>
+                  </div>
+                </div>
+
+                {/* Footer Action Buttons */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: `1px solid ${c.cardBorder}`, paddingTop: '16px' }}>
+                  <button
+                    onClick={() => {
+                      setSelectedSku(p.product_id);
+                      setDrawerItem(p);
+                      setSelectedHero3DModal(null);
+                    }}
+                    style={{
+                      background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+                      color: '#FFFFFF',
+                      padding: '10px 20px',
+                      borderRadius: '10px',
+                      fontWeight: 800,
+                      fontSize: '12px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
+                    }}
+                  >
+                    Open Full Drawer Inspector ➔
+                  </button>
+                  <button
+                    onClick={() => setSelectedHero3DModal(null)}
+                    style={{
+                      background: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
+                      color: c.title,
+                      padding: '10px 18px',
+                      borderRadius: '10px',
+                      fontWeight: 700,
+                      fontSize: '12px',
+                      border: `1px solid ${c.cardBorder}`,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
-
           </div>
         );
       })()}
@@ -3546,6 +6589,35 @@ export default function InventoryOptimizationView() {
                 </div>
               </div>
 
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Demand Std Dev (σ_D)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={addForm.demand_std_dev}
+                    onChange={e=>setAddForm(f=>({...f, demand_std_dev:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Lead Time Std Dev (σ_L, d)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    required
+                    value={addForm.lead_time_std_dev}
+                    onChange={e=>setAddForm(f=>({...f, lead_time_std_dev:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+              </div>
+
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'12px' }}>
                 <div style={styles.inputField}>
                   <label style={styles.inputLabel}>Avg Lead Time (d)</label>
@@ -3561,7 +6633,7 @@ export default function InventoryOptimizationView() {
                   />
                 </div>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>P(disrupt) [0-1]</label>
+                  <label style={styles.inputLabel}>P(disrupt) [0.00 – 1.00]</label>
                   <input
                     type="number"
                     min="0"
@@ -3575,7 +6647,7 @@ export default function InventoryOptimizationView() {
                   />
                 </div>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>Trust Score [0-100]</label>
+                  <label style={styles.inputLabel}>Trust Score [0 – 100]</label>
                   <input
                     type="number"
                     min="0"
@@ -3668,6 +6740,35 @@ export default function InventoryOptimizationView() {
                 </div>
               </div>
 
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Demand Std Dev (σ_D)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={editForm.demand_std_dev ?? 0}
+                    onChange={e=>setEditForm(f=>({...f, demand_std_dev:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+                <div style={styles.inputField}>
+                  <label style={styles.inputLabel}>Lead Time Std Dev (σ_L, d)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    required
+                    value={editForm.lead_time_std_dev ?? 1}
+                    onChange={e=>setEditForm(f=>({...f, lead_time_std_dev:e.target.value}))}
+                    className="input-focus"
+                    style={styles.textInput}
+                  />
+                </div>
+              </div>
+
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'12px' }}>
                 <div style={styles.inputField}>
                   <label style={styles.inputLabel}>Avg Lead Time (d)</label>
@@ -3683,7 +6784,7 @@ export default function InventoryOptimizationView() {
                   />
                 </div>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>P(disrupt) [0-1]</label>
+                  <label style={styles.inputLabel}>P(disrupt) [0.00 – 1.00]</label>
                   <input
                     type="number"
                     min="0"
@@ -3697,7 +6798,7 @@ export default function InventoryOptimizationView() {
                   />
                 </div>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>Trust Score [0-100]</label>
+                  <label style={styles.inputLabel}>Trust Score [0 – 100]</label>
                   <input
                     type="number"
                     min="0"
@@ -3710,6 +6811,66 @@ export default function InventoryOptimizationView() {
                   />
                 </div>
               </div>
+
+              {/* READ-ONLY DERIVED OPTIMIZATION PREVIEW */}
+              {(() => {
+                const dem = parseFloat(editForm.forecasted_demand) || 1;
+                const lt = parseFloat(editForm.average_lead_time) || 1;
+                const dp = parseFloat(editForm.disruption_probability) || 0;
+                const ltv = parseFloat(editForm.lead_time_std_dev) || 1;
+                const dstd = parseFloat(editForm.demand_std_dev) || (dem * 0.15);
+                const ladj = lt * (1 + dp);
+                const z = 1.645;
+                const variance = ladj * Math.pow(dstd, 2) + Math.pow(dem, 2) * Math.pow(ltv, 2);
+                const ss = Math.round(z * Math.sqrt(Math.max(0, variance)));
+                const rop = Math.round(dem * ladj) + ss;
+                const roq = Math.round(dem * 7 * (1 + dp));
+                const stock = parseFloat(editForm.current_inventory) || 0;
+                const isShort = stock < dem;
+
+                return (
+                  <div style={{
+                    background: isDark ? 'rgba(15,23,42,0.85)' : '#F1F5F9',
+                    border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.35)' : '#CBD5E1'}`,
+                    borderRadius: '12px',
+                    padding: '12px 14px',
+                    marginTop: '4px',
+                  }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
+                      <span style={{ fontSize:'11px', fontWeight:800, color: isDark ? '#93C5FD' : '#1D4ED8', letterSpacing:'.06em', textTransform:'uppercase' }}>
+                        🔒 Backend Optimization Derived Preview (Read-Only)
+                      </span>
+                      <span style={{
+                        fontSize:'9.5px', fontWeight:800, padding:'2px 7px', borderRadius:'10px',
+                        background: isShort ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)',
+                        color: isShort ? '#FCA5A5' : '#34D399',
+                        border: `1px solid ${isShort ? '#EF4444' : '#10B981'}`
+                      }}>
+                        {isShort ? '⚠ SHORTAGE RISK' : '✓ BUFFER NOMINAL'}
+                      </span>
+                    </div>
+
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'8px', fontSize:'11px' }}>
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#FFFFFF', padding:'6px 8px', borderRadius:'8px', border:`1px solid ${c.tagBorder}` }}>
+                        <div style={{ fontSize:'9.5px', color:c.sub }}>Risk-Adj LT</div>
+                        <div style={{ fontWeight:800, color:c.title, marginTop:'2px' }}>{ladj.toFixed(1)} d</div>
+                      </div>
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#FFFFFF', padding:'6px 8px', borderRadius:'8px', border:`1px solid ${c.tagBorder}` }}>
+                        <div style={{ fontSize:'9.5px', color:c.sub }}>Safety Stock</div>
+                        <div style={{ fontWeight:800, color:'#60A5FA', marginTop:'2px' }}>{ss.toLocaleString()} {editForm.unit || 'units'}</div>
+                      </div>
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#FFFFFF', padding:'6px 8px', borderRadius:'8px', border:`1px solid ${c.tagBorder}` }}>
+                        <div style={{ fontSize:'9.5px', color:c.sub }}>Reorder Point</div>
+                        <div style={{ fontWeight:800, color:c.title, marginTop:'2px' }}>{rop.toLocaleString()} {editForm.unit || 'units'}</div>
+                      </div>
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#FFFFFF', padding:'6px 8px', borderRadius:'8px', border:`1px solid ${c.tagBorder}` }}>
+                        <div style={{ fontSize:'9.5px', color:c.sub }}>Recommended ROQ</div>
+                        <div style={{ fontWeight:800, color:'#34D399', marginTop:'2px' }}>{roq.toLocaleString()} {editForm.unit || 'units'}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'16px' }}>
                 <button type="button" onClick={()=>setEditModalItem(null)} style={styles.cancelBtn}>Cancel</button>
@@ -3839,13 +7000,17 @@ export default function InventoryOptimizationView() {
         const isDispatched = Boolean(dispatchedPOs[item.product_id]);
         const finImpact = calculateFinancialImpact(item, roq, skuSS);
 
-        const coverImg = item.category === 'Fabrics'
+        const media = SKU_CATALOG_MEDIA[item.product_id];
+        const curImgIdx = activeImageIndexes[item.product_id] || 0;
+        const catalogImg = media?.images?.[curImgIdx] || SKU_IMAGES[item.product_id];
+
+        const coverImg = catalogImg || (item.category === 'Fabrics'
           ? 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=800&auto=format&fit=crop&q=80'
           : item.category === 'Dyes & Chemicals'
-          ? 'https://images.unsplash.com/photo-1581093458791-9f3c3900df4b?w=800&auto=format&fit=crop&q=80'
+          ? 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=800&auto=format&fit=crop&q=80'
           : item.category === 'Packaging'
           ? 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop&q=80'
-          : 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=800&auto=format&fit=crop&q=80';
+          : 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=800&auto=format&fit=crop&q=80');
 
         const binLoc = item.product_id.startsWith('FAB') ? 'MAS Colombo · Bay 02 · Rack 14'
           : item.product_id.startsWith('DYE') ? 'MAS Colombo · Chemical Safe Vault 08'
@@ -3868,7 +7033,7 @@ export default function InventoryOptimizationView() {
           >
             <div
               style={{
-                width: 'min(620px, 94vw)',
+                width: 'min(640px, 94vw)',
                 height: '100%',
                 background: isDark ? '#0A1424' : '#FFFFFF',
                 borderLeft: `1px solid ${c.cardBorder}`,
@@ -3881,19 +7046,19 @@ export default function InventoryOptimizationView() {
               onClick={(e) => e.stopPropagation()}
             >
               {/* Cover Image & Top Navigation Bar */}
-              <div style={{ position: 'relative', height: '180px', flexShrink: 0, overflow: 'hidden' }}>
+              <div style={{ position: 'relative', height: '220px', flexShrink: 0, overflow: 'hidden' }}>
                 <img
                   src={coverImg}
                   alt={item.product_name}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 30%' }}
                 />
                 <div
                   style={{
                     position: 'absolute',
                     inset: 0,
                     background: isDark
-                      ? 'linear-gradient(to bottom, rgba(10,20,36,0.3) 0%, rgba(10,20,36,0.95) 100%)'
-                      : 'linear-gradient(to bottom, rgba(15,23,42,0.2) 0%, rgba(15,23,42,0.85) 100%)',
+                      ? 'linear-gradient(to bottom, rgba(10,20,36,0.2) 0%, rgba(10,20,36,0.95) 100%)'
+                      : 'linear-gradient(to bottom, rgba(15,23,42,0.1) 0%, rgba(15,23,42,0.85) 100%)',
                   }}
                 />
 
@@ -3952,10 +7117,14 @@ export default function InventoryOptimizationView() {
                     </span>
                   </div>
                   <h2 style={{ margin: 0, fontSize: '19px', fontWeight: 800, color: '#FFFFFF', textShadow: '0 2px 8px rgba(0,0,0,0.6)' }}>
-                    {item.product_name}
+                    {media?.garmentType ? `${media.garmentType.split('&')[0].trim()} · ${item.product_name}` : item.product_name}
                   </h2>
-                  <div style={{ fontSize: '11px', color: '#CBD5E1', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ fontSize: '11px', color: '#CBD5E1', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span>📍 {binLoc}</span>
+                    <span>•</span>
+                    <span style={{ color: '#FDE047', fontWeight: 700 }}>Benchmark: {media?.priceEur || '€120'}</span>
+                    <span>•</span>
+                    <span style={{ color: '#93C5FD' }}>{media?.fabricSpec || item.category}</span>
                   </div>
                 </div>
               </div>
@@ -4101,6 +7270,106 @@ export default function InventoryOptimizationView() {
                     <span>0 {item.unit}</span>
                     <span style={{ color: healthColor, fontWeight: 700 }}>{Math.round(healthPct * 100)}% of Adaptive Safety Buffer</span>
                     <span>Target: {skuSS.toLocaleString()} {item.unit}</span>
+                  </div>
+                </div>
+
+                {/* 1.1 Ceylon Luxury Swatch: Interactive Micro-Texture Weave Canvas */}
+                <div style={{
+                  background: isDark ? 'linear-gradient(145deg, #0D1B2E, #091322)' : 'linear-gradient(145deg, #FFFFFF, #F8FAFC)',
+                  border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#E2E8F0'}`,
+                  borderRadius: '14px',
+                  padding: '16px 18px',
+                  boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 4px 14px rgba(15,23,42,0.05)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '16px' }}>🧵</span>
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#93C5FD' : '#1E40AF', letterSpacing: '.04em' }}>
+                          PHYSICAL FABRIC WEAVE & GSM SWATCH
+                        </div>
+                        <div style={{ fontSize: '10px', color: c.sub }}>Micro-tactile yarn structure · Export quality verification</div>
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: '9.5px', fontWeight: 800, padding: '3px 8px', borderRadius: '12px',
+                      background: 'rgba(16,185,129,0.15)', color: '#10B981', border: '1px solid rgba(16,185,129,0.3)',
+                    }}>
+                      OEKO-TEX Certified
+                    </span>
+                  </div>
+
+                  {/* Micro-Weave Canvas & Telemetry Split */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '14px', alignItems: 'center' }}>
+                    {/* Woven Warp & Weft SVG Simulation Canvas */}
+                    <div style={{
+                      position: 'relative',
+                      width: '140px',
+                      height: '110px',
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                      border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.15)' : '#CBD5E1'}`,
+                      background: item.category === 'Fabrics'
+                        ? (isDark ? '#0F1E36' : '#E0E7FF')
+                        : item.category === 'Dyes & Chemicals'
+                        ? (isDark ? '#2E1065' : '#EDE9FE')
+                        : (isDark ? '#1C1917' : '#F1F5F9'),
+                      boxShadow: 'inset 0 0 16px rgba(0,0,0,0.4)',
+                    }}>
+                      <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                          <pattern id={`weave-${item.product_id}`} width="12" height="12" patternUnits="userSpaceOnUse">
+                            {/* Warp & Weft interlaced cross-threads */}
+                            <path d="M 0,6 L 12,6 M 6,0 L 6,12" stroke={isDark ? "rgba(96,165,250,0.55)" : "rgba(37,99,235,0.45)"} strokeWidth="2.4" strokeLinecap="round" />
+                            <circle cx="6" cy="6" r="1.8" fill={isDark ? "#60A5FA" : "#2563EB"} opacity="0.8" />
+                            <path d="M 0,0 L 4,4 M 8,8 L 12,12" stroke={isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.15)"} strokeWidth="1" />
+                          </pattern>
+                        </defs>
+                        <rect width="100%" height="100%" fill={`url(#weave-${item.product_id})`} />
+                        {/* Shimmer illumination sweep */}
+                        <rect width="100%" height="100%" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+                      </svg>
+                      {/* Zoom Badge */}
+                      <div style={{
+                        position: 'absolute', bottom: '6px', right: '6px',
+                        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+                        color: '#FFFFFF', fontSize: '8.5px', fontWeight: 800,
+                        padding: '2px 6px', borderRadius: '4px',
+                      }}>
+                        40× MAGNIFIED
+                      </div>
+                    </div>
+
+                    {/* Technical Yarn Attributes Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '10.5px' }}>
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#F1F5F9', padding: '7px 9px', borderRadius: '8px', border: `1px solid ${c.tableBorder}` }}>
+                        <div style={{ fontSize: '9px', color: c.sub, fontWeight: 700 }}>FABRIC WEIGHT</div>
+                        <div style={{ fontSize: '13px', fontWeight: 900, color: c.title, marginTop: '2px' }}>
+                          {item.product_id === 'FAB-001' ? '180 GSM' : item.product_id === 'FAB-002' ? '240 GSM' : item.product_id === 'YRN-042' ? '30s/1 Count' : 'Standard Spec'}
+                        </div>
+                      </div>
+
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#F1F5F9', padding: '7px 9px', borderRadius: '8px', border: `1px solid ${c.tableBorder}` }}>
+                        <div style={{ fontSize: '9px', color: c.sub, fontWeight: 700 }}>KNITTING GAUGE</div>
+                        <div style={{ fontSize: '13px', fontWeight: 900, color: '#3B82F6', marginTop: '2px' }}>
+                          28G Circular
+                        </div>
+                      </div>
+
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#F1F5F9', padding: '7px 9px', borderRadius: '8px', border: `1px solid ${c.tableBorder}` }}>
+                        <div style={{ fontSize: '9px', color: c.sub, fontWeight: 700 }}>COLORFASTNESS</div>
+                        <div style={{ fontSize: '13px', fontWeight: 900, color: '#10B981', marginTop: '2px' }}>
+                          Grade 4.5 / 5.0
+                        </div>
+                      </div>
+
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.25)' : '#F1F5F9', padding: '7px 9px', borderRadius: '8px', border: `1px solid ${c.tableBorder}` }}>
+                        <div style={{ fontSize: '9px', color: c.sub, fontWeight: 700 }}>TEST LAB ACCRED.</div>
+                        <div style={{ fontSize: '11px', fontWeight: 900, color: c.title, marginTop: '2px' }}>
+                          MAS Biyagama
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -4364,6 +7633,415 @@ export default function InventoryOptimizationView() {
         );
       })()}
 
+      {/* ═══ OPTIMIZER PARAMETERS CONFIGURATION MODAL DIALOG ═══ */}
+      {showOptimizerModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowOptimizerModal(false)}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: isDark ? '#0F172A' : '#FFFFFF',
+              borderRadius: '20px',
+              padding: '24px 28px',
+              maxWidth: '960px',
+              width: '95%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: isDark ? '0 24px 60px rgba(0,0,0,0.85)' : '0 20px 50px rgba(15,23,42,0.2)',
+              border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.35)' : '#BFDBFE'}`,
+              animation: 'modal-pop 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+              boxSizing: 'border-box',
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`, paddingBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg,#2563EB,#1D4ED8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: '#fff', boxShadow: '0 4px 12px rgba(37,99,235,0.35)', flexShrink: 0 }}>
+                  ⚙️
+                </div>
+                <div>
+                  <div style={{ fontSize: '16px', fontWeight: 800, color: c.title, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>Configure Optimization Parameters</span>
+                    <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '12px', background: '#DCFCE7', color: '#15803D', fontWeight: 800, border: '1px solid #86EFAC' }}>
+                      ● ERP SYNCHRONIZED
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: c.sub, marginTop: '2px' }}>
+                    Disruption-Aware Adaptive Inventory Engine (Module 3) · Master Feed Contract
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowOptimizerModal(false)}
+                style={{
+                  background: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
+                  border: 'none',
+                  borderRadius: '8px',
+                  width: '32px',
+                  height: '32px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: c.title,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form Fields: Section C, Upstream Signals, Section D */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* SECTION C: WMS & ERP LIVE INVENTORY */}
+              <div style={{ background: isDark ? 'rgba(16,185,129,0.04)' : '#F0FDF4', border: `1.5px solid ${isDark ? 'rgba(16,185,129,0.25)' : '#BBF7D0'}`, borderRadius: '14px', padding: '16px 18px', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '15px' }}>📦</span>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#34D399' : '#15803D', letterSpacing: '.03em' }}>
+                      SECTION C: WAREHOUSE & ERP INVENTORY POSITION
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', padding: '4px 12px', borderRadius: '12px', border: '1px solid rgba(37,99,235,0.25)' }}>
+                    Total Inventory Position: {(directParams.current_inventory + (directParams.in_transit_qty || 0)).toLocaleString()} units
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+                  {/* SKU Selector from Catalog */}
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>🏷️</span> Material ID & SKU
+                    </label>
+                    <select
+                      value={directParams.product_id}
+                      onChange={e => {
+                        const selSku = e.target.value;
+                        const match = (productsList || []).find(p => p.product_id === selSku);
+                        setDirectParams(p => ({
+                          ...p,
+                          product_id: selSku,
+                          ...(match ? {
+                            current_inventory: match.current_inventory,
+                            forecasted_demand: match.forecasted_demand,
+                            demand_std_dev: match.demand_std_dev,
+                            average_lead_time: match.average_lead_time,
+                            lead_time_std_dev: match.lead_time_std_dev,
+                            disruption_probability: match.disruption_probability,
+                            supplier_trust_score: match.supplier_trust_score,
+                          } : {})
+                        }));
+                      }}
+                      className="input-focus"
+                      style={{ ...styles.textInput, fontWeight: 700, height: '42px', width: '100%', boxSizing: 'border-box' }}
+                    >
+                      {(productsList || [
+                        { product_id: 'FAB-001', product_name: 'Organic Cotton Single Jersey' },
+                        { product_id: 'FAB-002', product_name: 'Poly-Spandex Ribs' },
+                        { product_id: 'DYE-008', product_name: 'Reactive Dyes & Chemistry' },
+                        { product_id: 'TRM-015', product_name: 'YKK Zippers & Hardware' },
+                        { product_id: 'YRN-042', product_name: 'Compact Spun Yarns' },
+                      ]).map(p => (
+                        <option key={p.product_id} value={p.product_id}>
+                          {p.product_id} — {p.product_name || p.id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Current Physical Stock */}
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>📦</span> Physical Stock <span style={{ color: c.sub, fontWeight: 400 }}>(WMS Bin Scan)</span>
+                    </label>
+                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                      <input
+                        type="number"
+                        value={directParams.current_inventory}
+                        onChange={e => setDirectParams(p => ({ ...p, current_inventory: parseFloat(e.target.value) || 0 }))}
+                        className="input-focus"
+                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 800, fontSize: '13px', outline: 'none' }}
+                      />
+                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
+                        units
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* In-Transit Purchase Orders */}
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>🚚</span> In-Transit Stock <span style={{ color: c.sub, fontWeight: 400 }}>(Active POs)</span>
+                    </label>
+                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                      <input
+                        type="number"
+                        value={directParams.in_transit_qty || 0}
+                        onChange={e => setDirectParams(p => ({ ...p, in_transit_qty: parseFloat(e.target.value) || 0 }))}
+                        className="input-focus"
+                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 700, fontSize: '13px', outline: 'none' }}
+                      />
+                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
+                        units
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Lead Time L */}
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>⏱️</span> Baseline Lead Time (L) <span style={{ color: c.sub, fontWeight: 400 }}>(Contract SLA)</span>
+                    </label>
+                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={directParams.average_lead_time}
+                        onChange={e => setDirectParams(p => ({ ...p, average_lead_time: parseFloat(e.target.value) || 0 }))}
+                        className="input-focus"
+                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 600, fontSize: '13px', outline: 'none' }}
+                      />
+                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
+                        days
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Lead Time Variance σ_L */}
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>📉</span> Lead Time Std Dev (σ_L) <span style={{ color: c.sub, fontWeight: 400 }}>(Delivery Jitter)</span>
+                    </label>
+                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={directParams.lead_time_std_dev}
+                        onChange={e => setDirectParams(p => ({ ...p, lead_time_std_dev: parseFloat(e.target.value) || 0 }))}
+                        className="input-focus"
+                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 600, fontSize: '13px', outline: 'none' }}
+                      />
+                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
+                        days
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Supplier Trust Score */}
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>🤝</span> Supplier Trust Score <span style={{ color: c.sub, fontWeight: 400 }}>(OTIF Rating)</span>
+                    </label>
+                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={directParams.supplier_trust_score || 75}
+                        onChange={e => setDirectParams(p => ({ ...p, supplier_trust_score: parseFloat(e.target.value) || 0 }))}
+                        className="input-focus"
+                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 600, fontSize: '13px', outline: 'none' }}
+                      />
+                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
+                        / 100
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* UPSTREAM SIGNALS: MODULE 1 & MODULE 2 (DEMO INPUTS UNTIL API CONNECTED) */}
+              <div style={{ background: isDark ? 'rgba(59,130,246,0.04)' : '#EFF6FF', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.25)' : '#BFDBFE'}`, borderRadius: '14px', padding: '16px 18px', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '15px' }}>📡</span>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#60A5FA' : '#1D4ED8', letterSpacing: '.03em' }}>
+                      UPSTREAM SIGNALS: MODULE 1 (DEMAND) & MODULE 2 (SUPPLY RISK)
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#D97706', background: '#FEF3C7', padding: '3px 10px', borderRadius: '10px', border: '1px solid #FCD34D' }}>
+                    ⚡ DEMO INPUTS (UPSTREAM MODULE APIS PENDING)
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>📈</span> Rolling Forecast Demand (D) <span style={{ color: '#2563EB', fontWeight: 700 }}>(Demo M1)</span>
+                    </label>
+                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                      <input
+                        type="number"
+                        value={directParams.forecasted_demand}
+                        onChange={e => setDirectParams(p => ({ ...p, forecasted_demand: parseFloat(e.target.value) || 0 }))}
+                        className="input-focus"
+                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 800, fontSize: '13px', outline: 'none' }}
+                      />
+                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
+                        units
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>📊</span> Demand Volatility (σ_D) <span style={{ color: '#2563EB', fontWeight: 700 }}>(Demo M1)</span>
+                    </label>
+                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                      <input
+                        type="number"
+                        value={directParams.demand_std_dev}
+                        onChange={e => setDirectParams(p => ({ ...p, demand_std_dev: parseFloat(e.target.value) || 0 }))}
+                        className="input-focus"
+                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 600, fontSize: '13px', outline: 'none' }}
+                      />
+                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
+                        units
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}>
+                      <span>⚠️</span> Disruption Probability <span style={{ color: '#D97706', fontWeight: 700 }}>(Demo M2: {(directParams.disruption_probability * 100).toFixed(0)}%)</span>
+                    </label>
+                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="1"
+                        value={directParams.disruption_probability}
+                        onChange={e => setDirectParams(p => ({ ...p, disruption_probability: parseFloat(e.target.value) || 0 }))}
+                        className="input-focus"
+                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: directParams.disruption_probability > 0.6 ? '#EF4444' : c.title, fontWeight: 800, fontSize: '13px', outline: 'none' }}
+                      />
+                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
+                        0.0–1.0
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION D: OPTIMIZATION SETTINGS & POLICIES */}
+              <div style={{ background: isDark ? 'rgba(168,85,247,0.04)' : '#FAF5FF', border: `1.5px solid ${isDark ? 'rgba(168,85,247,0.25)' : '#E9D5FF'}`, borderRadius: '14px', padding: '16px 18px', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '15px' }}>⚙️</span>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#C084FC' : '#7E22CE', letterSpacing: '.03em' }}>
+                      SECTION D: OPTIMIZATION SETTINGS & POLICIES
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '10.5px', color: c.sub }}>Module 3 Control Levers</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}><span>🎯</span> Target Cycle Service Level (SL)</label>
+                    <select
+                      value={directParams.service_level || 0.95}
+                      onChange={e => {
+                        const sl = parseFloat(e.target.value);
+                        const zMap = { 0.90: 1.282, 0.95: 1.645, 0.98: 2.054, 0.99: 2.326 };
+                        setDirectParams(p => ({ ...p, service_level: sl, z_value: zMap[sl] || 1.645 }));
+                      }}
+                      className="input-focus"
+                      style={{ ...styles.textInput, height: '42px', width: '100%', boxSizing: 'border-box' }}
+                    >
+                      <option value={0.90}>90% SLA (Z = 1.282) · Relaxed Buffer</option>
+                      <option value={0.95}>95% SLA (Z = 1.645) · Standard FMCG / Apparel</option>
+                      <option value={0.98}>98% SLA (Z = 2.054) · High Criticality Tier</option>
+                      <option value={0.99}>99% SLA (Z = 2.326) · Zero-Stockout Guarantee</option>
+                    </select>
+                  </div>
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}><span>🌪️</span> Disruption Scenario Stress</label>
+                    <select
+                      value={directParams.scenario || 'NORMAL'}
+                      onChange={e => setDirectParams(p => ({ ...p, scenario: e.target.value }))}
+                      className="input-focus"
+                      style={{ ...styles.textInput, height: '42px', width: '100%', boxSizing: 'border-box' }}
+                    >
+                      <option value="NORMAL">NORMAL · Baseline Peace-Time Schedule</option>
+                      <option value="MODERATE">MODERATE · Port Congestion / Seasonal Delay</option>
+                      <option value="SEVERE">SEVERE · Geopolitical Chokepoint Force Majeure</option>
+                    </select>
+                  </div>
+                  <div style={styles.inputField}>
+                    <label style={styles.inputLabel}><span>🛡️</span> Risk-Adjustment Policy Type</label>
+                    <select
+                      value={directParams.policy_type || 'FORECAST_RISK_AWARE'}
+                      onChange={e => setDirectParams(p => ({ ...p, policy_type: e.target.value }))}
+                      className="input-focus"
+                      style={{ ...styles.textInput, height: '42px', width: '100%', boxSizing: 'border-box' }}
+                    >
+                      <option value="FORECAST_RISK_AWARE">FORECAST_RISK_AWARE (Adaptive Dual-Sigma)</option>
+                      <option value="ADAPTIVE">ADAPTIVE (Dynamic Lead-Time Scaling)</option>
+                      <option value="STATIC_BASELINE">STATIC_BASELINE (Unadjusted King's Formula)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Action Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '22px', borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`, paddingTop: '16px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ fontSize: '11px', color: c.sub }}>
+                * Primary inputs marked. Clicking submit dispatches to Python <code>InventoryOptimizer.optimize()</code>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => setShowOptimizerModal(false)}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '10px',
+                    border: `1px solid ${c.tagBorder}`,
+                    background: 'transparent',
+                    color: c.sub,
+                    fontWeight: 700,
+                    fontSize: '12.5px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn-hover"
+                  onClick={async () => {
+                    setIsExecutingDirectApi(true);
+                    try {
+                      const r = await optimizeInventoryDetailed(directParams);
+                      setDirectApiResult(r);
+                      setShowOptimizerModal(false);
+                      showToast(`✓ Optimal policy computed for ${directParams.product_id}! Results updated below.`);
+                    } catch (e) {
+                      showToast(`Optimization error: ${e.message || 'Unknown'}`, 'error');
+                    } finally {
+                      setIsExecutingDirectApi(false);
+                    }
+                  }}
+                  disabled={isExecutingDirectApi}
+                  style={{
+                    ...styles.execBtn,
+                    background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
+                    boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
+                    padding: '9px 24px',
+                    fontSize: '12.5px',
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  {isExecutingDirectApi ? '⟳ Computing Policy...' : '🚀 Submit & Compute Policy'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══ TOAST STACK ═════════════════════════════════════════════════════ */}
       <div style={{ position:'fixed', bottom:'28px', right:'28px', display:'flex', flexDirection:'column', gap:'10px', zIndex:3000 }}>
         {toasts.map(t=>(
@@ -4432,7 +8110,22 @@ function getStyles(c) {
     kpiGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:'14px' },
     kpiCard: { borderRadius:'16px', padding:'20px', transition:'all .25s ease', cursor:'default', position:'relative', overflow:'hidden' },
     // Alert banner
-    alertBanner: { background: c.isDark?'linear-gradient(135deg,rgba(127,29,29,.9),rgba(153,27,27,.8))':'linear-gradient(135deg,#FEF2F2,#FEE2E2)', border:`1px solid ${c.isDark?'rgba(239,68,68,.4)':'#FECACA'}`, borderRadius:'14px', padding:'16px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'12px', boxShadow: c.isDark?'0 4px 20px rgba(239,68,68,.2)':'none', animation:'slide-up .4s ease' },
+    alertBanner: {
+      background: c.isDark
+        ? 'linear-gradient(135deg,#581212 0%,#7F1D1D 50%,#991B1B 100%)'
+        : 'linear-gradient(135deg,#7F1D1D 0%,#991B1B 50%,#B91C1C 100%)',
+      border: `2px solid ${c.isDark ? '#EF4444' : '#DC2626'}`,
+      borderRadius: '16px',
+      padding: '18px 22px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: '14px',
+      boxShadow: c.isDark ? '0 10px 30px rgba(239,68,68,0.35)' : '0 8px 24px rgba(185,28,28,0.25)',
+      animation: 'slide-up .4s ease',
+      color: '#FFFFFF',
+    },
     // Tabs
     tabNavContainer: { display:'flex', gap:'10px', flexWrap:'wrap' },
     tabNavBtn: { flex:1, minWidth:'200px', padding:'14px 18px', borderRadius:'14px', border:`1px solid ${c.cardBorder}`, cursor:'pointer', textAlign:'left', background:c.card, color:c.sub, position:'relative', overflow:'hidden' },
@@ -4487,9 +8180,9 @@ function getStyles(c) {
     // API Tester
     execBtn: { background:'linear-gradient(135deg,#1E40AF,#2563EB)', border:'none', color:'#FFFFFF', borderRadius:'10px', padding:'10px 20px', fontSize:'12.5px', fontWeight:800, cursor:'pointer', transition:'all .2s', boxShadow:'0 4px 14px rgba(37,99,235,.35)', whiteSpace:'nowrap' },
     inputGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:'16px', marginTop:'4px' },
-    inputField: { display:'flex', flexDirection:'column', gap:'6px' },
+    inputField: { display:'flex', flexDirection:'column', gap:'6px', minWidth: 0, width: '100%' },
     inputLabel: { fontSize:'11.5px', fontWeight:700, color:c.sub, display:'flex', alignItems:'center', gap:'5px', flexWrap:'wrap' },
-    textInput: { padding:'10px 14px', borderRadius:'10px', border:`1.5px solid ${c.inputBorder}`, fontSize:'13px', outline:'none', background:c.inputBg, color:c.inputText, fontWeight:600, transition:'all .2s' },
+    textInput: { width: '100%', boxSizing: 'border-box', padding:'10px 14px', borderRadius:'10px', border:`1.5px solid ${c.inputBorder}`, fontSize:'13px', outline:'none', background:c.inputBg, color:c.inputText, fontWeight:600, transition:'all .2s' },
     // Modals
     modalOverlay: { position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,.65)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, backdropFilter:'blur(8px)' },
     modalBox: { background:c.modalBg, borderRadius:'20px', width:'90%', maxWidth:'580px', padding:'28px', boxShadow:'0 24px 60px rgba(0,0,0,.5)', border:`1px solid ${c.cardBorder}`, animation:'slide-up .25s ease', maxHeight:'90vh', overflowY:'auto' },

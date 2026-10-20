@@ -173,3 +173,118 @@ def test_api_research_results():
     data = r.json()
     assert data["observed_improvements"]["stockout_reduction_pct"] > 90.0
     assert data["backorder_xgboost_metrics"]["roc_auc"] == 0.9059
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 15 REQUIRED TEST CASES (Panel specification requirements)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_high_demand_variability():
+    """Panel Section 15, Req #3: High demand variability should produce larger safety stock."""
+    optimizer = InventoryOptimizer()
+    engine = PolicyEngine()
+
+    # Low variability baseline
+    ss_low = engine.compute_risk_adjusted_safety_stock(
+        z_value=1.645,
+        risk_adjusted_lead_time=7.0,
+        demand_std_dev=10.0,   # low σ_D
+        forecasted_demand=500.0,
+        lead_time_std_dev=1.0,
+    )
+    # High variability: same inputs but large σ_D
+    ss_high = engine.compute_risk_adjusted_safety_stock(
+        z_value=1.645,
+        risk_adjusted_lead_time=7.0,
+        demand_std_dev=300.0,  # high σ_D
+        forecasted_demand=500.0,
+        lead_time_std_dev=1.0,
+    )
+    assert ss_high > ss_low, "Higher demand variability must produce a larger safety stock"
+    assert ss_high >= 0, "Safety stock must always be non-negative"
+
+
+def test_zero_inventory():
+    """Panel Section 15, Req #7: Zero on-hand inventory should result in 100% material shortage."""
+    optimizer = InventoryOptimizer()
+    res = optimizer.optimize(
+        product_id="TEST-ZERO",
+        current_inventory=0.0,
+        forecasted_demand=5000.0,
+        average_lead_time=7.0,
+        lead_time_std_dev=2.0,
+        demand_std_dev=500.0,
+        disruption_probability=0.50,
+    )
+    assert res.material_shortage == 5000.0, "Zero inventory with nonzero demand should yield full demand as shortage"
+    assert res.material_availability_flag is False
+    assert "CRITICAL" in res.reorder_recommendation or "SHORTAGE" in res.reorder_recommendation
+
+
+def test_zero_lead_time_is_bounded():
+    """Panel Section 15, Req #13: Zero lead time should not cause division-by-zero; engine must handle gracefully."""
+    engine = PolicyEngine()
+    # Risk-adjusted lead time with 0 average lead time — engine should floor at epsilon
+    lt = engine.compute_risk_adjusted_lead_time(average_lead_time=0.0, disruption_probability=0.50)
+    assert lt >= 0.0, "Lead time must be non-negative"
+    # Safety stock must remain non-negative even with degenerate lead time
+    ss = engine.compute_risk_adjusted_safety_stock(
+        z_value=1.645,
+        risk_adjusted_lead_time=lt,
+        demand_std_dev=50.0,
+        forecasted_demand=300.0,
+        lead_time_std_dev=0.0,
+    )
+    assert ss >= 0.0, "Safety stock must never be negative"
+
+
+def test_missing_upstream_data_fallback():
+    """Panel Section 15, Req #18: Missing upstream product ID falls back to defaults without crashing."""
+    from app.integration.mock_upstream import get_combined_upstream_signal
+    sig = get_combined_upstream_signal("NONEXISTENT-SKU-999")
+    # Should return a valid object (fallback defaults) rather than raising an exception
+    assert sig.product_id == "NONEXISTENT-SKU-999"
+    assert 0.0 <= sig.disruption_probability <= 1.0
+    assert sig.is_demo_data is True
+
+
+def test_incompatible_product_identifier_api():
+    """Panel Section 15, Req #19: API optimization call with unknown product_id should still return a valid response."""
+    payload = {
+        "product_id": "UNKNOWN-XYZ",
+        "current_inventory": 100.0,
+        "forecasted_demand": 200.0,
+        "demand_std_dev": 20.0,
+        "average_lead_time": 5.0,
+        "lead_time_std_dev": 1.0,
+        "disruption_probability": 0.30,
+        "service_level": 0.95,
+        "replenishment_cycle_days": 7,
+    }
+    r = client.post("/api/inventory/optimize", json=payload)
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["product_id"] == "UNKNOWN-XYZ"
+
+
+def test_safety_stock_non_negative_under_all_conditions():
+    """Panel Section 15: Safety stock must always be non-negative regardless of inputs."""
+    engine = PolicyEngine()
+    test_cases = [
+        # (z, lead_time, demand_std, demand, lead_std)
+        (1.645, 7.0,   38.87,  373.0, 1.62),   # normal
+        (1.645, 0.001, 38.87,  373.0, 1.62),   # near-zero lead time
+        (1.645, 7.0,   0.0,    373.0, 1.62),   # zero demand std dev
+        (1.645, 7.0,   38.87,  0.0,   1.62),   # zero demand
+        (2.326, 14.0,  500.0,  2000.0, 5.0),   # high-disruption scenario
+    ]
+    for z, lt, d_std, demand, lt_std in test_cases:
+        ss = engine.compute_risk_adjusted_safety_stock(
+            z_value=z,
+            risk_adjusted_lead_time=lt,
+            demand_std_dev=d_std,
+            forecasted_demand=demand,
+            lead_time_std_dev=lt_std,
+        )
+        assert ss >= 0.0, f"Safety stock must be >= 0 for inputs (z={z}, lt={lt}, d_std={d_std}, demand={demand}, lt_std={lt_std})"

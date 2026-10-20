@@ -29,6 +29,7 @@ from app.schemas.inventory import (
     ScenarioAnalysisResponse,
     ScenarioEntrySchema,
     UpdateProductCatalogItem,
+    BatchOptimizationRequest,
 )
 
 logger = logging.getLogger("optichain.inventory.service")
@@ -591,3 +592,35 @@ def get_research_results() -> ResearchResultsResponse:
         backorder_xgboost_metrics=xgb_metrics,
         research_source_files=source_files,
     )
+
+
+def batch_optimize_inventory(request: BatchOptimizationRequest) -> list[InventoryOptimizationResponse]:
+    """
+    Executes optimization across the entire product catalog in batch,
+    applying optional simulation overrides (disruption prob, lead time jitter, demand surge).
+    """
+    catalog = get_product_catalog()
+    results: list[InventoryOptimizationResponse] = []
+    for item in catalog:
+        seed = MATERIAL_SEEDS.get(item.product_id, {"in_transit_qty": 0.0})
+        dp = request.disruption_probability_override if request.disruption_probability_override is not None else item.disruption_probability
+        ltv = request.lead_time_std_dev_override if request.lead_time_std_dev_override is not None else item.lead_time_std_dev
+        demand = item.forecasted_demand * (1.0 + request.demand_surge_pct / 100.0)
+
+        opt_req = InventoryOptimizationRequest(
+            product_id=item.product_id,
+            current_inventory=item.current_inventory,
+            forecasted_demand=demand,
+            demand_std_dev=item.demand_std_dev,
+            average_lead_time=item.average_lead_time,
+            lead_time_std_dev=ltv,
+            disruption_probability=dp,
+            supplier_trust_score=item.supplier_trust_score,
+            in_transit_qty=float(seed.get("in_transit_qty", 0.0)),
+            service_level=request.service_level,
+            scenario=request.scenario,
+            policy_type=request.policy_type,
+        )
+        results.append(optimize_inventory(opt_req))
+    return results
+
