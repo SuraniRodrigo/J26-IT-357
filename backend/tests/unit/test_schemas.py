@@ -79,13 +79,48 @@ def test_catalog_item_can_be_marked_as_demo_data():
     assert item.is_demo_data is True
 
 
+@pytest.mark.parametrize("product_name", [
+    "A",
+    " " * 2,
+    "x" * 101,
+    "Cotton\nJersey",
+    "Cotton*Jersey",
+    "100 Cotton",
+    "100% Cotton",
+    "Polyester/Viscose",
+])
+def test_catalog_item_rejects_invalid_material_names(product_name):
+    with pytest.raises(ValidationError):
+        valid_catalog_item(product_name=product_name)
+
+
+@pytest.mark.parametrize("product_name", [
+    "Cotton Jersey",
+    "Café Jersey",
+])
+def test_catalog_item_accepts_supported_material_names(product_name):
+    assert valid_catalog_item(product_name=product_name).product_name == product_name
+
+
+def test_catalog_update_enforces_material_name_constraints():
+    assert UpdateProductCatalogItem(product_name="  Cotton Jersey  ").product_name == "Cotton Jersey"
+    for product_name in ("A", "100 Cotton", "Cotton*Jersey", "x" * 101):
+        with pytest.raises(ValidationError):
+            UpdateProductCatalogItem(product_name=product_name)
+
+
 @pytest.mark.parametrize("overrides", [
     {"current_inventory": 0, "forecasted_demand": 0},
     {"current_inventory": -1},
+    {"current_inventory": 10_000_001},
+    {"forecasted_demand": 10_000_001},
     {"forecasted_demand": float("inf")},
     {"average_lead_time": 0},
+    {"average_lead_time": 366},
+    {"lead_time_std_dev": 366},
     {"disruption_probability": 1.1},
     {"supplier_trust_score": -1},
+    {"supplier_trust_score": 0},
 ])
 def test_catalog_item_rejects_meaningless_or_out_of_range_values(overrides):
     with pytest.raises(ValidationError):
@@ -96,10 +131,23 @@ def test_catalog_item_rejects_meaningless_or_out_of_range_values(overrides):
     ("FAB-009", "Dyes & Chemicals"),
     ("DYE-009", "Fabrics"),
     ("TRM-009", "Yarns & Threads"),
+    ("CHM-009", "Dyes & Chemicals"),
 ])
 def test_catalog_item_rejects_sku_category_mismatch(product_id, category):
-    with pytest.raises(ValidationError, match="belongs to"):
+    with pytest.raises(ValidationError, match="must start with"):
         valid_catalog_item(product_id=product_id, category=category)
+
+
+@pytest.mark.parametrize(("product_id", "category"), [
+    ("FAB-009", "Fabrics"),
+    ("DYE-009", "Dyes & Chemicals"),
+    ("TRM-009", "Trims & Fasteners"),
+    ("YRN-009", "Yarns & Threads"),
+])
+def test_catalog_item_accepts_canonical_category_sku_prefixes(product_id, category):
+    item = valid_catalog_item(product_id=product_id, category=category)
+
+    assert item.product_id == product_id
 
 
 def test_catalog_item_rejects_unknown_category_and_malformed_sku():
@@ -107,11 +155,19 @@ def test_catalog_item_rejects_unknown_category_and_malformed_sku():
         valid_catalog_item(category="Electronics")
     with pytest.raises(ValidationError):
         valid_catalog_item(product_id="NOT A SKU")
+    with pytest.raises(ValidationError):
+        valid_catalog_item(product_id="9AB-009")
 
 
 def test_catalog_update_rejects_out_of_range_values():
     with pytest.raises(ValidationError):
         UpdateProductCatalogItem(disruption_probability=1.5)
+    with pytest.raises(ValidationError):
+        UpdateProductCatalogItem(current_inventory=10_000_001)
+    with pytest.raises(ValidationError):
+        UpdateProductCatalogItem(average_lead_time=366)
+    with pytest.raises(ValidationError):
+        UpdateProductCatalogItem(supplier_trust_score=0)
 
 
 def test_optimization_rejects_zero_stock_and_zero_demand():

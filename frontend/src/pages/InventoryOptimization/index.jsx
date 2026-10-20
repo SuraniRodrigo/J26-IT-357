@@ -15,6 +15,88 @@ import {
   createPurchaseOrder,
 } from '../../services/inventoryService';
 
+const CATEGORY_SKU_PREFIXES = {
+  Fabrics: 'FAB',
+  'Dyes & Chemicals': 'DYE',
+  'Trims & Fasteners': 'TRM',
+  'Yarns & Threads': 'YRN',
+};
+const MATERIAL_QUANTITY_MAX = 10_000_000;
+const LEAD_TIME_DAYS_MAX = 365;
+const MATERIAL_NAME_MAX_LENGTH = 100;
+const MATERIAL_NUMERIC_FIELDS = [
+  'current_inventory',
+  'forecasted_demand',
+  'demand_std_dev',
+  'average_lead_time',
+  'lead_time_std_dev',
+  'disruption_probability',
+  'supplier_trust_score',
+];
+
+function validateMaterialNumericValues(form) {
+  const errors = {};
+  if (MATERIAL_NUMERIC_FIELDS.some(field => String(form[field] ?? '').trim() === '')) {
+    MATERIAL_NUMERIC_FIELDS.forEach(field => {
+      if (String(form[field] ?? '').trim() === '') errors[field] = 'This field is required.';
+    });
+    return errors;
+  }
+
+  const values = Object.fromEntries(MATERIAL_NUMERIC_FIELDS.map(field => [field, Number(form[field])]));
+  MATERIAL_NUMERIC_FIELDS.forEach(field => {
+    if (!Number.isFinite(values[field])) errors[field] = 'Enter a valid number.';
+  });
+  if (Object.keys(errors).length) return errors;
+
+  ['current_inventory', 'forecasted_demand', 'demand_std_dev', 'lead_time_std_dev'].forEach(field => {
+    if (values[field] < 0) errors[field] = 'Value cannot be negative.';
+  });
+  ['current_inventory', 'forecasted_demand', 'demand_std_dev'].forEach(field => {
+    if (values[field] > MATERIAL_QUANTITY_MAX) {
+      errors[field] = `Maximum allowed is ${MATERIAL_QUANTITY_MAX.toLocaleString()}.`;
+    }
+  });
+  if (values.average_lead_time < 0.1 || values.average_lead_time > LEAD_TIME_DAYS_MAX) {
+    errors.average_lead_time = `Enter a value from 0.1 to ${LEAD_TIME_DAYS_MAX} days.`;
+  }
+  if (values.lead_time_std_dev > LEAD_TIME_DAYS_MAX) {
+    errors.lead_time_std_dev = `Maximum allowed is ${LEAD_TIME_DAYS_MAX} days.`;
+  }
+  if (values.disruption_probability < 0 || values.disruption_probability > 1) {
+    errors.disruption_probability = 'Enter a value from 0 to 1.';
+  }
+  if (values.supplier_trust_score < 1 || values.supplier_trust_score > 100) {
+    errors.supplier_trust_score = 'Enter a value from 1 to 100.';
+  }
+  if (values.current_inventory === 0 && values.forecasted_demand === 0) {
+    errors.current_inventory = 'Stock and demand cannot both be zero.';
+    errors.forecasted_demand = 'Demand and stock cannot both be zero.';
+  }
+  return { values, errors };
+}
+
+function getSkuPrefixError(productId, category) {
+  if (!productId) return null;
+  if (!/^[A-Z]/.test(productId)) {
+    return 'SKU must start with a letter; numbers, hyphens, and symbols cannot come first.';
+  }
+
+  const expectedPrefix = CATEGORY_SKU_PREFIXES[category];
+  if (productId.length <= expectedPrefix.length && expectedPrefix.startsWith(productId)) return null;
+  if (productId.startsWith(`${expectedPrefix}-`)) return null;
+  return `SKU for ${category} must start with ${expectedPrefix}-.`;
+}
+
+function getMaterialNameError(materialName) {
+  const name = materialName.trim();
+  if (!name) return 'Material name is required.';
+  if (!/^[\p{L} ]+$/u.test(name)) return 'Only letters and spaces are allowed in the material name.';
+  if (name.length < 2) return 'Material name must be at least 2 characters long.';
+  if (name.length > MATERIAL_NAME_MAX_LENGTH) return `Material name cannot exceed ${MATERIAL_NAME_MAX_LENGTH} characters.`;
+  return null;
+}
+
 // ─── tiny SVG bar-chart used in Research tab ───────────────────────────────
 function PolicyBarChart({ isDark }) {
   const policies = [
@@ -1404,8 +1486,52 @@ export default function InventoryOptimizationView() {
     supplier_trust_score: 75.0,
     is_demo_data: false,
   });
+  const [addFormErrors, setAddFormErrors] = useState({});
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
   const [isLoadingDemoFeed, setIsLoadingDemoFeed] = useState(false);
+  const updateAddFormField = (field, value) => {
+    const normalizedValue = field === 'product_id' ? value.toUpperCase() : value;
+    setAddForm(form => ({ ...form, [field]: normalizedValue }));
+    setAddFormErrors(errors => {
+      const next = { ...errors };
+      if (field === 'product_id') {
+        const skuError = getSkuPrefixError(normalizedValue, addForm.category);
+        if (skuError) next.product_id = skuError;
+        else delete next.product_id;
+        return next;
+      }
+      if (field === 'product_name') {
+        const materialNameError = getMaterialNameError(normalizedValue);
+        if (materialNameError && (normalizedValue.trim() || next.product_name)) {
+          next.product_name = materialNameError;
+        }
+        else delete next.product_name;
+        return next;
+      }
+      delete next[field];
+      if (field === 'current_inventory' || field === 'forecasted_demand') {
+        delete next.current_inventory;
+        delete next.forecasted_demand;
+      }
+      return next;
+    });
+    if (field === 'product_id' && !addForm.product_id && normalizedValue && !/^[A-Z]/.test(normalizedValue)) {
+      showToast('SKU ID must start with a letter, not a number, hyphen, or symbol.', 'error');
+    }
+  };
+  const addInputStyle = field => ({
+    ...styles.textInput,
+    ...(addFormErrors[field] ? {
+      border: '1.5px solid #DC2626',
+      boxShadow: '0 0 0 3px rgba(220, 38, 38, 0.14)',
+    } : {}),
+  });
+  const addInputClass = field => `input-focus${addFormErrors[field] ? ' input-error' : ''}`;
+  const addFieldError = field => addFormErrors[field] && (
+    <div id={`add-material-${field}-error`} role="alert" style={{ color:'#DC2626', fontSize:'11px', fontWeight:600, marginTop:'4px' }}>
+      {addFormErrors[field]}
+    </div>
+  );
 
   const [editModalItem, setEditModalItem] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -1443,6 +1569,7 @@ export default function InventoryOptimizationView() {
         supplier_trust_score: feed.supplier_trust_score,
         is_demo_data: true,
       }));
+      setAddFormErrors({});
       showToast(`Loaded demo demand and supplier-risk data for ${feed.product_id}. Enter on-hand stock from your inventory record.`);
     } catch (err) {
       showToast(`Could not load demo module data: ${err.message || 'Error'}`, 'error');
@@ -1456,61 +1583,25 @@ export default function InventoryOptimizationView() {
     const productId = addForm.product_id.trim().toUpperCase();
     const productName = addForm.product_name.trim();
     const unit = addForm.unit.trim();
-    if (!productId || !productName || !unit) {
-      showToast('Product ID, material name, and unit are required.', 'error');
+    const errors = {};
+    if (!productId) errors.product_id = 'Product SKU ID is required.';
+    const materialNameError = getMaterialNameError(productName);
+    if (materialNameError) errors.product_name = materialNameError;
+    if (!unit) errors.unit = 'Unit of measure is required.';
+    const skuPrefixError = getSkuPrefixError(productId, addForm.category);
+    if (skuPrefixError) errors.product_id = skuPrefixError;
+    const expectedPrefix = CATEGORY_SKU_PREFIXES[addForm.category];
+    if (productId && !new RegExp(`^${expectedPrefix}-[A-Z0-9][A-Z0-9._-]{0,39}$`).test(productId)) {
+      errors.product_id = `Use ${expectedPrefix}-CODE format; the ID cannot start with a number.`;
+    }
+    const numericValidation = validateMaterialNumericValues(addForm);
+    Object.assign(errors, numericValidation.errors);
+    if (Object.keys(errors).length) {
+      setAddFormErrors(errors);
+      showToast('Please correct the highlighted fields.', 'error');
       return;
     }
-    if (!/^[A-Z][A-Z0-9]{1,9}-[A-Z0-9][A-Z0-9._-]{0,39}$/.test(productId)) {
-      showToast('Use a SKU in PREFIX-CODE format, such as FAB-009.', 'error');
-      return;
-    }
-    const categoryByPrefix = {
-      FAB: 'Fabrics',
-      DYE: 'Dyes & Chemicals',
-      CHM: 'Dyes & Chemicals',
-      TRM: 'Trims & Fasteners',
-      YRN: 'Yarns & Threads',
-    };
-    const expectedCategory = categoryByPrefix[productId.split('-', 1)[0]];
-    if (expectedCategory && addForm.category !== expectedCategory) {
-      showToast(`SKU prefix ${productId.split('-', 1)[0]} requires the ${expectedCategory} category.`, 'error');
-      return;
-    }
-
-    const numericValues = {
-      current_inventory: Number(addForm.current_inventory),
-      forecasted_demand: Number(addForm.forecasted_demand),
-      demand_std_dev: Number(addForm.demand_std_dev),
-      average_lead_time: Number(addForm.average_lead_time),
-      lead_time_std_dev: Number(addForm.lead_time_std_dev),
-      disruption_probability: Number(addForm.disruption_probability),
-      supplier_trust_score: Number(addForm.supplier_trust_score),
-    };
-    if (Object.values(numericValues).some(value => !Number.isFinite(value))) {
-      showToast('Enter a valid number for every inventory and supplier field.', 'error');
-      return;
-    }
-    if (numericValues.current_inventory < 0 || numericValues.forecasted_demand < 0
-      || numericValues.demand_std_dev < 0 || numericValues.lead_time_std_dev < 0) {
-      showToast('Stock, demand, and variability values cannot be negative.', 'error');
-      return;
-    }
-    if (numericValues.average_lead_time < 0.1) {
-      showToast('Average lead time must be at least 0.1 days.', 'error');
-      return;
-    }
-    if (numericValues.disruption_probability < 0 || numericValues.disruption_probability > 1) {
-      showToast('Disruption probability must be between 0 and 1.', 'error');
-      return;
-    }
-    if (numericValues.supplier_trust_score < 0 || numericValues.supplier_trust_score > 100) {
-      showToast('Supplier trust score must be between 0 and 100.', 'error');
-      return;
-    }
-    if (numericValues.current_inventory === 0 && numericValues.forecasted_demand === 0) {
-      showToast('On-hand stock and forecast demand cannot both be zero. Enter meaningful inventory or demand data.', 'error');
-      return;
-    }
+    const numericValues = numericValidation.values;
 
     try {
       setIsSubmittingAdd(true);
@@ -1523,6 +1614,7 @@ export default function InventoryOptimizationView() {
       });
       showToast(`✓ Material ${created.product_id} added successfully`);
       setIsAddModalOpen(false);
+      setAddFormErrors({});
       setAddForm({
         product_id: '',
         product_name: '',
@@ -1567,8 +1659,14 @@ export default function InventoryOptimizationView() {
     if (!editModalItem) return;
     const productName = String(editForm.product_name || '').trim();
     const unit = String(editForm.unit || '').trim();
-    if (!productName || !unit) {
-      showToast('Material name and unit are required.', 'error');
+    const productNameChanged = productName !== String(editModalItem.product_name || '').trim();
+    const materialNameError = productNameChanged ? getMaterialNameError(productName) : null;
+    if (materialNameError) {
+      showToast(materialNameError, 'error');
+      return;
+    }
+    if (!unit) {
+      showToast('Unit of measure is required.', 'error');
       return;
     }
     const skuPrefix = editModalItem.product_id.split('-', 1)[0];
@@ -1584,45 +1682,17 @@ export default function InventoryOptimizationView() {
       showToast(`SKU prefix ${skuPrefix} requires the ${expectedCategory} category.`, 'error');
       return;
     }
-    const numericValues = {
-      current_inventory: Number(editForm.current_inventory),
-      forecasted_demand: Number(editForm.forecasted_demand),
-      demand_std_dev: Number(editForm.demand_std_dev),
-      average_lead_time: Number(editForm.average_lead_time),
-      lead_time_std_dev: Number(editForm.lead_time_std_dev),
-      disruption_probability: Number(editForm.disruption_probability),
-      supplier_trust_score: Number(editForm.supplier_trust_score),
-    };
-    if (Object.values(numericValues).some(value => !Number.isFinite(value))) {
-      showToast('Enter a valid number for every inventory and supplier field.', 'error');
+    const numericValidation = validateMaterialNumericValues(editForm);
+    if (numericValidation.error) {
+      showToast(numericValidation.error, 'error');
       return;
     }
-    if (numericValues.current_inventory < 0 || numericValues.forecasted_demand < 0
-      || numericValues.demand_std_dev < 0 || numericValues.lead_time_std_dev < 0) {
-      showToast('Stock, demand, and variability values cannot be negative.', 'error');
-      return;
-    }
-    if (numericValues.average_lead_time < 0.1) {
-      showToast('Average lead time must be at least 0.1 days.', 'error');
-      return;
-    }
-    if (numericValues.disruption_probability < 0 || numericValues.disruption_probability > 1) {
-      showToast('Disruption probability must be between 0 and 1.', 'error');
-      return;
-    }
-    if (numericValues.supplier_trust_score < 0 || numericValues.supplier_trust_score > 100) {
-      showToast('Supplier trust score must be between 0 and 100.', 'error');
-      return;
-    }
-    if (numericValues.current_inventory === 0 && numericValues.forecasted_demand === 0) {
-      showToast('On-hand stock and forecast demand cannot both be zero.', 'error');
-      return;
-    }
+    const numericValues = numericValidation.values;
 
     try {
       setIsSubmittingEdit(true);
       await updateInventoryProduct(editModalItem.product_id, {
-        product_name: productName,
+        ...(productNameChanged ? { product_name: productName } : {}),
         category: editForm.category,
         unit,
         ...numericValues,
@@ -2276,6 +2346,7 @@ export default function InventoryOptimizationView() {
         .btn-hover:hover { opacity:.88; transform:translateY(-1px); }
         .chip-hover:hover { opacity:.85; cursor:pointer; }
         .input-focus:focus { border-color:#3B82F6!important; box-shadow:0 0 0 3px rgba(59,130,246,.2)!important; outline:none!important; }
+        .input-focus.input-error, .input-focus.input-error:focus { border-color:#DC2626!important; box-shadow:0 0 0 3px rgba(220,38,38,.14)!important; }
         .slider-track { -webkit-appearance:none; height:6px; border-radius:4px; outline:none; width:100%; cursor:pointer;
           background: linear-gradient(to right,#2563EB,#7C3AED); }
         .slider-track::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
@@ -4434,7 +4505,7 @@ export default function InventoryOptimizationView() {
                     style={{ ...styles.searchInput, paddingLeft:'30px', transition:'width .3s', width: searchQuery ? '220px' : '180px' }} />
                 </div>
                 {/* Add Material Button */}
-                <button className="btn-hover" onClick={()=>setIsAddModalOpen(true)} style={styles.addBtn}>
+                <button className="btn-hover" onClick={()=>{setAddFormErrors({});setIsAddModalOpen(true);}} style={styles.addBtn}>
                   <span style={{ fontSize:'14px' }}>＋</span> Add Raw Material
                 </button>
                 {/* Export CSV */}
@@ -7359,21 +7430,36 @@ export default function InventoryOptimizationView() {
               </h3>
               <button onClick={()=>setIsAddModalOpen(false)} style={styles.closeBtn}>✕</button>
             </div>
-            <form onSubmit={handleCreateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px', marginTop:'16px' }}>
+            <form noValidate onSubmit={handleCreateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px', marginTop:'16px' }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                 <div style={styles.inputField}>
                   <label style={styles.inputLabel}>Product SKU ID *</label>
                   <input
                     type="text"
-                    placeholder="e.g. FAB-009"
+                    placeholder={`e.g. ${CATEGORY_SKU_PREFIXES[addForm.category]}-009`}
                     required
                     maxLength={50}
-                    pattern="[A-Za-z][A-Za-z0-9]{1,9}-[A-Za-z0-9][A-Za-z0-9._-]{0,39}"
+                    pattern={`${CATEGORY_SKU_PREFIXES[addForm.category]}-[A-Za-z0-9][A-Za-z0-9._-]{0,39}`}
+                    title={`SKU must start with ${CATEGORY_SKU_PREFIXES[addForm.category]}-, for example ${CATEGORY_SKU_PREFIXES[addForm.category]}-009.`}
                     value={addForm.product_id}
-                    onChange={e=>setAddForm(f=>({...f, product_id:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.product_id)}
+                    aria-describedby={addFormErrors.product_id ? 'add-material-product_id-error' : undefined}
+                    onChange={e=>updateAddFormField('product_id', e.target.value.toUpperCase())}
+                    className={addInputClass('product_id')}
+                    style={addInputStyle('product_id')}
                   />
+                  {addFieldError('product_id')}
+                  <div style={{
+                    fontSize:'10px',
+                    color:isDark?'#93C5FD':'#1D4ED8',
+                    background:isDark?'rgba(59,130,246,0.1)':'#EFF6FF',
+                    border:`1px solid ${isDark?'rgba(96,165,250,0.25)':'#BFDBFE'}`,
+                    borderRadius:'6px',
+                    padding:'6px 8px',
+                    marginTop:'6px',
+                  }}>
+                    Note: Use <strong>{CATEGORY_SKU_PREFIXES[addForm.category]}-</strong> for this category, followed by a code (for example, {CATEGORY_SKU_PREFIXES[addForm.category]}-009).
+                  </div>
                   <button
                     type="button"
                     onClick={handleLoadDemoFeed}
@@ -7390,12 +7476,15 @@ export default function InventoryOptimizationView() {
                     type="text"
                     placeholder="e.g. Heavy Duty Indigo Denim"
                     required
-                    maxLength={200}
+                    maxLength={MATERIAL_NAME_MAX_LENGTH}
                     value={addForm.product_name}
-                    onChange={e=>setAddForm(f=>({...f, product_name:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.product_name)}
+                    aria-describedby={addFormErrors.product_name ? 'add-material-product_name-error' : undefined}
+                    onChange={e=>updateAddFormField('product_name', e.target.value)}
+                    className={addInputClass('product_name')}
+                    style={addInputStyle('product_name')}
                   />
+                  {addFieldError('product_name')}
                 </div>
               </div>
 
@@ -7405,7 +7494,19 @@ export default function InventoryOptimizationView() {
                   <select
                     required
                     value={addForm.category}
-                    onChange={e=>setAddForm(f=>({...f, category:e.target.value}))}
+                    onChange={e=>{
+                      const category=e.target.value;
+                      const prefix=CATEGORY_SKU_PREFIXES[category];
+                      setAddForm(form=>{
+                        const skuMatch=form.product_id.match(/^[A-Z][A-Z0-9]{1,9}-(.*)$/i);
+                        return { ...form, category, product_id:skuMatch ? `${prefix}-${skuMatch[1]}` : form.product_id };
+                      });
+                      setAddFormErrors(errors => {
+                        const next = { ...errors };
+                        delete next.product_id;
+                        return next;
+                      });
+                    }}
                     className="input-focus"
                     style={{ ...styles.textInput, cursor:'pointer' }}
                   >
@@ -7423,84 +7524,107 @@ export default function InventoryOptimizationView() {
                     required
                     maxLength={20}
                     value={addForm.unit}
-                    onChange={e=>setAddForm(f=>({...f, unit:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.unit)}
+                    aria-describedby={addFormErrors.unit ? 'add-material-unit-error' : undefined}
+                    onChange={e=>updateAddFormField('unit', e.target.value)}
+                    className={addInputClass('unit')}
+                    style={addInputStyle('unit')}
                   />
+                  {addFieldError('unit')}
                 </div>
               </div>
 
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>Current On-Hand Stock</label>
+                  <label style={styles.inputLabel}>Current On-Hand Stock (max 10,000,000)</label>
                   <input
                     type="number"
                     min="0"
+                    max={MATERIAL_QUANTITY_MAX}
                     step="any"
                     required
                     value={addForm.current_inventory}
-                    onChange={e=>setAddForm(f=>({...f, current_inventory:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.current_inventory)}
+                    aria-describedby={addFormErrors.current_inventory ? 'add-material-current_inventory-error' : undefined}
+                    onChange={e=>updateAddFormField('current_inventory', e.target.value)}
+                    className={addInputClass('current_inventory')}
+                    style={addInputStyle('current_inventory')}
                   />
+                  {addFieldError('current_inventory')}
                 </div>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>14-Day Forecast Demand</label>
+                  <label style={styles.inputLabel}>14-Day Forecast Demand (max 10,000,000)</label>
                   <input
                     type="number"
                     min="0"
+                    max={MATERIAL_QUANTITY_MAX}
                     step="any"
                     required
                     value={addForm.forecasted_demand}
-                    onChange={e=>setAddForm(f=>({...f, forecasted_demand:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.forecasted_demand)}
+                    aria-describedby={addFormErrors.forecasted_demand ? 'add-material-forecasted_demand-error' : undefined}
+                    onChange={e=>updateAddFormField('forecasted_demand', e.target.value)}
+                    className={addInputClass('forecasted_demand')}
+                    style={addInputStyle('forecasted_demand')}
                   />
+                  {addFieldError('forecasted_demand')}
                 </div>
               </div>
 
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>Demand Std Dev (σ_D)</label>
+                  <label style={styles.inputLabel}>Demand Std Dev (σ_D, max 10,000,000)</label>
                   <input
                     type="number"
                     min="0"
+                    max={MATERIAL_QUANTITY_MAX}
                     step="any"
                     required
                     value={addForm.demand_std_dev}
-                    onChange={e=>setAddForm(f=>({...f, demand_std_dev:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.demand_std_dev)}
+                    aria-describedby={addFormErrors.demand_std_dev ? 'add-material-demand_std_dev-error' : undefined}
+                    onChange={e=>updateAddFormField('demand_std_dev', e.target.value)}
+                    className={addInputClass('demand_std_dev')}
+                    style={addInputStyle('demand_std_dev')}
                   />
+                  {addFieldError('demand_std_dev')}
                 </div>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>Lead Time Std Dev (σ_L, d)</label>
+                  <label style={styles.inputLabel}>Lead Time Std Dev (σ_L, 0–365 d)</label>
                   <input
                     type="number"
                     min="0"
+                    max={LEAD_TIME_DAYS_MAX}
                     step="0.1"
                     required
                     value={addForm.lead_time_std_dev}
-                    onChange={e=>setAddForm(f=>({...f, lead_time_std_dev:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.lead_time_std_dev)}
+                    aria-describedby={addFormErrors.lead_time_std_dev ? 'add-material-lead_time_std_dev-error' : undefined}
+                    onChange={e=>updateAddFormField('lead_time_std_dev', e.target.value)}
+                    className={addInputClass('lead_time_std_dev')}
+                    style={addInputStyle('lead_time_std_dev')}
                   />
+                  {addFieldError('lead_time_std_dev')}
                 </div>
               </div>
 
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'12px' }}>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>Avg Lead Time (d)</label>
+                  <label style={styles.inputLabel}>Avg Lead Time (0.1–365 d)</label>
                   <input
                     type="number"
                     min="0.1"
+                    max={LEAD_TIME_DAYS_MAX}
                     step="0.1"
                     required
                     value={addForm.average_lead_time}
-                    onChange={e=>setAddForm(f=>({...f, average_lead_time:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.average_lead_time)}
+                    aria-describedby={addFormErrors.average_lead_time ? 'add-material-average_lead_time-error' : undefined}
+                    onChange={e=>updateAddFormField('average_lead_time', e.target.value)}
+                    className={addInputClass('average_lead_time')}
+                    style={addInputStyle('average_lead_time')}
                   />
+                  {addFieldError('average_lead_time')}
                 </div>
                 <div style={styles.inputField}>
                   <label style={styles.inputLabel}>P(disrupt) [0.00 – 1.00]</label>
@@ -7511,24 +7635,30 @@ export default function InventoryOptimizationView() {
                     step="0.05"
                     required
                     value={addForm.disruption_probability}
-                    onChange={e=>setAddForm(f=>({...f, disruption_probability:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.disruption_probability)}
+                    aria-describedby={addFormErrors.disruption_probability ? 'add-material-disruption_probability-error' : undefined}
+                    onChange={e=>updateAddFormField('disruption_probability', e.target.value)}
+                    className={addInputClass('disruption_probability')}
+                    style={addInputStyle('disruption_probability')}
                   />
+                  {addFieldError('disruption_probability')}
                 </div>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>Trust Score [0 – 100]</label>
+                  <label style={styles.inputLabel}>Trust Score [1 – 100]</label>
                   <input
                     type="number"
-                    min="0"
+                    min="1"
                     max="100"
                     step="1"
                     required
                     value={addForm.supplier_trust_score}
-                    onChange={e=>setAddForm(f=>({...f, supplier_trust_score:e.target.value}))}
-                    className="input-focus"
-                    style={styles.textInput}
+                    aria-invalid={Boolean(addFormErrors.supplier_trust_score)}
+                    aria-describedby={addFormErrors.supplier_trust_score ? 'add-material-supplier_trust_score-error' : undefined}
+                    onChange={e=>updateAddFormField('supplier_trust_score', e.target.value)}
+                    className={addInputClass('supplier_trust_score')}
+                    style={addInputStyle('supplier_trust_score')}
                   />
+                  {addFieldError('supplier_trust_score')}
                 </div>
               </div>
 
@@ -7553,13 +7683,14 @@ export default function InventoryOptimizationView() {
               </h3>
               <button onClick={()=>setEditModalItem(null)} style={styles.closeBtn}>✕</button>
             </div>
-            <form onSubmit={handleUpdateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px', marginTop:'16px' }}>
+            <form noValidate onSubmit={handleUpdateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px', marginTop:'16px' }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                 <div style={styles.inputField}>
                   <label style={styles.inputLabel}>Material Name</label>
                   <input
                     type="text"
                     required
+                    maxLength={MATERIAL_NAME_MAX_LENGTH}
                     value={editForm.product_name || ''}
                     onChange={e=>setEditForm(f=>({...f, product_name:e.target.value}))}
                     className="input-focus"
@@ -7588,6 +7719,7 @@ export default function InventoryOptimizationView() {
                   <input
                     type="number"
                     min="0"
+                    max={MATERIAL_QUANTITY_MAX}
                     step="any"
                     required
                     value={editForm.current_inventory ?? 0}
@@ -7601,6 +7733,7 @@ export default function InventoryOptimizationView() {
                   <input
                     type="number"
                     min="0"
+                    max={MATERIAL_QUANTITY_MAX}
                     step="any"
                     required
                     value={editForm.forecasted_demand ?? 0}
@@ -7617,6 +7750,7 @@ export default function InventoryOptimizationView() {
                   <input
                     type="number"
                     min="0"
+                    max={MATERIAL_QUANTITY_MAX}
                     step="any"
                     required
                     value={editForm.demand_std_dev ?? 0}
@@ -7630,6 +7764,7 @@ export default function InventoryOptimizationView() {
                   <input
                     type="number"
                     min="0"
+                    max={LEAD_TIME_DAYS_MAX}
                     step="0.1"
                     required
                     value={editForm.lead_time_std_dev ?? 1}
@@ -7645,7 +7780,8 @@ export default function InventoryOptimizationView() {
                   <label style={styles.inputLabel}>Avg Lead Time (d)</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.1"
+                    max={LEAD_TIME_DAYS_MAX}
                     step="0.1"
                     required
                     value={editForm.average_lead_time ?? 1}
@@ -7669,10 +7805,10 @@ export default function InventoryOptimizationView() {
                   />
                 </div>
                 <div style={styles.inputField}>
-                  <label style={styles.inputLabel}>Trust Score [0 – 100]</label>
+                  <label style={styles.inputLabel}>Trust Score [1 – 100]</label>
                   <input
                     type="number"
-                    min="0"
+                    min="1"
                     max="100"
                     step="1"
                     value={editForm.supplier_trust_score ?? 50}

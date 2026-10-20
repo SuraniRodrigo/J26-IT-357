@@ -20,8 +20,12 @@ def test_demand_endpoint():
 
 @pytest.mark.parametrize(("overrides", "expected_message"), [
     ({"current_inventory": 0, "forecasted_demand": 0}, "cannot both be zero"),
-    ({"category": "Dyes & Chemicals"}, "belongs to the 'Fabrics' category"),
+    ({"category": "Dyes & Chemicals"}, "must start with 'DYE-'"),
     ({"disruption_probability": 1.5}, "less than or equal to 1"),
+    ({"product_name": "100 Cotton"}, "Only letters and spaces are allowed"),
+    ({"product_name": "A"}, "at least 2 characters"),
+    ({"product_name": "Cotton*Jersey"}, "Only letters and spaces are allowed"),
+    ({"product_name": "x" * 101}, "at most 100 characters"),
 ])
 def test_create_inventory_rejects_invalid_catalog_data(overrides, expected_message):
     payload = {
