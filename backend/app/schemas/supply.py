@@ -39,3 +39,15 @@ class SupplyRiskSchema(BaseModel):
     risk_signal: str = Field(..., description="Derived or predicted risk signal")
     model_version: str | None = Field(default=None)
     is_predicted: bool = True
+
+
+class SupplyRiskHistoryItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
+
+    id: int
+    supplier_id: str | None = None
+    vendor_id: str | None = None
+    disruption_probability: float
+    risk_level: str
+    model_version: str
+

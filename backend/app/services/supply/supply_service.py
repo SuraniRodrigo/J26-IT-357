@@ -50,6 +50,8 @@ def _build_model_input(request: SupplyPredictionRequest, model) -> tuple[pd.Data
     raw_features = pd.DataFrame(
         [
             {
+                "Days for shipping (real)": request.days_for_shipping_real,
+                "Days for shipment (scheduled)": request.days_for_shipment_scheduled,
                 "Shipping_Variance": shipping_variance,
                 "Category Id": request.category_id,
                 "Shipping Mode": request.shipping_mode,
