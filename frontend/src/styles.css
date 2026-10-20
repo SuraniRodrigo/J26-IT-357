@@ -1084,3 +1084,262 @@ select option { color: #31465a; background: #fff; }
   .schedule-dialog-actions { align-items: stretch; flex-direction: column-reverse; }
   .schedule-dialog-actions button { justify-content: center; }
 }
+
+.theme-toggle {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dce4ec;
+  border-radius: 7px;
+  color: #33506f;
+  background: #f5f8fb;
+  cursor: pointer;
+  transition: background-color .18s, border-color .18s, color .18s;
+}
+.theme-toggle:hover { border-color: #a9c1d8; background: #eaf1f7; }
+.theme-toggle:focus-visible { outline: 2px solid #3183bd; outline-offset: 2px; }
+.theme-toggle svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.factory-shell[data-theme='dark'] {
+  color-scheme: dark;
+  color: #e3edf8;
+  background: radial-gradient(ellipse at 75% -20%, #17446a 0, transparent 42%), #08182a;
+}
+.factory-shell[data-theme='dark'] .factory-main { background: transparent; }
+.factory-shell[data-theme='dark'] .factory-topbar {
+  border-bottom-color: #203a55;
+  background: #0d2035;
+  box-shadow: 0 2px 10px #020b1533;
+}
+.factory-shell[data-theme='dark'] .factory-topbar > strong,
+.factory-shell[data-theme='dark'] .topbar-factory { color: #e3edf8; }
+.factory-shell[data-theme='dark'] .topbar-factory { border-left-color: #29425d; }
+.factory-shell[data-theme='dark'] .topbar-factory b { color: #9cb5ce; }
+.factory-shell[data-theme='dark'] .theme-toggle {
+  border-color: #36516d;
+  color: #a9d9f5;
+  background: #142b43;
+}
+.factory-shell[data-theme='dark'] .theme-toggle:hover { border-color: #5f88ad; background: #1a3857; }
+.factory-shell[data-theme='dark'] .topbar-icon { color: #b5c8dc; }
+.factory-shell[data-theme='dark'] .demo-badge { color: #f6cf79; background: #49391d; }
+.factory-shell[data-theme='dark'] .factory-content { color: #e3edf8; }
+
+.factory-shell[data-theme='dark'] .overview-kpi,
+.factory-shell[data-theme='dark'] .factory-line-card,
+.factory-shell[data-theme='dark'] .overview-panel,
+.factory-shell[data-theme='dark'] .risk-filters,
+.factory-shell[data-theme='dark'] .risk-card,
+.factory-shell[data-theme='dark'] .risk-detail-card,
+.factory-shell[data-theme='dark'] .past-scenarios,
+.factory-shell[data-theme='dark'] .line-status-panel,
+.factory-shell[data-theme='dark'] .simulation-results-panel,
+.factory-shell[data-theme='dark'] .plan-comparison,
+.factory-shell[data-theme='dark'] .comparison-card,
+.factory-shell[data-theme='dark'] .recovery-panel,
+.factory-shell[data-theme='dark'] .recovery-side-panel,
+.factory-shell[data-theme='dark'] .schedule-summary-card,
+.factory-shell[data-theme='dark'] .schedule-timeline-card,
+.factory-shell[data-theme='dark'] .schedule-detail-card,
+.factory-shell[data-theme='dark'] .review-dialog,
+.factory-shell[data-theme='dark'] .simulation-dialog,
+.factory-shell[data-theme='dark'] .schedule-dialog,
+.factory-shell[data-theme='dark'] .constraints-dialog,
+.factory-shell[data-theme='dark'] .plan-details-panel {
+  border-color: #29415c;
+  background-color: #10243a;
+  box-shadow: 0 5px 18px #020b1526;
+}
+.factory-shell[data-theme='dark'] .overview-heading h1,
+.factory-shell[data-theme='dark'] .overview-kpi strong,
+.factory-shell[data-theme='dark'] .overview-panel-heading h2,
+.factory-shell[data-theme='dark'] .factory-line-card,
+.factory-shell[data-theme='dark'] .factory-order strong,
+.factory-shell[data-theme='dark'] .maintenance-info strong,
+.factory-shell[data-theme='dark'] .output-summary strong,
+.factory-shell[data-theme='dark'] .factory-event strong,
+.factory-shell[data-theme='dark'] .risk-card-copy > strong,
+.factory-shell[data-theme='dark'] .risk-detail-title h2,
+.factory-shell[data-theme='dark'] .risk-metrics strong,
+.factory-shell[data-theme='dark'] .contributing-factors h3,
+.factory-shell[data-theme='dark'] .impact-assessment dd,
+.factory-shell[data-theme='dark'] .review-dialog h2,
+.factory-shell[data-theme='dark'] .simulation-page-heading h1,
+.factory-shell[data-theme='dark'] .past-scenarios > h2,
+.factory-shell[data-theme='dark'] .simulation-panel-title h2,
+.factory-shell[data-theme='dark'] .past-scenario > div > strong,
+.factory-shell[data-theme='dark'] .simulation-dialog-header h2,
+.factory-shell[data-theme='dark'] .simulation-field label,
+.factory-shell[data-theme='dark'] .recovery-page-heading h1,
+.factory-shell[data-theme='dark'] .recovery-panel h2,
+.factory-shell[data-theme='dark'] .objective-section h2,
+.factory-shell[data-theme='dark'] .plan-information h2,
+.factory-shell[data-theme='dark'] .objective-option strong,
+.factory-shell[data-theme='dark'] .plan-information strong,
+.factory-shell[data-theme='dark'] .plan-details-panel h2,
+.factory-shell[data-theme='dark'] .schedule-page-heading h1,
+.factory-shell[data-theme='dark'] .schedule-detail-card h2,
+.factory-shell[data-theme='dark'] .schedule-dialog h2,
+.factory-shell[data-theme='dark'] .schedule-change-row strong,
+.factory-shell[data-theme='dark'] .constraints-dialog h2,
+.factory-shell[data-theme='dark'] .constraints-dialog > label strong {
+  color: #e3edf8;
+}
+.factory-shell[data-theme='dark'] .overview-heading p,
+.factory-shell[data-theme='dark'] .overview-kpi small,
+.factory-shell[data-theme='dark'] .overview-kpi div > span,
+.factory-shell[data-theme='dark'] .overview-kpi > b,
+.factory-shell[data-theme='dark'] .factory-order small,
+.factory-shell[data-theme='dark'] .maintenance-info small,
+.factory-shell[data-theme='dark'] .chart-legend,
+.factory-shell[data-theme='dark'] .chart-axis-title,
+.factory-shell[data-theme='dark'] .chart-labels text,
+.factory-shell[data-theme='dark'] .output-summary small,
+.factory-shell[data-theme='dark'] .factory-event time,
+.factory-shell[data-theme='dark'] .factory-event span,
+.factory-shell[data-theme='dark'] .risk-card-meta,
+.factory-shell[data-theme='dark'] .risk-card-score small,
+.factory-shell[data-theme='dark'] .risk-detail-title > span,
+.factory-shell[data-theme='dark'] .risk-metrics small,
+.factory-shell[data-theme='dark'] .contributing-factors li,
+.factory-shell[data-theme='dark'] .impact-assessment dt,
+.factory-shell[data-theme='dark'] .impact-assessment > p,
+.factory-shell[data-theme='dark'] .review-dialog > p,
+.factory-shell[data-theme='dark'] .review-dialog dt,
+.factory-shell[data-theme='dark'] .simulation-page-heading p,
+.factory-shell[data-theme='dark'] .past-scenario > div > span,
+.factory-shell[data-theme='dark'] .past-scenario > div > small,
+.factory-shell[data-theme='dark'] .simulation-line > strong,
+.factory-shell[data-theme='dark'] .simulation-line-progress > b,
+.factory-shell[data-theme='dark'] .simulation-line > small,
+.factory-shell[data-theme='dark'] .simulation-result-grid span,
+.factory-shell[data-theme='dark'] .simulation-dialog-header p,
+.factory-shell[data-theme='dark'] .simulation-warning small,
+.factory-shell[data-theme='dark'] .simulation-info,
+.factory-shell[data-theme='dark'] .recovery-page-heading p,
+.factory-shell[data-theme='dark'] .objective-section > p,
+.factory-shell[data-theme='dark'] .objective-option small,
+.factory-shell[data-theme='dark'] .plan-information small,
+.factory-shell[data-theme='dark'] .plan-disclaimer,
+.factory-shell[data-theme='dark'] .plan-details-panel,
+.factory-shell[data-theme='dark'] .schedule-page-heading p,
+.factory-shell[data-theme='dark'] .schedule-summary-card small,
+.factory-shell[data-theme='dark'] .schedule-time-axis,
+.factory-shell[data-theme='dark'] .schedule-line-label small,
+.factory-shell[data-theme='dark'] .schedule-legend,
+.factory-shell[data-theme='dark'] .schedule-activity-list time,
+.factory-shell[data-theme='dark'] .schedule-activity-list li span,
+.factory-shell[data-theme='dark'] .execution-status-list small,
+.factory-shell[data-theme='dark'] .schedule-bottom-bar > small,
+.factory-shell[data-theme='dark'] .schedule-dialog > p,
+.factory-shell[data-theme='dark'] .schedule-change-row,
+.factory-shell[data-theme='dark'] .constraints-dialog > p,
+.factory-shell[data-theme='dark'] .constraints-dialog > label small {
+  color: #9aadc2;
+}
+
+.factory-shell[data-theme='dark'] .factory-line-card:hover,
+.factory-shell[data-theme='dark'] .risk-card:hover { border-color: #456482; }
+.factory-shell[data-theme='dark'] .factory-line-card.risk,
+.factory-shell[data-theme='dark'] .risk-card.selected { border-color: #87652d; background: #302a20; }
+.factory-shell[data-theme='dark'] .overview-panel { box-shadow: 0 5px 18px #020b1526; }
+.factory-shell[data-theme='dark'] .chart-grid path { stroke: #2a4058; }
+.factory-shell[data-theme='dark'] .actual-area { fill: #0e615d; }
+.factory-shell[data-theme='dark'] .output-summary { background: #172e46; }
+.factory-shell[data-theme='dark'] .output-summary > div { border-color: #314a64; }
+.factory-shell[data-theme='dark'] .factory-event { border-color: #263e57; }
+.factory-shell[data-theme='dark'] .risk-filters { border-color: #29415c; background: #10243a; }
+.factory-shell[data-theme='dark'] .risk-filters button { border-color: #29415c; color: #a9bbce; }
+.factory-shell[data-theme='dark'] .risk-filters button.active { color: #a9d7ff; background: #173b5e; }
+.factory-shell[data-theme='dark'] .risk-metrics,
+.factory-shell[data-theme='dark'] .risk-metrics > div { border-color: #29415c; }
+.factory-shell[data-theme='dark'] .impact-assessment { border-color: #29415c; background: #142b43; }
+.factory-shell[data-theme='dark'] .impact-assessment h3 { color: #bfd0e2; }
+.factory-shell[data-theme='dark'] .impact-assessment > p { border-color: #29415c; }
+.factory-shell[data-theme='dark'] .risk-disclaimer { border-color: #284767; color: #a9ccec; background: #122b45; }
+.factory-shell[data-theme='dark'] .review-dialog dl { background: #172e46; }
+.factory-shell[data-theme='dark'] .review-close,
+.factory-shell[data-theme='dark'] .simulation-close,
+.factory-shell[data-theme='dark'] .schedule-dialog-close,
+.factory-shell[data-theme='dark'] .constraints-close,
+.factory-shell[data-theme='dark'] .plan-details-panel > button { color: #a9bbce; background: #1b344d; }
+
+.factory-shell[data-theme='dark'] .past-scenario,
+.factory-shell[data-theme='dark'] .simulation-panel-title,
+.factory-shell[data-theme='dark'] .simulation-line,
+.factory-shell[data-theme='dark'] .simulation-result-grid > div:nth-child(odd),
+.factory-shell[data-theme='dark'] .simulation-result-grid > div:nth-child(n+3) { border-color: #29415c; }
+.factory-shell[data-theme='dark'] .scenario-file { border-color: #36516d; color: #aac0d6; }
+.factory-shell[data-theme='dark'] .simulation-line-progress > i { background: #263e57; }
+.factory-shell[data-theme='dark'] .simulation-result-banner { border-color: #285d52; color: #a8ddc6; background: #12352f; }
+.factory-shell[data-theme='dark'] .simulation-dialog { color: #e3edf8; }
+.factory-shell[data-theme='dark'] .simulation-warning { border-color: #66522c; background: #342c1e; }
+.factory-shell[data-theme='dark'] .simulation-warning strong { color: #e4d4b1; }
+.factory-shell[data-theme='dark'] .simulation-field input,
+.factory-shell[data-theme='dark'] .simulation-field select,
+.factory-shell[data-theme='dark'] .simulation-field textarea { border-color: #36516d; color: #e3edf8; background: #0b1c2f; }
+.factory-shell[data-theme='dark'] .simulation-info { color: #b1cee9; background: #173452; }
+.factory-shell[data-theme='dark'] .simulation-cancel { border-color: #3b536d; color: #d0dceb; background: #1a314a; }
+.factory-shell[data-theme='dark'] .simulation-dialog-actions { border-color: #29415c; }
+
+.factory-shell[data-theme='dark'] .recovery-kicker { color: #91a9c2; }
+.factory-shell[data-theme='dark'] .feasible-state { color: #a8e5c7; background: #143d32; }
+.factory-shell[data-theme='dark'] .approval-state { border-color: #36516d; color: #a9bbce; }
+.factory-shell[data-theme='dark'] .plan-comparison { background: #0d2035; }
+.factory-shell[data-theme='dark'] .comparison-card { background: #10243a; }
+.factory-shell[data-theme='dark'] .disrupted-plan > header { color: #ffaaa7; background: #3b2429; }
+.factory-shell[data-theme='dark'] .proposed-plan > header { color: #8ce0b6; background: #15382f; }
+.factory-shell[data-theme='dark'] .comparison-card > header p,
+.factory-shell[data-theme='dark'] .comparison-card dt { color: #9aadc2; }
+.factory-shell[data-theme='dark'] .comparison-card dd,
+.factory-shell[data-theme='dark'] .proposed-actions li strong,
+.factory-shell[data-theme='dark'] .constraint-checks li strong { color: #e3edf8; }
+.factory-shell[data-theme='dark'] .comparison-card dl > div,
+.factory-shell[data-theme='dark'] .plan-information { border-color: #29415c; }
+.factory-shell[data-theme='dark'] .objective-option { border-color: #2b4561; }
+.factory-shell[data-theme='dark'] .objective-option.selected { border-color: #397c91; background: #15364c; }
+.factory-shell[data-theme='dark'] .objective-radio { border-color: #8198b0; }
+.factory-shell[data-theme='dark'] .plan-information > div > i { color: #9db5ce; }
+.factory-shell[data-theme='dark'] .recovery-action-bar { border-color: #29415c; background: #0d2035; box-shadow: 0 -4px 15px #020b1533; }
+.factory-shell[data-theme='dark'] .adjust-constraints-button { border-color: #3b536d; color: #d0dceb; background: #172d44; }
+.factory-shell[data-theme='dark'] .adjust-constraints-button:hover { background: #203b57; }
+.factory-shell[data-theme='dark'] .plan-disclaimer { border-color: #36516d; }
+.factory-shell[data-theme='dark'] .plan-details-panel { border-color: #29415c; }
+.factory-shell[data-theme='dark'] .constraints-dialog > label { border-color: #2b4561; }
+.factory-shell[data-theme='dark'] .constraints-actions { border-color: #29415c; }
+.factory-shell[data-theme='dark'] .constraints-actions button:first-child { border-color: #3b536d; color: #d0dceb; background: #172d44; }
+
+.factory-shell[data-theme='dark'] .schedule-success-banner { border-color: #285d52; background: #12352f; }
+.factory-shell[data-theme='dark'] .schedule-success-banner strong { color: #a8e5c7; }
+.factory-shell[data-theme='dark'] .schedule-success-banner > div > span { color: #9aadc2; }
+.factory-shell[data-theme='dark'] .schedule-success-banner.rolled-back { border-color: #36516d; background: #172d44; }
+.factory-shell[data-theme='dark'] .schedule-success-banner.rolled-back strong { color: #d2dfeb; }
+.factory-shell[data-theme='dark'] .schedule-summary-icon { background: #1b344d; }
+.factory-shell[data-theme='dark'] .schedule-summary-icon.navy { color: #a9c5e3; }
+.factory-shell[data-theme='dark'] .schedule-timeline-row,
+.factory-shell[data-theme='dark'] .schedule-detail-card h2,
+.factory-shell[data-theme='dark'] .execution-status-list,
+.factory-shell[data-theme='dark'] .execution-status-list > div { border-color: #29415c; }
+.factory-shell[data-theme='dark'] .schedule-time-axis > span { border-color: #29415c; }
+.factory-shell[data-theme='dark'] .schedule-line-label strong,
+.factory-shell[data-theme='dark'] .execution-status-list > div > strong { color: #c9d8e7; }
+.factory-shell[data-theme='dark'] .schedule-track { background-image: linear-gradient(to right, #29415c 1px, transparent 1px); }
+.factory-shell[data-theme='dark'] .schedule-order.original { border-color: #8195aa; color: #d1dfec; background: #20364d; }
+.factory-shell[data-theme='dark'] .schedule-order.original em { color: #d1dfec; background: #334b63; }
+.factory-shell[data-theme='dark'] .schedule-legend .legend-original { border-color: #8195aa; background: #20364d; }
+.factory-shell[data-theme='dark'] .schedule-activity-list li::before { border-color: #10243a; }
+.factory-shell[data-theme='dark'] .schedule-rollback-button,
+.factory-shell[data-theme='dark'] .schedule-outline-action { border-color: #397286; color: #9dd7e1; background: #142d43; }
+.factory-shell[data-theme='dark'] .schedule-rollback-button:hover:not(:disabled),
+.factory-shell[data-theme='dark'] .schedule-outline-action:hover { background: #1a3b56; }
+.factory-shell[data-theme='dark'] .schedule-rollback-button:disabled { border-color: #3b536d; color: #8298ae; background: #172d44; }
+.factory-shell[data-theme='dark'] .schedule-change-row { border-color: #29415c; }
+
+.factory-shell[data-theme='dark'] .api-error { border-color: #75424b; color: #ffb4b4; background: #3b222a; }
+.factory-shell[data-theme='dark'] :is(button, input, select, textarea):focus-visible { outline-color: #62b8e8; }
+
+@media (max-width: 720px) {
+  .factory-topbar .theme-toggle { width: 30px; height: 30px; flex-basis: 30px; }
+}
