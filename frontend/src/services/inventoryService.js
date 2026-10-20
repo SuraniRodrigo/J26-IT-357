@@ -102,6 +102,13 @@ export async function getDemoUpstreamFeeds() {
 }
 
 /**
+ * Fetches real upstream feeds from Module 1 (Demand) and Module 2 (Supply Risk).
+ */
+export async function fetchLiveUpstream() {
+  return apiRequest('/api/inventory/upstream');
+}
+
+/**
  * Runs batch optimization across all monitored SKUs with optional policy overrides.
  */
 export async function batchOptimizeInventory(params = {}) {

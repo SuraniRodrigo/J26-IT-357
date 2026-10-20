@@ -10,28 +10,6 @@ from app.integration.mock_upstream import (
 )
 from app.integration.upstream_adapter import list_all_upstream_products
 
-# Existing demo endpoint retained for backward compatibility
-@router.get("/demo-upstream", response_model=list[CombinedUpstreamRecord])
-def list_demo_upstream_feeds() -> list[CombinedUpstreamRecord]:
-    """
-    Exposes raw mock upstream feeds for evaluation and transparency.
-    """
-    try:
-        return list_all_mock_products()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-# New live upstream endpoint
-@router.get("/upstream", response_model=list[CombinedUpstreamRecord])
-def list_live_upstream_feeds() -> list[CombinedUpstreamRecord]:
-    """
-    Returns real upstream data fetched from Module 1 (demand) and Module 2 (risk).
-    """
-    try:
-        return list_all_upstream_products()
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
 from app.schemas.inventory import (
     CreateProductCatalogItem,
     InventoryOptimizationRequest,
@@ -75,8 +53,33 @@ def inventory_health() -> dict[str, str]:
         "status": "healthy",
         "policy_version": "inventory-policy-v1.0",
         "backorder_model_version": "backorder-xgb-v1.0",
-        "upstream_mode": "DEMO (Mock Upstream Provider)",
+        "upstream_mode": f"{UPSTREAM_DATA_MODE} (Provider Active)",
     }
+
+
+# Existing demo endpoint retained for backward compatibility
+@router.get("/demo-upstream", response_model=list[CombinedUpstreamRecord])
+def list_demo_upstream_feeds() -> list[CombinedUpstreamRecord]:
+    """
+    Exposes raw mock upstream feeds for evaluation and transparency.
+    """
+    try:
+        return list_all_mock_products()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# New live upstream endpoint
+@router.get("/upstream", response_model=list[CombinedUpstreamRecord])
+def list_live_upstream_feeds() -> list[CombinedUpstreamRecord]:
+    """
+    Returns real upstream data fetched from Module 1 (demand) and Module 2 (risk).
+    """
+    try:
+        return list_all_upstream_products()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
 
 
 @router.get("/products", response_model=list[ProductCatalogItem])

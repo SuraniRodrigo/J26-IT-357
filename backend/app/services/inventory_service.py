@@ -17,7 +17,6 @@ from app.integration.upstream_adapter import (
     list_all_upstream_products,
 )
 
-from app.integration.upstream_adapter import list_all_upstream_products
 from app.ml.inventory.inventory_optimizer import InventoryOptimizer
 from app.ml.inventory.simulator import InventorySimulator
 from app.models.inventory_sql import ProductModel, PurchaseOrderModel
@@ -62,6 +61,14 @@ MATERIAL_SEEDS: dict[str, dict[str, Any]] = {
 
 _optimizer = InventoryOptimizer()
 _simulator = InventorySimulator()
+
+
+def get_live_upstream_signals() -> list[CombinedUpstreamRecord]:
+    """Fetch real upstream data via the upstream adapter."""
+    try:
+        return list_all_upstream_products()
+    except Exception as exc:
+        raise RuntimeError(f"Failed to retrieve live upstream signals: {exc}") from exc
 
 
 def optimize_inventory(request: InventoryOptimizationRequest) -> InventoryOptimizationResponse:

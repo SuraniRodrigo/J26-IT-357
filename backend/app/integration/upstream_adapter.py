@@ -37,6 +37,21 @@ def _fetch_json(url: str) -> dict:
     except Exception as exc:
         raise RuntimeError(f"Failed to fetch upstream data from {url}: {exc}")
 
+def get_upstream_signals(product_id: str) -> CombinedUpstreamRecord:
+    """Compatibility wrapper returning combined upstream signal for a product.
+    Delegates to get_combined_upstream_signal.
+    """
+    return get_combined_upstream_signal(product_id)
+
+def get_live_upstream_signals(product_id: str) -> CombinedUpstreamRecord:
+    """Alias for get_combined_upstream_signal to fetch live upstream data.
+    Historically used name in older code.
+    """
+    return get_combined_upstream_signal(product_id)
+
+
+# Duplicate definition removed
+
 def get_combined_upstream_signal(product_id: str) -> CombinedUpstreamRecord:
     """Calls real Module 1 and Module 2 services and merges their payloads.
 

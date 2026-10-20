@@ -199,7 +199,7 @@ const SKU_CATALOG_MEDIA = {
   },
   'FAB-002': {
     images: [
-      'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=1200&auto=format&fit=crop&q=85',
       'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&auto=format&fit=crop&q=80',
     ],
     fabricSpec: '88% Recycled Poly, 12% Elastane Rib Knit · 240 GSM',
@@ -1087,6 +1087,7 @@ export default function InventoryOptimizationView() {
   const [isExecutingDirectApi, setIsExecutingDirectApi] = useState(false);
   const [activeControllerTab, setActiveControllerTab] = useState('ALL');
   const [showOptimizerModal, setShowOptimizerModal] = useState(false);
+  const [computedPolicies, setComputedPolicies] = useState([]);
 
   // ── Toast system ──────────────────────────────────────────────────────────
   const showToast = useCallback((msg, type = 'success') => {
@@ -1145,6 +1146,24 @@ export default function InventoryOptimizationView() {
       unit: 'kg', current_inventory: 3400, forecasted_demand: 15200, demand_std_dev: 2280,
       average_lead_time: 7.0, lead_time_std_dev: 3.2, disruption_probability: 0.85, supplier_trust_score: 42.0,
     }, [productsList, selectedSku]);
+
+  // Synchronize directParams with the active currentProduct
+  useEffect(() => {
+    if (currentProduct) {
+      setDirectParams(prev => ({
+        ...prev,
+        product_id: currentProduct.product_id,
+        current_inventory: currentProduct.current_inventory ?? 3400,
+        in_transit_qty: prev.in_transit_qty ?? 1200,
+        forecasted_demand: currentProduct.forecasted_demand ?? 15200,
+        demand_std_dev: currentProduct.demand_std_dev ?? 2280,
+        average_lead_time: currentProduct.average_lead_time ?? 3.5,
+        lead_time_std_dev: currentProduct.lead_time_std_dev ?? 1.62,
+        disruption_probability: currentProduct.disruption_probability ?? 0.23,
+        supplier_trust_score: currentProduct.supplier_trust_score ?? 75.0,
+      }));
+    }
+  }, [currentProduct.product_id]);
 
   // ── Scenario fetch ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1431,6 +1450,134 @@ export default function InventoryOptimizationView() {
     URL.revokeObjectURL(url);
     showToast('✓ Inventory_to_Production_Scheduling.csv exported successfully');
   }, [productionInterfaceData, simulateExpeditedArrival, releasedGates, showToast]);
+
+  // ── Production Scheduling PDF Export (Module 3 -> Module 4 Handoff) ───────
+  const handleExportPolicyPDF = useCallback((policyList = null) => {
+    const listToExport = policyList || computedPolicies || (directApiResult ? [directApiResult] : []);
+    if (!listToExport || listToExport.length === 0) {
+      showToast('⚠️ No computed policies available to export as PDF. Compute a policy first.', 'error');
+      return;
+    }
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const rowsHtml = listToExport.map((p, idx) => {
+      const isCritical = p.risk_level === 'CRITICAL';
+      const isHigh = p.risk_level === 'HIGH';
+      const riskBadgeBg = isCritical ? '#FEE2E2' : isHigh ? '#FEF3C7' : '#DCFCE7';
+      const riskBadgeColor = isCritical ? '#B91C1C' : isHigh ? '#B45309' : '#15803D';
+      const isReorder = Boolean(p.reorder_required);
+      const directiveBg = isReorder ? '#FEF2F2' : '#F0FDF4';
+      const directiveColor = isReorder ? '#DC2626' : '#16A34A';
+      const bo = typeof p.backorder_risk === 'number' ? (p.backorder_risk * 100).toFixed(1) + '%' : '0.0%';
+
+      return `
+        <tr style="border-bottom: 1px solid #E2E8F0; ${idx % 2 === 1 ? 'background:#F8FAFC;' : ''}">
+          <td style="padding:10px 12px; font-weight:800; font-size:13px; color:#0F172A;">${p.product_id}</td>
+          <td style="padding:10px 12px; text-align:right; font-weight:700; color:#2563EB;">${Math.round(p.safety_stock || 0).toLocaleString()}</td>
+          <td style="padding:10px 12px; text-align:right; font-weight:700; color:#0F172A;">${Math.round(p.reorder_point || 0).toLocaleString()}</td>
+          <td style="padding:10px 12px; text-align:right; font-weight:800; color:#059669;">${Math.round(p.reorder_quantity || 0).toLocaleString()}</td>
+          <td style="padding:10px 12px; text-align:right; color:#64748B;">${p.risk_adjusted_lead_time ? p.risk_adjusted_lead_time + ' d' : '—'}</td>
+          <td style="padding:10px 12px; text-align:center;">
+            <span style="display:inline-block; padding:3px 9px; border-radius:12px; font-size:10.5px; font-weight:800; background:${riskBadgeBg}; color:${riskBadgeColor};">
+              ${p.risk_level || 'NOMINAL'}
+            </span>
+          </td>
+          <td style="padding:10px 12px; text-align:center; font-weight:700; color:${(p.backorder_risk || 0) > 0.3 ? '#DC2626' : '#16A34A'};">${bo}</td>
+          <td style="padding:10px 12px;">
+            <div style="display:inline-block; padding:3px 8px; border-radius:6px; font-size:10.5px; font-weight:800; background:${directiveBg}; color:${directiveColor}; margin-bottom:3px;">
+              ${isReorder ? '🔴 REORDER NOW' : '🟢 SUFFICIENT'}
+            </div>
+            <div style="font-size:11px; color:#475569; line-height:1.35;">
+              ${p.reorder_recommendation || 'Policy evaluated by Disruption-Aware Adaptive Engine.'}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>OPTICHAIN Module 3 to Module 4 Production Handoff PDF</title>
+  <style>
+    @page { size: A4 landscape; margin: 14mm 12mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0F172A; margin: 0; padding: 20px; background: #FFF; }
+    .header-box { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #2563EB; padding-bottom: 14px; margin-bottom: 18px; }
+    .title { font-size: 22px; font-weight: 900; color: #0B192C; letter-spacing: -0.02em; }
+    .subtitle { font-size: 11px; color: #64748B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 3px; }
+    .meta-box { text-align: right; font-size: 11.5px; color: #475569; }
+    .badge-ribbon { display: flex; gap: 12px; margin-bottom: 18px; background: #F1F5F9; border: 1px solid #E2E8F0; padding: 10px 16px; border-radius: 8px; font-size: 12px; }
+    .badge-ribbon span { font-weight: 800; color: #0F172A; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: #0F172A; color: #FFFFFF; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; padding: 10px 12px; text-align: left; }
+    .footer { margin-top: 24px; border-top: 1px solid #CBD5E1; padding-top: 10px; font-size: 10px; color: #64748B; display: flex; justify-content: space-between; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header-box">
+    <div>
+      <div class="title">OPTICHAIN GUARDIAN · INVENTORY POLICY SPECIFICATION</div>
+      <div class="subtitle">Module 03 (Disruption-Aware Adaptive Inventory) ➔ Module 04 (Line Scheduling Handoff)</div>
+    </div>
+    <div class="meta-box">
+      <div><strong>MAS Holdings Colombo Manufacturing Hub</strong></div>
+      <div>Dispatch Date: <strong>${dateStr}</strong> · ${timeStr}</div>
+      <div>Official Production Integration Document</div>
+    </div>
+  </div>
+
+  <div class="badge-ribbon">
+    <div>Evaluated Items: <span>${listToExport.length} Materials</span></div>
+    <div>Reorders Recommended: <span style="color:#DC2626;">${listToExport.filter(x => x.reorder_required).length} Items</span></div>
+    <div>Sufficient Coverage: <span style="color:#16A34A;">${listToExport.filter(x => !x.reorder_required).length} Items</span></div>
+    <div>Target SLA: <span>95.0% - 99.5%</span></div>
+    <div>Handoff Contract: <span>ProductionInterfaceItem (FastAPI)</span></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Raw Material SKU</th>
+        <th style="text-align:right;">Adaptive SS</th>
+        <th style="text-align:right;">Reorder Point</th>
+        <th style="text-align:right;">Order Qty (ROQ)</th>
+        <th style="text-align:right;">Adj Lead Time</th>
+        <th style="text-align:center;">Risk Tier</th>
+        <th style="text-align:center;">Backorder Risk</th>
+        <th>Action Recommendation / Line Allocation</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <div>Generated by OPTICHAIN Adaptive Inventory Optimizer (Module 3) · Project J26-IT-357</div>
+    <div>Confidential & Proprietary — For MAS Line Scheduling & Production Operations Only</div>
+  </div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=1320,height=840');
+    if (!win) {
+      showToast('⚠️ Pop-up blocked! Please allow pop-ups for this browser tab to generate the PDF.', 'error');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 700);
+    showToast('📄 Print dialog opened — select "Save as PDF" to download the production scheduling document');
+  }, [computedPolicies, directApiResult, showToast]);
 
   // ── ERP Export: PDF Executive Summary ────────────────────────────────────
   const handlePrintPDF = useCallback(() => {
@@ -1888,7 +2035,7 @@ export default function InventoryOptimizationView() {
               { label: 'TRANSIT CORRIDOR', val: 'Hai Phong Port ➔ Colombo' },
               { label: 'DISRUPTION SIGNAL', val: 'Port Jitter (±2.8d)' },
             ],
-            bg: 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?w=1920&auto=format&fit=crop&q=80',
+            bg: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=1920&auto=format&fit=crop&q=85',
           },
           {
             id: 'DYE-008',
@@ -3370,6 +3517,224 @@ export default function InventoryOptimizationView() {
         );
       })()}
 
+      {/* ═══ GLOBAL DEDICATED COMPUTED POLICY RESULTS PANEL (ALWAYS VISIBLE ACROSS TABS) ═════ */}
+      {computedPolicies.length > 0 && (
+        <div style={{
+          ...styles.card,
+          border: `2px solid ${isDark ? 'rgba(139,92,246,0.55)' : '#A78BFA'}`,
+          boxShadow: isDark ? '0 0 35px rgba(139,92,246,0.18), 0 10px 30px rgba(0,0,0,0.5)' : '0 8px 30px rgba(139,92,246,0.12)',
+          padding: '0',
+          overflow: 'hidden',
+          marginBottom: '22px',
+          borderRadius: '16px',
+        }}>
+          {/* Header */}
+          <div style={{
+            background: isDark ? 'linear-gradient(135deg, rgba(139,92,246,0.22), rgba(59,130,246,0.12))' : 'linear-gradient(135deg, #EDE9FE, #DBEAFE)',
+            padding: '16px 22px',
+            borderBottom: `1.5px solid ${isDark ? 'rgba(139,92,246,0.3)' : '#DDD6FE'}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '38px', height: '38px', borderRadius: '10px',
+                background: isDark ? 'rgba(139,92,246,0.3)' : '#DDD6FE',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '20px',
+              }}>📋</div>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: '15px', color: isDark ? '#DDD6FE' : '#6D28D9', letterSpacing: '.02em' }}>
+                  All Computed Policy Results ({computedPolicies.length})
+                </div>
+                <div style={{ fontSize: '11.5px', color: c.sub, marginTop: '2px' }}>
+                  Each time you click &quot;Submit &amp; Compute Policy&quot;, the generated adaptive policy is logged here.
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                className="btn-hover"
+                onClick={() => handleExportPolicyPDF(computedPolicies)}
+                style={{
+                  padding: '7px 15px', borderRadius: '8px', border: '1px solid rgba(220,38,38,0.3)',
+                  background: isDark ? 'rgba(220,38,38,0.18)' : '#FEF2F2',
+                  color: '#DC2626', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  boxShadow: '0 2px 8px rgba(220,38,38,0.15)',
+                }}
+                title="Generate printable PDF specification for Module 4 production line scheduling"
+              >
+                <span>📄</span> Export PDF for Scheduling
+              </button>
+              <button
+                className="btn-hover"
+                onClick={() => {
+                  const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(computedPolicies, null, 2))}`;
+                  const dl = document.createElement('a');
+                  dl.setAttribute('href', jsonString);
+                  dl.setAttribute('download', `OptiChain_All_Policies_${new Date().toISOString().slice(0,10)}.json`);
+                  document.body.appendChild(dl); dl.click(); dl.remove();
+                  showToast('✓ All computed policies exported as JSON');
+                }}
+                style={{
+                  padding: '7px 15px', borderRadius: '8px', border: `1px solid ${c.tagBorder}`,
+                  background: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
+                  color: c.title, fontSize: '11.5px', fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}
+              >
+                <span>📥</span> Export JSON
+              </button>
+              <button
+                className="btn-hover"
+                onClick={() => { setComputedPolicies([]); showToast('🗑️ Policy history cleared'); }}
+                style={{
+                  padding: '7px 15px', borderRadius: '8px', border: `1px solid ${isDark ? 'rgba(239,68,68,0.4)' : '#FECACA'}`,
+                  background: isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2',
+                  color: '#EF4444', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                }}
+              >
+                <span>🗑️</span> Clear
+              </button>
+            </div>
+          </div>
+
+          {/* Table Header */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '130px 110px 110px 110px 110px 95px 95px 1fr',
+            gap: '0',
+            padding: '11px 22px',
+            background: isDark ? 'rgba(0,0,0,0.3)' : '#F8FAFC',
+            borderBottom: `1px solid ${c.tableBorder}`,
+            fontSize: '10px', fontWeight: 800, color: c.sub, letterSpacing: '.06em', textTransform: 'uppercase',
+          }}>
+            <div>Material SKU</div>
+            <div>Timestamp</div>
+            <div style={{ textAlign: 'right' }}>Safety Stock</div>
+            <div style={{ textAlign: 'right' }}>Reorder Point</div>
+            <div style={{ textAlign: 'right' }}>Order Qty</div>
+            <div style={{ textAlign: 'center' }}>Risk Level</div>
+            <div style={{ textAlign: 'center' }}>Backorder</div>
+            <div style={{ paddingLeft: '12px' }}>Action Recommendation</div>
+          </div>
+
+          {/* Table Rows */}
+          <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
+            {computedPolicies.map((p, idx) => {
+              const riskColor = p.risk_level === 'CRITICAL' ? '#EF4444' : p.risk_level === 'HIGH' ? '#F59E0B' : p.risk_level === 'MEDIUM' ? '#3B82F6' : '#10B981';
+              const boProb = typeof p.backorder_risk === 'number' ? p.backorder_risk : 0;
+              const boColor = boProb > 0.3 ? '#EF4444' : '#10B981';
+              const isReorder = Boolean(p.reorder_required);
+              const timeStr = p._computedAt ? new Date(p._computedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Just now';
+              return (
+                <div
+                  key={p._requestId || `${p.product_id}-${idx}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '130px 110px 110px 110px 110px 95px 95px 1fr',
+                    gap: '0',
+                    padding: '12px 22px',
+                    borderBottom: `1px solid ${c.tableBorder}`,
+                    background: idx === 0
+                      ? (isDark ? 'rgba(139,92,246,0.09)' : 'rgba(139,92,246,0.04)')
+                      : (idx % 2 === 0 ? 'transparent' : (isDark ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.02)')),
+                    alignItems: 'center',
+                    fontSize: '12.5px',
+                  }}
+                >
+                  {/* Material ID */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontWeight: 900, color: c.title, fontSize: '13px' }}>{p.product_id}</span>
+                    {idx === 0 && (
+                      <span style={{
+                        fontSize: '9px', fontWeight: 800, color: '#8B5CF6',
+                        background: isDark ? 'rgba(139,92,246,0.2)' : '#EDE9FE',
+                        padding: '1px 6px', borderRadius: '4px',
+                      }}>NEWEST</span>
+                    )}
+                  </div>
+
+                  {/* Timestamp */}
+                  <div style={{ color: c.sub, fontSize: '11px', fontWeight: 600 }}>
+                    {timeStr}
+                  </div>
+
+                  {/* Safety Stock */}
+                  <div style={{ textAlign: 'right', fontWeight: 900, color: '#60A5FA', fontSize: '13.5px' }}>
+                    {Math.round(p.safety_stock || 0).toLocaleString()}
+                  </div>
+
+                  {/* Reorder Point */}
+                  <div style={{ textAlign: 'right', fontWeight: 900, color: c.title, fontSize: '13.5px' }}>
+                    {Math.round(p.reorder_point || 0).toLocaleString()}
+                  </div>
+
+                  {/* Order Quantity */}
+                  <div style={{ textAlign: 'right', fontWeight: 900, color: '#34D399', fontSize: '13.5px' }}>
+                    {Math.round(p.reorder_quantity || 0).toLocaleString()}
+                  </div>
+
+                  {/* Risk Level Badge */}
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{
+                      padding: '3px 9px', borderRadius: '6px', fontSize: '10px', fontWeight: 800,
+                      background: `${riskColor}18`, color: riskColor, border: `1px solid ${riskColor}40`,
+                    }}>{p.risk_level || 'MEDIUM'}</span>
+                  </div>
+
+                  {/* Backorder Risk */}
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{
+                      padding: '2px 7px', borderRadius: '5px', fontSize: '11px', fontWeight: 800,
+                      color: boColor,
+                    }}>{(boProb * 100).toFixed(1)}%</span>
+                  </div>
+
+                  {/* Action Recommendation */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '12px' }}>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: '6px', fontSize: '10px', fontWeight: 800,
+                      background: isReorder
+                        ? (isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2')
+                        : (isDark ? 'rgba(16,185,129,0.15)' : '#F0FDF4'),
+                      color: isReorder ? '#EF4444' : '#10B981',
+                      border: `1px solid ${isReorder ? '#EF444440' : '#10B98140'}`,
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {isReorder ? '🔴 REORDER NOW' : '🟢 SUFFICIENT'}
+                    </span>
+                    <span style={{ fontSize: '11px', color: c.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.reorder_recommendation || ''}>
+                      {p.reorder_recommendation || 'Policy evaluated against upstream lead-time and disruption signals.'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer stats */}
+          <div style={{
+            padding: '11px 22px',
+            background: isDark ? 'rgba(0,0,0,0.25)' : '#F8FAFC',
+            borderTop: `1px solid ${c.tableBorder}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px',
+            fontSize: '11.5px', color: c.sub,
+          }}>
+            <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap' }}>
+              <span>📊 <strong>{computedPolicies.length}</strong> total evaluations</span>
+              <span>🔴 <strong>{computedPolicies.filter(p => p.reorder_required).length}</strong> reorders needed</span>
+              <span>🟢 <strong>{computedPolicies.filter(p => !p.reorder_required).length}</strong> sufficient inventory</span>
+              <span>⚠️ <strong>{computedPolicies.filter(p => p.risk_level === 'CRITICAL' || p.risk_level === 'HIGH').length}</strong> elevated risk</span>
+            </div>
+            <div style={{ fontSize: '10.5px', color: c.sub, opacity: 0.8 }}>
+              Data retained in active browser session
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══ TAB 1: OPERATIONS & INVENTORY COCKPIT ═══════════════════════════ */}
       {activeTab === 'operations' && (
         <div className="connected-tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '-18px' }}>
@@ -4565,7 +4930,7 @@ export default function InventoryOptimizationView() {
               <div style={{ display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
                 <button
                   className="btn-hover"
-                  onClick={() => setShowOptimizerModal(true)}
+                  onClick={() => setDrawerItem(currentProduct)}
                   style={{
                     padding: '9px 18px',
                     borderRadius: '10px',
@@ -4579,8 +4944,9 @@ export default function InventoryOptimizationView() {
                     alignItems: 'center',
                     gap: '7px',
                   }}
+                  title="Configure warehouse stock, lead time, and policy settings"
                 >
-                  <span>⚙️</span> 1. Configure Inputs
+                  <span>⚙️</span> Edit Parameters &amp; Levers
                 </button>
 
                 <button
@@ -4588,8 +4954,9 @@ export default function InventoryOptimizationView() {
                   onClick={async()=>{
                     setIsExecutingDirectApi(true);
                     try{
-                      const r=await optimizeInventoryDetailed(directParams);
+                      const r = await optimizeInventoryDetailed(directParams);
                       setDirectApiResult(r);
+                      setComputedPolicies(prev => [{ ...r, _computedAt: new Date().toISOString() }, ...prev]);
                       showToast(`✓ Optimal policy computed for ${directParams.product_id}`);
                     } catch(e){
                       showToast(`Optimization error: ${e.message||'Unknown'}`, 'error');
@@ -4610,113 +4977,108 @@ export default function InventoryOptimizationView() {
                     gap: '8px',
                   }}
                 >
-                  {isExecutingDirectApi ? '⟳ Validating & Optimizing...' : '⚡ Run Optimization'}
+                  {isExecutingDirectApi ? '⟳ Computing Policy...' : `⚡ Optimize ${directParams.product_id}`}
                 </button>
               </div>
             </div>
 
-            {/* ═══ 4-STEP OPERATIONAL FLOW ARCHITECTURE (MATCHING METHODOLOGY) ═══ */}
+            {/* ═══ INTERACTIVE MATERIAL SELECTOR STRIP ═══ */}
             <div style={{
-              marginTop: '16px',
+              marginTop: '18px',
               padding: '14px 16px',
-              background: isDark ? 'rgba(0,0,0,0.22)' : '#F8FAFC',
+              background: isDark ? 'rgba(0,0,0,0.25)' : '#F8FAFC',
               borderRadius: '14px',
-              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
             }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
-                {/* Step 1 */}
-                <div
-                  onClick={() => setShowOptimizerModal(true)}
-                  style={{
-                    background: isDark ? 'rgba(37,99,235,0.12)' : '#EFF6FF',
-                    border: `1px solid ${isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE'}`,
-                    borderRadius: '10px',
-                    padding: '10px 14px',
-                    cursor: 'pointer',
-                    transition: 'all .2s ease',
-                  }}
-                >
-                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: isDark ? '#93C5FD' : '#1D4ED8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>1.</span> Configure Inputs
-                  </div>
-                  <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
-                    Inventory + forecast + supply risk + policy settings
-                  </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: c.sub, textTransform: 'uppercase', letterSpacing: '.06em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>📦</span> Click any Raw Material to Inspect &amp; Auto-Compute Adaptive Policy:
                 </div>
+                <div style={{ fontSize: '11px', color: '#2563EB', fontWeight: 700 }}>
+                  Selected: <strong>{directParams.product_id}</strong>
+                </div>
+              </div>
 
-                {/* Step 2 */}
-                <div
-                  onClick={async()=>{
-                    setIsExecutingDirectApi(true);
-                    try{
-                      const r=await optimizeInventoryDetailed(directParams);
-                      setDirectApiResult(r);
-                      showToast(`✓ Optimal policy computed for ${directParams.product_id}`);
-                    } catch(e){
-                      showToast(`Optimization error: ${e.message||'Unknown'}`, 'error');
-                    } finally{
-                      setIsExecutingDirectApi(false);
-                    }
-                  }}
-                  style={{
-                    background: isDark ? 'rgba(16,185,129,0.12)' : '#F0FDF4',
-                    border: `1px solid ${isDark ? 'rgba(16,185,129,0.3)' : '#BBF7D0'}`,
-                    borderRadius: '10px',
-                    padding: '10px 14px',
-                    cursor: 'pointer',
-                    transition: 'all .2s ease',
-                  }}
-                >
-                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: isDark ? '#6EE7B7' : '#15803D', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>2.</span> Validate & Optimize
-                  </div>
-                  <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
-                    Check data, calculate safety stock, ROP and ROQ
-                  </div>
-                </div>
+              {/* Material Chips Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '8px' }}>
+                {productsList.map(item => {
+                  const isSelected = item.product_id === directParams.product_id;
+                  const isRiskHigh = item.disruption_probability >= 0.7;
+                  const riskColor = isRiskHigh ? '#EF4444' : item.disruption_probability >= 0.35 ? '#F59E0B' : '#10B981';
+                  return (
+                    <div
+                      key={item.product_id}
+                      className="btn-hover"
+                      onClick={async () => {
+                        // Switch active material
+                        setSelectedSku(item.product_id);
+                        const newParams = {
+                          ...directParams,
+                          product_id: item.product_id,
+                          current_inventory: item.current_inventory,
+                          forecasted_demand: item.forecasted_demand,
+                          average_lead_time: item.average_lead_time,
+                          lead_time_std_dev: item.lead_time_std_dev,
+                          demand_std_dev: item.demand_std_dev,
+                          disruption_probability: item.disruption_probability,
+                          supplier_trust_score: item.supplier_trust_score,
+                        };
+                        setDirectParams(newParams);
 
-                {/* Step 3 */}
-                <div style={{
-                  background: isDark ? 'rgba(168,85,247,0.12)' : '#FAF5FF',
-                  border: `1px solid ${isDark ? 'rgba(168,85,247,0.3)' : '#E9D5FF'}`,
-                  borderRadius: '10px',
-                  padding: '10px 14px',
-                }}>
-                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: isDark ? '#C084FC' : '#7E22CE', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>3.</span> Review Results
-                  </div>
-                  <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
-                    Show baseline vs adaptive recommendations & shortage
-                  </div>
-                </div>
-
-                {/* Step 4 */}
-                <div
-                  onClick={() => {
-                    if (directApiResult) {
-                      setReleasedGates(prev => ({ ...prev, [directParams.product_id]: true }));
-                      setActiveTab('readiness');
-                      showToast(`🚀 Dispatched to Self-Healing Production! Opening Module 4 handoff...`);
-                    } else {
-                      showToast(`Please run optimization first before dispatching handoff`, 'warning');
-                    }
-                  }}
-                  style={{
-                    background: isDark ? 'rgba(245,158,11,0.12)' : '#FEF3C7',
-                    border: `1px solid ${isDark ? 'rgba(245,158,11,0.3)' : '#FDE68A'}`,
-                    borderRadius: '10px',
-                    padding: '10px 14px',
-                    cursor: 'pointer',
-                    transition: 'all .2s ease',
-                  }}
-                >
-                  <div style={{ fontSize: '11.5px', fontWeight: 800, color: isDark ? '#FCD34D' : '#B45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>4.</span> Send Production Handoff
-                  </div>
-                  <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>
-                    Provide material availability & shortage to Line Optimizer
-                  </div>
-                </div>
+                        // Auto-run optimization for the clicked SKU
+                        setIsExecutingDirectApi(true);
+                        try {
+                          const r = await optimizeInventoryDetailed(newParams);
+                          setDirectApiResult(r);
+                          setComputedPolicies(prev => [{ ...r, _computedAt: new Date().toISOString() }, ...prev]);
+                          showToast(`✓ Switched to ${item.product_id} · Policy computed`);
+                        } catch(e) {
+                          showToast(`Error: ${e.message || 'Optimization failed'}`, 'error');
+                        } finally {
+                          setIsExecutingDirectApi(false);
+                        }
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        border: `1.5px solid ${isSelected ? '#2563EB' : isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+                        background: isSelected
+                          ? (isDark ? 'rgba(37,99,235,0.22)' : '#EFF6FF')
+                          : (isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF'),
+                        cursor: 'pointer',
+                        transition: 'all 0.18s ease',
+                        boxShadow: isSelected ? '0 4px 12px rgba(37,99,235,0.25)' : 'none',
+                        position: 'relative',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 900, fontSize: '12px', color: isSelected ? '#2563EB' : c.title }}>
+                          {item.product_id}
+                        </span>
+                        <span style={{
+                          fontSize: '9px',
+                          fontWeight: 800,
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          background: `${riskColor}18`,
+                          color: riskColor,
+                          border: `1px solid ${riskColor}40`,
+                        }}>
+                          {(item.disruption_probability * 100).toFixed(0)}% risk
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '10px', color: c.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '4px' }}>
+                        {item.product_name}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9.5px', color: c.sub, borderTop: `1px dashed ${c.tableBorder}`, paddingTop: '4px' }}>
+                        <span>Stock: <strong>{item.current_inventory.toLocaleString()}</strong></span>
+                        <span style={{ color: isSelected ? '#2563EB' : c.sub, fontWeight: isSelected ? 800 : 400 }}>
+                          {isSelected ? '● ACTIVE' : 'Select ➔'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -4806,6 +5168,28 @@ export default function InventoryOptimizationView() {
                       }}
                     >
                       <span>📥</span> Download Policy (JSON)
+                    </button>
+
+                    <button
+                      className="btn-hover"
+                      onClick={() => handleExportPolicyPDF([directApiResult])}
+                      style={{
+                        padding: '7px 15px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(220,38,38,0.3)',
+                        background: isDark ? 'rgba(220,38,38,0.18)' : '#FEF2F2',
+                        color: '#DC2626',
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 8px rgba(220,38,38,0.15)',
+                      }}
+                      title="Download PDF report for production line handoff"
+                    >
+                      <span>📄</span> Export PDF for Scheduling
                     </button>
 
                     <button
@@ -7033,11 +7417,11 @@ export default function InventoryOptimizationView() {
           >
             <div
               style={{
-                width: 'min(640px, 94vw)',
+                width: 'min(820px, 96vw)',
                 height: '100%',
                 background: isDark ? '#0A1424' : '#FFFFFF',
-                borderLeft: `1px solid ${c.cardBorder}`,
-                boxShadow: '-16px 0 48px rgba(0,0,0,0.4)',
+                borderLeft: `1.5px solid ${isDark ? 'rgba(59,130,246,0.35)' : '#CBD5E1'}`,
+                boxShadow: '-16px 0 48px rgba(0,0,0,0.5)',
                 display: 'flex',
                 flexDirection: 'column',
                 animation: 'slide-drawer .28s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -7046,7 +7430,7 @@ export default function InventoryOptimizationView() {
               onClick={(e) => e.stopPropagation()}
             >
               {/* Cover Image & Top Navigation Bar */}
-              <div style={{ position: 'relative', height: '220px', flexShrink: 0, overflow: 'hidden' }}>
+              <div style={{ position: 'relative', height: '200px', flexShrink: 0, overflow: 'hidden' }}>
                 <img
                   src={coverImg}
                   alt={item.product_name}
@@ -7064,7 +7448,7 @@ export default function InventoryOptimizationView() {
 
                 {/* Top Floating Badges & Close Button */}
                 <div style={{ position: 'absolute', top: '16px', left: '20px', right: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '.06em', color: '#FFFFFF', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.2)' }}>
                       MAS ERP MASTER
                     </span>
@@ -7098,7 +7482,7 @@ export default function InventoryOptimizationView() {
 
                 {/* Title and Identification inside Banner */}
                 <div style={{ position: 'absolute', bottom: '16px', left: '22px', right: '22px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 900, fontSize: '15px', color: '#60A5FA', letterSpacing: '.04em', background: 'rgba(30,58,138,0.7)', padding: '2px 8px', borderRadius: '6px', border: '1px solid rgba(96,165,250,0.5)' }}>
                       {item.product_id}
                     </span>
@@ -7116,7 +7500,7 @@ export default function InventoryOptimizationView() {
                       {rp >= 0.7 ? 'CRITICAL RISK' : rp >= 0.35 ? 'ELEVATED RISK' : 'LOW RISK'}
                     </span>
                   </div>
-                  <h2 style={{ margin: 0, fontSize: '19px', fontWeight: 800, color: '#FFFFFF', textShadow: '0 2px 8px rgba(0,0,0,0.6)' }}>
+                  <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#FFFFFF', textShadow: '0 2px 8px rgba(0,0,0,0.6)' }}>
                     {media?.garmentType ? `${media.garmentType.split('&')[0].trim()} · ${item.product_name}` : item.product_name}
                   </h2>
                   <div style={{ fontSize: '11px', color: '#CBD5E1', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -7141,11 +7525,34 @@ export default function InventoryOptimizationView() {
               }}>
                 <button
                   className="btn-hover"
-                  onClick={() => { openEditModal(item); setDrawerItem(null); }}
+                  onClick={async () => {
+                    const el = document.getElementById('drawer-optimization-suite');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
                   style={{
-                    background: isDark ? 'linear-gradient(135deg,#2563EB,#1D4ED8)' : 'linear-gradient(135deg,#2563EB,#1E40AF)',
+                    background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
                     color: '#fff',
                     border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
+                  }}
+                >
+                  ⚡ Optimize Policy & Upstream
+                </button>
+                <button
+                  className="btn-hover"
+                  onClick={() => { openEditModal(item); setDrawerItem(null); }}
+                  style={{
+                    background: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
+                    color: c.title,
+                    border: `1px solid ${c.tagBorder}`,
                     padding: '8px 14px',
                     borderRadius: '8px',
                     fontSize: '12px',
@@ -7154,7 +7561,6 @@ export default function InventoryOptimizationView() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
                   }}
                 >
                   ✏️ Edit SKU Details
@@ -7226,7 +7632,631 @@ export default function InventoryOptimizationView() {
               </div>
 
               {/* Scrollable Content Body */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '22px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+                {/* ═══ DEDICATED MATERIAL OPTIMIZATION & UPSTREAM INSPECTION SUITE ═══ */}
+                <div id="drawer-optimization-suite" style={{
+                  background: isDark ? '#091322' : '#F8FAFC',
+                  border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.35)' : '#BFDBFE'}`,
+                  borderRadius: '16px',
+                  padding: '18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px',
+                  boxShadow: isDark ? '0 12px 32px rgba(0,0,0,0.45)' : '0 8px 24px rgba(37,99,235,0.08)',
+                }}>
+
+                  {/* 1. Quick Material Selector & Position Bar */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '260px' }}>
+                      <span style={{ fontSize: '18px' }}>🏷️</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '10px', color: c.sub, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                          SWITCH MONITORED MATERIAL
+                        </div>
+                        <select
+                          value={item.product_id}
+                          onChange={e => {
+                            const newSku = e.target.value;
+                            setSelectedSku(newSku);
+                            const target = productsList.find(p => p.product_id === newSku);
+                            if (target) {
+                              setDrawerItem(target);
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.4)' : '#CBD5E1'}`,
+                            background: isDark ? '#0D1B2E' : '#FFFFFF',
+                            color: c.title,
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            outline: 'none',
+                            marginTop: '2px',
+                          }}
+                        >
+                          {(productsList?.length ? productsList : [
+                            { product_id: 'FAB-001', product_name: 'Organic Cotton Premium 30s' },
+                            { product_id: 'FAB-002', product_name: 'Lycra Stretch Twill Fabric' },
+                            { product_id: 'DYE-008', product_name: 'Indigo Reactive Dye Base' },
+                            { product_id: 'TRM-015', product_name: 'Alloy Snap Fasteners 15mm' },
+                            { product_id: 'YRN-042', product_name: 'Polyester Spun Thread 40/2' },
+                            { product_id: 'TRM-022', product_name: 'Brass YKK Compatible Zippers' },
+                            { product_id: 'CHM-005', product_name: 'Textile Pre-Treatment Enzyme' },
+                            { product_id: 'YRN-018', product_name: 'Combed Cotton Ring Yarn 40s' },
+                          ]).map(p => (
+                            <option key={p.product_id} value={p.product_id}>
+                              {p.product_id} — {p.product_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', padding: '6px 14px', borderRadius: '12px', border: '1px solid rgba(37,99,235,0.3)', whiteSpace: 'nowrap' }}>
+                      📦 Total Position: {(directParams.current_inventory + (directParams.in_transit_qty || 0)).toLocaleString()} {item.unit}
+                    </div>
+                  </div>
+
+                  {/* 2. Upstream Signals: Module 1 (Demand) & Module 2 (Supply Risk) */}
+                  <div style={{ background: isDark ? 'rgba(37,99,235,0.06)' : '#EFF6FF', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.25)' : '#BFDBFE'}`, borderRadius: '14px', padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '15px' }}>📡</span>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#60A5FA' : '#1D4ED8', letterSpacing: '.03em' }}>
+                          UPSTREAM SIGNALS: MODULE 1 &amp; MODULE 2 (AI AUTO-FETCHED)
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '9.5px', color: c.sub }}>
+                          🕐 {new Date().toLocaleTimeString()}
+                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', background: '#FEF3C7', padding: '2px 8px', borderRadius: '8px', border: '1px solid #FCD34D' }}>
+                          ⚡ DEMO DATA (APIs Pending)
+                        </span>
+                        <button
+                          onClick={() => {
+                            const match = productsList.find(p => p.product_id === directParams.product_id);
+                            if (match) {
+                              setDirectParams(p => ({
+                                ...p,
+                                forecasted_demand: match.forecasted_demand,
+                                demand_std_dev: match.demand_std_dev,
+                                disruption_probability: match.disruption_probability,
+                                supplier_trust_score: match.supplier_trust_score,
+                                average_lead_time: match.average_lead_time,
+                                lead_time_std_dev: match.lead_time_std_dev,
+                              }));
+                              showToast(`🔄 Upstream feeds refreshed for ${directParams.product_id}`);
+                            }
+                          }}
+                          style={{ fontSize: '10.5px', fontWeight: 700, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', border: '1px solid #93C5FD', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer' }}
+                        >
+                          🔄 Refresh
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: '10px', fontSize: '10.5px', color: isDark ? '#93C5FD' : '#1E40AF', background: isDark ? 'rgba(37,99,235,0.12)' : '#DBEAFE', padding: '6px 10px', borderRadius: '8px', fontWeight: 600 }}>
+                      🔒 These values are <strong>auto-fetched from Module 1 &amp; 2 AI models</strong>. The inventory manager does not edit them.
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '8px' }}>
+                      {/* M1: Forecast Demand */}
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#BFDBFE'}`, borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#2563EB' }}>📈 M1 · FORECAST DEMAND (D)</div>
+                        <div style={{ fontSize: '17px', fontWeight: 900, color: directParams.forecasted_demand > 0 ? (isDark ? '#60A5FA' : '#1D4ED8') : '#EF4444', marginTop: '2px' }}>
+                          {directParams.forecasted_demand > 0 ? directParams.forecasted_demand.toLocaleString() : '0 (Invalid)'}
+                        </div>
+                        <div style={{ fontSize: '9px', color: c.sub }}>units / cycle</div>
+                      </div>
+
+                      {/* M1: Demand Volatility */}
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#BFDBFE'}`, borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#2563EB' }}>📊 M1 · VOLATILITY (σ_D)</div>
+                        <div style={{ fontSize: '17px', fontWeight: 900, color: isDark ? '#60A5FA' : '#1D4ED8', marginTop: '2px' }}>
+                          ±{directParams.demand_std_dev > 0 ? directParams.demand_std_dev.toFixed(1) : '—'}
+                        </div>
+                        <div style={{ fontSize: '9px', color: c.sub }}>units std. dev.</div>
+                      </div>
+
+                      {/* M2: Disruption Risk */}
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#D97706' }}>⚠️ M2 · DISRUPTION PROB.</div>
+                        <div style={{ fontSize: '17px', fontWeight: 900, color: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#D97706' : '#10B981', marginTop: '2px' }}>
+                          {(directParams.disruption_probability * 100).toFixed(0)}%
+                        </div>
+                        <div style={{ height: '3px', borderRadius: '2px', background: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0', marginTop: '4px' }}>
+                          <div style={{ height: '100%', width: `${directParams.disruption_probability * 100}%`, background: directParams.disruption_probability > 0.6 ? '#EF4444' : '#F59E0B' }} />
+                        </div>
+                      </div>
+
+                      {/* M2: Supplier Trust Score */}
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#D97706' }}>🤝 M2 · SUPPLIER TRUST</div>
+                        <div style={{ fontSize: '17px', fontWeight: 900, color: (directParams.supplier_trust_score || 0) >= 75 ? '#10B981' : '#F59E0B', marginTop: '2px' }}>
+                          {directParams.supplier_trust_score || 75}<span style={{ fontSize: '11px', fontWeight: 600 }}>/100</span>
+                        </div>
+                        <div style={{ fontSize: '9px', color: c.sub }}>OTIF rating</div>
+                      </div>
+
+                      {/* M2: Lead Time */}
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#D97706' }}>⏱ M2 · LEAD TIME (L)</div>
+                        <div style={{ fontSize: '17px', fontWeight: 900, color: isDark ? '#FBBF24' : '#92400E', marginTop: '2px' }}>
+                          {directParams.average_lead_time > 0 ? directParams.average_lead_time.toFixed(1) : '—'} d
+                        </div>
+                        <div style={{ fontSize: '9px', color: c.sub }}>σ = ±{directParams.lead_time_std_dev?.toFixed(2) || '—'} d</div>
+                      </div>
+
+                      {/* M2: Risk Tier */}
+                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '8px', padding: '10px' }}>
+                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#D97706' }}>🛡 M2 · RISK TIER</div>
+                        <div style={{ fontSize: '15px', fontWeight: 900, color: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#F59E0B' : '#10B981', marginTop: '3px' }}>
+                          {directParams.disruption_probability > 0.6 ? 'CRITICAL' : directParams.disruption_probability > 0.4 ? 'HIGH' : directParams.disruption_probability > 0.2 ? 'MEDIUM' : 'LOW'}
+                        </div>
+                        <div style={{ fontSize: '9px', color: c.sub }}>AI classification</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Section C & D: Inventory Manager Manual Inputs */}
+                  <div style={{ background: isDark ? 'rgba(16,185,129,0.04)' : '#F0FDF4', border: `1.5px solid ${isDark ? 'rgba(16,185,129,0.25)' : '#BBF7D0'}`, borderRadius: '14px', padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '15px' }}>✏️</span>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#34D399' : '#15803D', letterSpacing: '.03em' }}>
+                          SECTION C: WAREHOUSE POSITION &amp; SECTION D: POLICY LEVERS
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '10px', color: c.sub, fontWeight: 600 }}>The only fields you enter manually</span>
+                    </div>
+
+                    {/* Field-level domain validation check according to apparel dataset */}
+                    {(() => {
+                      const dCurrentInv = Number(directParams.current_inventory);
+                      const dInTransit = Number(directParams.in_transit_qty ?? 0);
+                      const dLeadTime = Number(directParams.average_lead_time);
+                      const dDemandVal = Number(directParams.forecasted_demand);
+
+                      const dErrors = {
+                        current_inventory:
+                          isNaN(dCurrentInv) || dCurrentInv < 0
+                            ? 'Physical stock cannot be negative (must be ≥ 0 units)'
+                            : dCurrentInv > 100000
+                            ? 'Exceeds maximum warehouse bin capacity (max 100,000 units)'
+                            : null,
+                        in_transit_qty:
+                          isNaN(dInTransit) || dInTransit < 0
+                            ? 'In-transit quantity cannot be negative (must be ≥ 0 units)'
+                            : dInTransit > 50000
+                            ? 'Exceeds maximum active PO capacity (max 50,000 units)'
+                            : null,
+                        average_lead_time:
+                          isNaN(dLeadTime) || dLeadTime < 0.5
+                            ? 'Lead time must be ≥ 0.5 days (instantaneous delivery is physically impossible)'
+                            : dLeadTime > 60.0
+                            ? 'Exceeds maximum contract SLA limit (max 60 days)'
+                            : null,
+                        forecasted_demand:
+                          isNaN(dDemandVal) || dDemandVal <= 0
+                            ? 'Forecasted demand must be > 0 (Module 1 AI signal required)'
+                            : null,
+                      };
+                      const dHasErrors = Boolean(
+                        dErrors.current_inventory ||
+                        dErrors.in_transit_qty ||
+                        dErrors.average_lead_time ||
+                        dErrors.forecasted_demand
+                      );
+
+                      return (
+                        <>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
+                            {/* Physical Stock */}
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label style={{ fontSize: '11px', fontWeight: 700, color: c.title }}>
+                                  📦 Physical Stock (WMS)
+                                </label>
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 700,
+                                  color: dErrors.current_inventory ? '#EF4444' : c.sub,
+                                  background: dErrors.current_inventory ? (isDark ? 'rgba(239,68,68,0.18)' : '#FEE2E2') : (isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'),
+                                  padding: '1px 6px', borderRadius: '4px',
+                                }}>
+                                  Range: 0 – 100,000
+                                </span>
+                              </div>
+                              <input
+                                type="number"
+                                value={directParams.current_inventory}
+                                onChange={e => setDirectParams(p => ({ ...p, current_inventory: parseFloat(e.target.value) }))}
+                                style={{
+                                  width: '100%', padding: '7px 10px', borderRadius: '8px',
+                                  border: dErrors.current_inventory ? '1.5px solid #EF4444' : `1px solid ${c.inputBorder}`,
+                                  background: dErrors.current_inventory ? (isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2') : c.inputBg,
+                                  color: dErrors.current_inventory ? '#EF4444' : c.inputText,
+                                  fontWeight: 800, fontSize: '13px', outline: 'none', boxSizing: 'border-box',
+                                  transition: 'border 0.2s, background 0.2s',
+                                }}
+                              />
+                              {dErrors.current_inventory && (
+                                <div style={{ fontSize: '9.5px', color: '#EF4444', fontWeight: 700, marginTop: '3px' }}>
+                                  ❌ {dErrors.current_inventory}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* In-Transit Stock */}
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label style={{ fontSize: '11px', fontWeight: 700, color: c.title }}>
+                                  🚚 In-Transit Stock (POs)
+                                </label>
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 700,
+                                  color: dErrors.in_transit_qty ? '#EF4444' : c.sub,
+                                  background: dErrors.in_transit_qty ? (isDark ? 'rgba(239,68,68,0.18)' : '#FEE2E2') : (isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'),
+                                  padding: '1px 6px', borderRadius: '4px',
+                                }}>
+                                  Range: 0 – 50,000
+                                </span>
+                              </div>
+                              <input
+                                type="number"
+                                value={directParams.in_transit_qty ?? 0}
+                                onChange={e => setDirectParams(p => ({ ...p, in_transit_qty: parseFloat(e.target.value) }))}
+                                style={{
+                                  width: '100%', padding: '7px 10px', borderRadius: '8px',
+                                  border: dErrors.in_transit_qty ? '1.5px solid #EF4444' : `1px solid ${c.inputBorder}`,
+                                  background: dErrors.in_transit_qty ? (isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2') : c.inputBg,
+                                  color: dErrors.in_transit_qty ? '#EF4444' : c.inputText,
+                                  fontWeight: 700, fontSize: '13px', outline: 'none', boxSizing: 'border-box',
+                                  transition: 'border 0.2s, background 0.2s',
+                                }}
+                              />
+                              {dErrors.in_transit_qty && (
+                                <div style={{ fontSize: '9.5px', color: '#EF4444', fontWeight: 700, marginTop: '3px' }}>
+                                  ❌ {dErrors.in_transit_qty}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Baseline Lead Time */}
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                <label style={{ fontSize: '11px', fontWeight: 700, color: c.title }}>
+                                  ⏱️ Baseline Lead Time (SLA)
+                                </label>
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 700,
+                                  color: dErrors.average_lead_time ? '#EF4444' : c.sub,
+                                  background: dErrors.average_lead_time ? (isDark ? 'rgba(239,68,68,0.18)' : '#FEE2E2') : (isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'),
+                                  padding: '1px 6px', borderRadius: '4px',
+                                }}>
+                                  Range: 0.5 – 60.0 d
+                                </span>
+                              </div>
+                              <input
+                                type="number"
+                                step="0.5"
+                                value={directParams.average_lead_time}
+                                onChange={e => setDirectParams(p => ({ ...p, average_lead_time: parseFloat(e.target.value) }))}
+                                style={{
+                                  width: '100%', padding: '7px 10px', borderRadius: '8px',
+                                  border: dErrors.average_lead_time ? '1.5px solid #EF4444' : `1px solid ${c.inputBorder}`,
+                                  background: dErrors.average_lead_time ? (isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2') : c.inputBg,
+                                  color: dErrors.average_lead_time ? '#EF4444' : c.inputText,
+                                  fontWeight: 700, fontSize: '13px', outline: 'none', boxSizing: 'border-box',
+                                  transition: 'border 0.2s, background 0.2s',
+                                }}
+                              />
+                              {dErrors.average_lead_time && (
+                                <div style={{ fontSize: '9.5px', color: '#EF4444', fontWeight: 700, marginTop: '3px' }}>
+                                  ❌ {dErrors.average_lead_time}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Target SLA */}
+                            <div>
+                              <label style={{ fontSize: '11px', fontWeight: 700, color: c.title, display: 'block', marginBottom: '4px' }}>
+                                🎯 Target Service Level (SL)
+                              </label>
+                              <select
+                                value={directParams.service_level || 0.95}
+                                onChange={e => {
+                                  const sl = parseFloat(e.target.value);
+                                  const zMap = { 0.90: 1.282, 0.95: 1.645, 0.98: 2.054, 0.99: 2.326 };
+                                  setDirectParams(p => ({ ...p, service_level: sl, z_value: zMap[sl] || 1.645 }));
+                                }}
+                                style={{
+                                  width: '100%', padding: '7px 10px', borderRadius: '8px',
+                                  border: `1px solid ${c.inputBorder}`, background: c.inputBg, color: c.inputText,
+                                  fontWeight: 700, fontSize: '12px', outline: 'none', boxSizing: 'border-box',
+                                }}
+                              >
+                                <option value={0.90}>90% SLA (Z = 1.282) · Relaxed Buffer</option>
+                                <option value={0.95}>95% SLA (Z = 1.645) · Standard Apparel</option>
+                                <option value={0.98}>98% SLA (Z = 2.054) · High Criticality Tier</option>
+                                <option value={0.99}>99% SLA (Z = 2.326) · Zero-Stockout Guarantee</option>
+                              </select>
+                            </div>
+
+                            {/* Disruption Scenario */}
+                            <div>
+                              <label style={{ fontSize: '11px', fontWeight: 700, color: c.title, display: 'block', marginBottom: '4px' }}>
+                                🌪️ Disruption Scenario Stress
+                              </label>
+                              <select
+                                value={directParams.scenario || 'NORMAL'}
+                                onChange={e => setDirectParams(p => ({ ...p, scenario: e.target.value }))}
+                                style={{
+                                  width: '100%', padding: '7px 10px', borderRadius: '8px',
+                                  border: `1px solid ${c.inputBorder}`, background: c.inputBg, color: c.inputText,
+                                  fontWeight: 700, fontSize: '12px', outline: 'none', boxSizing: 'border-box',
+                                }}
+                              >
+                                <option value="NORMAL">NORMAL · Peace-Time Operations</option>
+                                <option value="MODERATE">MODERATE · Port Congestion / Seasonal Delay</option>
+                                <option value="SEVERE">SEVERE · Geopolitical Chokepoint Crisis</option>
+                              </select>
+                            </div>
+
+                            {/* Policy Type */}
+                            <div>
+                              <label style={{ fontSize: '11px', fontWeight: 700, color: c.title, display: 'block', marginBottom: '4px' }}>
+                                🛡️ Risk-Adjustment Policy Type
+                              </label>
+                              <select
+                                value={directParams.policy_type || 'FORECAST_RISK_AWARE'}
+                                onChange={e => setDirectParams(p => ({ ...p, policy_type: e.target.value }))}
+                                style={{
+                                  width: '100%', padding: '7px 10px', borderRadius: '8px',
+                                  border: `1px solid ${c.inputBorder}`, background: c.inputBg, color: c.inputText,
+                                  fontWeight: 700, fontSize: '12px', outline: 'none', boxSizing: 'border-box',
+                                }}
+                              >
+                                <option value="FORECAST_RISK_AWARE">FORECAST_RISK_AWARE (Adaptive Dual-Sigma)</option>
+                                <option value="ADAPTIVE">ADAPTIVE (Dynamic Lead-Time Scaling)</option>
+                                <option value="STATIC_BASELINE">STATIC_BASELINE (Unadjusted King's Formula)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {/* 4. Real-time Validation Box & Button Interlock */}
+                  {(() => {
+                    const dCurrentInv = Number(directParams.current_inventory);
+                    const dInTransit = Number(directParams.in_transit_qty ?? 0);
+                    const dLeadTime = Number(directParams.average_lead_time);
+                    const dDemandVal = Number(directParams.forecasted_demand);
+
+                    const activeErrors = [];
+                    if (isNaN(dDemandVal) || dDemandVal <= 0) activeErrors.push('⚠ Rolling Forecast Demand must be > 0 (Module 1 AI feed required).');
+                    if (isNaN(dLeadTime) || dLeadTime < 0.5) activeErrors.push('⚠ Baseline Lead Time must be ≥ 0.5 days (instant supply is physically impossible).');
+                    if (dLeadTime > 60.0) activeErrors.push('⚠ Baseline Lead Time exceeds contract SLA boundary (max 60 days).');
+                    if (isNaN(dCurrentInv) || dCurrentInv < 0) activeErrors.push('⚠ Physical stock cannot be negative (WMS scan must be ≥ 0 units).');
+                    if (dCurrentInv > 100000) activeErrors.push('⚠ Physical stock exceeds warehouse bin capacity (max 100,000 units).');
+                    if (isNaN(dInTransit) || dInTransit < 0) activeErrors.push('⚠ In-transit PO quantity cannot be negative.');
+                    if (dInTransit > 50000) activeErrors.push('⚠ In-transit quantity exceeds max active PO capacity (max 50,000 units).');
+
+                    const hasBlockers = activeErrors.length > 0;
+
+                    return (
+                      <>
+                        {hasBlockers && (
+                          <div style={{ background: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2', border: '1.5px solid #FCA5A5', borderRadius: '10px', padding: '10px 14px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 800, color: '#DC2626', marginBottom: '4px' }}>
+                              🚫 VALIDATION ALERT — Button disabled until input range errors are resolved:
+                            </div>
+                            {activeErrors.map((e, idx) => (
+                              <div key={idx} style={{ fontSize: '11px', color: '#DC2626', fontWeight: 600 }}>{e}</div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 5. Run Optimization Action Button */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingTop: '4px' }}>
+                          <div style={{ fontSize: '11px', color: c.sub }}>
+                            {hasBlockers ? '❌ Validation failed · Fix highlighted fields above' : '✓ Parameters validated · Ready for optimizer dispatch'}
+                          </div>
+                          <button
+                            className="btn-hover"
+                            onClick={async () => {
+                              if (hasBlockers) return;
+                              setIsExecutingDirectApi(true);
+                              const requestId = `REQ-${Date.now()}`;
+                              const requestTimestamp = new Date().toISOString();
+                              try {
+                                const r = await optimizeInventoryDetailed({
+                                  ...directParams,
+                                  _request_id: requestId,
+                                });
+                                r._requestId = requestId;
+                                r._requestTimestamp = requestTimestamp;
+                                r._responseTimestamp = new Date().toISOString();
+                                r._inputSnapshot = { ...directParams };
+                                setDirectApiResult(r);
+                                setComputedPolicies(prev => [{ ...r, _computedAt: new Date().toISOString() }, ...prev]);
+                                showToast(`✅ Policy computed for ${directParams.product_id} · Request ID: ${requestId}`);
+                              } catch (e) {
+                                showToast(`❌ Optimization error: ${e.message || 'Unknown error from backend'}`, 'error');
+                              } finally {
+                                setIsExecutingDirectApi(false);
+                              }
+                            }}
+                            disabled={isExecutingDirectApi || hasBlockers}
+                            style={{
+                              padding: '10px 24px',
+                              borderRadius: '10px',
+                              border: 'none',
+                              background: hasBlockers
+                                ? (isDark ? '#334155' : '#94A3B8')
+                                : isExecutingDirectApi
+                                ? 'linear-gradient(135deg,#64748B,#475569)'
+                                : directApiResult?._requestId
+                                ? 'linear-gradient(135deg,#059669,#047857)'
+                                : 'linear-gradient(135deg,#2563EB,#1D4ED8)',
+                              color: '#FFFFFF',
+                              fontWeight: 800,
+                              fontSize: '12.5px',
+                              cursor: (isExecutingDirectApi || hasBlockers) ? 'not-allowed' : 'pointer',
+                              opacity: hasBlockers ? 0.65 : 1,
+                              boxShadow: hasBlockers ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              transition: 'all 0.2s ease',
+                            }}
+                          >
+                            {isExecutingDirectApi
+                              ? '⟳ Validating & Running Optimizer...'
+                              : hasBlockers
+                              ? '🚫 Fix Input Range Errors to Proceed'
+                              : directApiResult?._requestId
+                              ? '✅ Results Ready — See Below'
+                              : '🚀 Submit & Compute Policy'}
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
+
+
+                  {/* 6. Detailed Results Panel (Appears right inside this panel!) */}
+                  {directApiResult && directApiResult._requestId && (
+                    <div style={{
+                      marginTop: '10px',
+                      background: isDark ? 'rgba(16,185,129,0.06)' : '#F0FDF4',
+                      border: `2px solid ${isDark ? 'rgba(16,185,129,0.35)' : '#86EFAC'}`,
+                      borderRadius: '14px',
+                      padding: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                    }}>
+                      {/* Results Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '16px' }}>✅</span>
+                          <span style={{ fontSize: '13px', fontWeight: 800, color: isDark ? '#34D399' : '#15803D' }}>
+                            OPTIMIZATION RESULTS — {directApiResult.product_id}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 800, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.2)' : '#EFF6FF', padding: '3px 8px', borderRadius: '12px', border: '1px solid #93C5FD' }}>
+                            🔑 {directApiResult._requestId}
+                          </span>
+                          <span style={{ fontSize: '10px', color: c.sub, background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', padding: '3px 8px', borderRadius: '12px' }}>
+                            ⏱ {new Date(directApiResult._responseTimestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Input Sources Attribution */}
+                      <div style={{ padding: '8px 12px', background: isDark ? 'rgba(37,99,235,0.08)' : '#EFF6FF', borderRadius: '8px', border: `1px solid ${isDark ? 'rgba(37,99,235,0.2)' : '#BFDBFE'}` }}>
+                        <div style={{ fontSize: '10px', fontWeight: 800, color: '#2563EB', marginBottom: '4px' }}>
+                          📋 INPUT SOURCES (Data that generated this result):
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '4px', fontSize: '10.5px' }}>
+                          <div>Demand (M1): <strong>{directApiResult._inputSnapshot?.forecasted_demand?.toLocaleString()} units</strong> <span style={{ color: '#D97706' }}>[Demo M1]</span></div>
+                          <div>Disruption (M2): <strong>{((directApiResult._inputSnapshot?.disruption_probability || 0) * 100).toFixed(0)}%</strong> <span style={{ color: '#D97706' }}>[Demo M2]</span></div>
+                          <div>Lead Time (ERP): <strong>{directApiResult._inputSnapshot?.average_lead_time?.toFixed(1)} days</strong> <span style={{ color: '#10B981' }}>[WMS Live]</span></div>
+                          <div>Physical Stock: <strong>{directApiResult._inputSnapshot?.current_inventory?.toLocaleString()} units</strong> <span style={{ color: '#10B981' }}>[WMS Live]</span></div>
+                        </div>
+                      </div>
+
+                      {/* Core Calculated Policy Parameters */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+                        {[
+                          { label: 'Safety Stock', value: `${directApiResult.safety_stock?.toFixed(1)} units`, color: '#10B981', formula: 'σ_D·√L·Z' },
+                          { label: 'Reorder Point', value: `${directApiResult.reorder_point?.toFixed(1)} units`, color: '#2563EB', formula: 'D·L + SS' },
+                          { label: 'Reorder Qty', value: `${directApiResult.reorder_quantity?.toFixed(1)} units`, color: '#8B5CF6', formula: 'EOQ + Buffer' },
+                          { label: 'Risk-Adj Lead', value: `${directApiResult.risk_adjusted_lead_time?.toFixed(2)} d`, color: '#F59E0B', formula: 'L·(1+P)' },
+                          { label: 'Backorder Risk', value: `${((directApiResult.backorder_risk || 0) * 100).toFixed(1)}%`, color: directApiResult.backorder_risk > 0.4 ? '#EF4444' : '#10B981', formula: 'XGBoost' },
+                          { label: 'Risk Tier', value: directApiResult.risk_level, color: directApiResult.risk_level === 'CRITICAL' ? '#EF4444' : '#10B981', formula: 'Classifier' },
+                        ].map(({ label, value, color, formula }) => (
+                          <div key={label} style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${c.tableBorder}`, borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '9px', color: c.sub, fontWeight: 700 }}>{label}</div>
+                            <div style={{ fontSize: '14px', fontWeight: 900, color, marginTop: '2px' }}>{value}</div>
+                            <div style={{ fontSize: '8.5px', color: c.sub, fontStyle: 'italic', marginTop: '1px' }}>{formula}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Material Readiness for Module 4 */}
+                      <div style={{
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        background: directApiResult.material_availability_flag ? (isDark ? 'rgba(16,185,129,0.12)' : '#DCFCE7') : (isDark ? 'rgba(239,68,68,0.12)' : '#FEE2E2'),
+                        border: `1px solid ${directApiResult.material_availability_flag ? '#86EFAC' : '#FCA5A5'}`,
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: 800, color: directApiResult.material_availability_flag ? '#15803D' : '#DC2626', marginBottom: '4px' }}>
+                          {directApiResult.material_availability_flag ? '✅ MATERIAL READY FOR PRODUCTION LINE (Module 4)' : '🚨 PRODUCTION SHORTAGE ALERT'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: c.title, fontWeight: 600, lineHeight: 1.5 }}>
+                          {directApiResult.reorder_recommendation}
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '6px', fontSize: '10.5px', color: c.sub, flexWrap: 'wrap' }}>
+                          <span>Material Req: <strong style={{ color: c.title }}>{directApiResult.material_requirement?.toFixed(1)} units</strong></span>
+                          <span>Shortage: <strong style={{ color: directApiResult.material_shortage > 0 ? '#EF4444' : '#10B981' }}>{directApiResult.material_shortage?.toFixed(1)} units</strong></span>
+                          <span>Reorder Needed: <strong style={{ color: directApiResult.reorder_required ? '#F59E0B' : '#10B981' }}>{directApiResult.reorder_required ? 'YES' : 'NO'}</strong></span>
+                        </div>
+                      </div>
+
+                      {/* Actions: Send to Module 4 & Export */}
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn-hover"
+                          onClick={() => {
+                            setReleasedGates(prev => ({ ...prev, [directApiResult.product_id]: true }));
+                            getProductionInterface().then(() => {
+                              showToast(`📤 Material availability for ${directApiResult.product_id} dispatched to Module 4 Scheduler · ${directApiResult._requestId}`);
+                            }).catch(() => {
+                              showToast(`📤 Module 4 contract dispatched for ${directApiResult.product_id} · ${directApiResult._requestId}`);
+                            });
+                            setActiveTab('readiness');
+                            setDrawerItem(null);
+                          }}
+                          style={{
+                            padding: '8px 14px', borderRadius: '8px', border: 'none',
+                            background: 'linear-gradient(135deg, #10B981, #059669)', color: '#FFFFFF',
+                            fontWeight: 800, fontSize: '11.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                          }}
+                        >
+                          <span>🏭</span> Send to Module 4 (Production Scheduler) ➔
+                        </button>
+                        <button
+                          className="btn-hover"
+                          onClick={() => {
+                            const text = JSON.stringify({ ...directApiResult }, null, 2);
+                            const blob = new Blob([text], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `OptiChain_Policy_${directApiResult.product_id}_${directApiResult._requestId}.json`;
+                            a.click();
+                            showToast(`✓ Policy exported as JSON`);
+                          }}
+                          style={{
+                            padding: '8px 14px', borderRadius: '8px', border: `1px solid ${c.tagBorder}`,
+                            background: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', color: c.title,
+                            fontWeight: 700, fontSize: '11.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                          }}
+                        >
+                          <span>💾</span> Export JSON
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* 1. Inventory Status & Health Gauge */}
                 <div style={{
                   background: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
@@ -7752,60 +8782,132 @@ export default function InventoryOptimizationView() {
 
                   {/* Current Physical Stock */}
                   <div style={styles.inputField}>
-                    <label style={styles.inputLabel}>
-                      <span>📦</span> Physical Stock <span style={{ color: c.sub, fontWeight: 400 }}>(WMS Bin Scan)</span>
-                    </label>
-                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label style={styles.inputLabel}>
+                        <span>📦</span> Physical Stock <span style={{ color: c.sub, fontWeight: 400 }}>(WMS Bin Scan)</span>
+                      </label>
+                      <span style={{
+                        fontSize: '9px', fontWeight: 700,
+                        color: directParams.current_inventory < 0 || directParams.current_inventory > 100000 ? '#EF4444' : c.sub,
+                        background: directParams.current_inventory < 0 || directParams.current_inventory > 100000 ? (isDark ? 'rgba(239,68,68,0.18)' : '#FEE2E2') : (isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'),
+                        padding: '1px 6px', borderRadius: '4px',
+                      }}>
+                        Range: 0 – 100,000
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden',
+                      border: directParams.current_inventory < 0 || directParams.current_inventory > 100000 ? '1.5px solid #EF4444' : `1.5px solid ${c.inputBorder}`,
+                      boxSizing: 'border-box',
+                    }}>
                       <input
                         type="number"
                         value={directParams.current_inventory}
-                        onChange={e => setDirectParams(p => ({ ...p, current_inventory: parseFloat(e.target.value) || 0 }))}
+                        onChange={e => setDirectParams(p => ({ ...p, current_inventory: parseFloat(e.target.value) }))}
                         className="input-focus"
-                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 800, fontSize: '13px', outline: 'none' }}
+                        style={{
+                          flex: 1, minWidth: 0, border: 'none', padding: '10px 14px',
+                          background: directParams.current_inventory < 0 || directParams.current_inventory > 100000 ? (isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2') : c.inputBg,
+                          color: directParams.current_inventory < 0 || directParams.current_inventory > 100000 ? '#EF4444' : c.inputText,
+                          fontWeight: 800, fontSize: '13px', outline: 'none',
+                        }}
                       />
                       <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
                         units
                       </span>
                     </div>
+                    {(directParams.current_inventory < 0 || directParams.current_inventory > 100000) && (
+                      <div style={{ fontSize: '9.5px', color: '#EF4444', fontWeight: 700, marginTop: '3px' }}>
+                        ❌ {directParams.current_inventory < 0 ? 'Physical stock cannot be negative (must be ≥ 0 units)' : 'Exceeds warehouse capacity (max 100,000 units)'}
+                      </div>
+                    )}
                   </div>
 
                   {/* In-Transit Purchase Orders */}
                   <div style={styles.inputField}>
-                    <label style={styles.inputLabel}>
-                      <span>🚚</span> In-Transit Stock <span style={{ color: c.sub, fontWeight: 400 }}>(Active POs)</span>
-                    </label>
-                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label style={styles.inputLabel}>
+                        <span>🚚</span> In-Transit Stock <span style={{ color: c.sub, fontWeight: 400 }}>(Active POs)</span>
+                      </label>
+                      <span style={{
+                        fontSize: '9px', fontWeight: 700,
+                        color: directParams.in_transit_qty < 0 || directParams.in_transit_qty > 50000 ? '#EF4444' : c.sub,
+                        background: directParams.in_transit_qty < 0 || directParams.in_transit_qty > 50000 ? (isDark ? 'rgba(239,68,68,0.18)' : '#FEE2E2') : (isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'),
+                        padding: '1px 6px', borderRadius: '4px',
+                      }}>
+                        Range: 0 – 50,000
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden',
+                      border: directParams.in_transit_qty < 0 || directParams.in_transit_qty > 50000 ? '1.5px solid #EF4444' : `1.5px solid ${c.inputBorder}`,
+                      boxSizing: 'border-box',
+                    }}>
                       <input
                         type="number"
-                        value={directParams.in_transit_qty || 0}
-                        onChange={e => setDirectParams(p => ({ ...p, in_transit_qty: parseFloat(e.target.value) || 0 }))}
+                        value={directParams.in_transit_qty ?? 0}
+                        onChange={e => setDirectParams(p => ({ ...p, in_transit_qty: parseFloat(e.target.value) }))}
                         className="input-focus"
-                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 700, fontSize: '13px', outline: 'none' }}
+                        style={{
+                          flex: 1, minWidth: 0, border: 'none', padding: '10px 14px',
+                          background: directParams.in_transit_qty < 0 || directParams.in_transit_qty > 50000 ? (isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2') : c.inputBg,
+                          color: directParams.in_transit_qty < 0 || directParams.in_transit_qty > 50000 ? '#EF4444' : c.inputText,
+                          fontWeight: 700, fontSize: '13px', outline: 'none',
+                        }}
                       />
                       <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
                         units
                       </span>
                     </div>
+                    {(directParams.in_transit_qty < 0 || directParams.in_transit_qty > 50000) && (
+                      <div style={{ fontSize: '9.5px', color: '#EF4444', fontWeight: 700, marginTop: '3px' }}>
+                        ❌ {directParams.in_transit_qty < 0 ? 'In-transit PO quantity cannot be negative (must be ≥ 0 units)' : 'Exceeds PO limit (max 50,000 units)'}
+                      </div>
+                    )}
                   </div>
 
                   {/* Lead Time L */}
                   <div style={styles.inputField}>
-                    <label style={styles.inputLabel}>
-                      <span>⏱️</span> Baseline Lead Time (L) <span style={{ color: c.sub, fontWeight: 400 }}>(Contract SLA)</span>
-                    </label>
-                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label style={styles.inputLabel}>
+                        <span>⏱️</span> Baseline Lead Time (L) <span style={{ color: c.sub, fontWeight: 400 }}>(Contract SLA)</span>
+                      </label>
+                      <span style={{
+                        fontSize: '9px', fontWeight: 700,
+                        color: directParams.average_lead_time < 0.5 || directParams.average_lead_time > 60.0 ? '#EF4444' : c.sub,
+                        background: directParams.average_lead_time < 0.5 || directParams.average_lead_time > 60.0 ? (isDark ? 'rgba(239,68,68,0.18)' : '#FEE2E2') : (isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'),
+                        padding: '1px 6px', borderRadius: '4px',
+                      }}>
+                        Range: 0.5 – 60.0 d
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden',
+                      border: directParams.average_lead_time < 0.5 || directParams.average_lead_time > 60.0 ? '1.5px solid #EF4444' : `1.5px solid ${c.inputBorder}`,
+                      boxSizing: 'border-box',
+                    }}>
                       <input
                         type="number"
                         step="0.5"
                         value={directParams.average_lead_time}
-                        onChange={e => setDirectParams(p => ({ ...p, average_lead_time: parseFloat(e.target.value) || 0 }))}
+                        onChange={e => setDirectParams(p => ({ ...p, average_lead_time: parseFloat(e.target.value) }))}
                         className="input-focus"
-                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 600, fontSize: '13px', outline: 'none' }}
+                        style={{
+                          flex: 1, minWidth: 0, border: 'none', padding: '10px 14px',
+                          background: directParams.average_lead_time < 0.5 || directParams.average_lead_time > 60.0 ? (isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2') : c.inputBg,
+                          color: directParams.average_lead_time < 0.5 || directParams.average_lead_time > 60.0 ? '#EF4444' : c.inputText,
+                          fontWeight: 700, fontSize: '13px', outline: 'none',
+                        }}
                       />
                       <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
                         days
                       </span>
                     </div>
+                    {(directParams.average_lead_time < 0.5 || directParams.average_lead_time > 60.0) && (
+                      <div style={{ fontSize: '9.5px', color: '#EF4444', fontWeight: 700, marginTop: '3px' }}>
+                        ❌ {directParams.average_lead_time < 0.5 ? 'Lead time must be ≥ 0.5 days (instantaneous delivery is physically impossible)' : 'Exceeds maximum contract SLA limit (max 60 days)'}
+                      </div>
+                    )}
                   </div>
 
                   {/* Lead Time Variance σ_L */}
@@ -7851,78 +8953,141 @@ export default function InventoryOptimizationView() {
                 </div>
               </div>
 
-              {/* UPSTREAM SIGNALS: MODULE 1 & MODULE 2 (DEMO INPUTS UNTIL API CONNECTED) */}
+              {/* UPSTREAM SIGNALS: MODULE 1 & MODULE 2 — READ-ONLY AUTO-FETCHED */}
               <div style={{ background: isDark ? 'rgba(59,130,246,0.04)' : '#EFF6FF', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.25)' : '#BFDBFE'}`, borderRadius: '14px', padding: '16px 18px', boxSizing: 'border-box' }}>
+                {/* Section Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '15px' }}>📡</span>
                     <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#60A5FA' : '#1D4ED8', letterSpacing: '.03em' }}>
-                      UPSTREAM SIGNALS: MODULE 1 (DEMAND) & MODULE 2 (SUPPLY RISK)
+                      UPSTREAM SIGNALS: MODULE 1 (DEMAND) &amp; MODULE 2 (SUPPLY RISK)
                     </span>
                   </div>
-                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#D97706', background: '#FEF3C7', padding: '3px 10px', borderRadius: '10px', border: '1px solid #FCD34D' }}>
-                    ⚡ DEMO INPUTS (UPSTREAM MODULE APIS PENDING)
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '10px', color: c.sub }}>
+                      🕐 Fetched: {new Date().toLocaleTimeString()}
+                    </span>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#D97706', background: '#FEF3C7', padding: '3px 10px', borderRadius: '10px', border: '1px solid #FCD34D' }}>
+                      ⚡ DEMO DATA (Upstream APIs Pending)
+                    </span>
+                    <button
+                      onClick={async () => {
+                        // When live: replace this with fetchDemoUpstreamFeeds() or fetchLiveUpstream()
+                        const match = (productsList || []).find(p => p.product_id === directParams.product_id);
+                        if (match) {
+                          setDirectParams(p => ({
+                            ...p,
+                            forecasted_demand: match.forecasted_demand,
+                            demand_std_dev: match.demand_std_dev,
+                            disruption_probability: match.disruption_probability,
+                            supplier_trust_score: match.supplier_trust_score,
+                            average_lead_time: match.average_lead_time,
+                            lead_time_std_dev: match.lead_time_std_dev,
+                          }));
+                          showToast(`🔄 Upstream signals refreshed for ${directParams.product_id} from demo catalog`);
+                        }
+                      }}
+                      style={{ fontSize: '11px', fontWeight: 700, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', border: '1.5px solid #93C5FD', borderRadius: '8px', padding: '4px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    >
+                      🔄 Refresh Upstream
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
-                  <div style={styles.inputField}>
-                    <label style={styles.inputLabel}>
-                      <span>📈</span> Rolling Forecast Demand (D) <span style={{ color: '#2563EB', fontWeight: 700 }}>(Demo M1)</span>
-                    </label>
-                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
-                      <input
-                        type="number"
-                        value={directParams.forecasted_demand}
-                        onChange={e => setDirectParams(p => ({ ...p, forecasted_demand: parseFloat(e.target.value) || 0 }))}
-                        className="input-focus"
-                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 800, fontSize: '13px', outline: 'none' }}
-                      />
-                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
-                        units
-                      </span>
+
+                {/* Info Banner */}
+                <div style={{ marginBottom: '12px', padding: '8px 12px', background: isDark ? 'rgba(37,99,235,0.1)' : '#DBEAFE', borderRadius: '8px', fontSize: '11px', color: isDark ? '#93C5FD' : '#1D4ED8', fontWeight: 600 }}>
+                  🔒 These values are <strong>auto-fetched from Module 1 &amp; Module 2</strong>. You cannot edit them — they represent the AI-generated demand forecast and supply-risk score for the selected SKU.
+                </div>
+
+                {/* Read-Only Signal Cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+
+                  {/* M1: Forecasted Demand */}
+                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#BFDBFE'}`, borderRadius: '10px', padding: '12px 14px', position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '.05em' }}>📈 M1 · Forecast Demand</span>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: directParams.forecasted_demand > 0 ? (isDark ? '#60A5FA' : '#1D4ED8') : '#EF4444' }}>
+                      {directParams.forecasted_demand > 0 ? directParams.forecasted_demand.toLocaleString() : '—'}
+                    </div>
+                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>units / planning cycle</div>
+                    {directParams.forecasted_demand <= 0 && (
+                      <div style={{ marginTop: '6px', fontSize: '10px', color: '#EF4444', fontWeight: 700 }}>⚠ No data — select a SKU above</div>
+                    )}
+                  </div>
+
+                  {/* M1: Demand Volatility */}
+                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#BFDBFE'}`, borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '.05em' }}>📊 M1 · Demand Volatility (σ_D)</span>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: isDark ? '#60A5FA' : '#1D4ED8' }}>
+                      ±{directParams.demand_std_dev > 0 ? directParams.demand_std_dev.toFixed(1) : '—'}
+                    </div>
+                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>units std. deviation</div>
+                  </div>
+
+                  {/* M2: Disruption Probability */}
+                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>⚠️ M2 · Disruption Risk</span>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#D97706' : '#10B981' }}>
+                      {(directParams.disruption_probability * 100).toFixed(0)}%
+                    </div>
+                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>disruption probability</div>
+                    {/* Risk bar */}
+                    <div style={{ marginTop: '6px', height: '4px', borderRadius: '2px', background: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0' }}>
+                      <div style={{ height: '100%', width: `${directParams.disruption_probability * 100}%`, borderRadius: '2px', background: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#F59E0B' : '#10B981', transition: 'width 0.4s ease' }} />
                     </div>
                   </div>
 
-                  <div style={styles.inputField}>
-                    <label style={styles.inputLabel}>
-                      <span>📊</span> Demand Volatility (σ_D) <span style={{ color: '#2563EB', fontWeight: 700 }}>(Demo M1)</span>
-                    </label>
-                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
-                      <input
-                        type="number"
-                        value={directParams.demand_std_dev}
-                        onChange={e => setDirectParams(p => ({ ...p, demand_std_dev: parseFloat(e.target.value) || 0 }))}
-                        className="input-focus"
-                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: c.inputText, fontWeight: 600, fontSize: '13px', outline: 'none' }}
-                      />
-                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
-                        units
-                      </span>
+                  {/* M2: Supplier Trust Score */}
+                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>🤝 M2 · Supplier Trust</span>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
+                    </div>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: (directParams.supplier_trust_score || 0) >= 75 ? '#10B981' : '#F59E0B' }}>
+                      {directParams.supplier_trust_score || '—'}<span style={{ fontSize: '12px', fontWeight: 600 }}>/100</span>
+                    </div>
+                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>OTIF reliability score</div>
+                    {/* Trust bar */}
+                    <div style={{ marginTop: '6px', height: '4px', borderRadius: '2px', background: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0' }}>
+                      <div style={{ height: '100%', width: `${directParams.supplier_trust_score || 0}%`, borderRadius: '2px', background: (directParams.supplier_trust_score || 0) >= 75 ? '#10B981' : '#F59E0B', transition: 'width 0.4s ease' }} />
                     </div>
                   </div>
 
-                  <div style={styles.inputField}>
-                    <label style={styles.inputLabel}>
-                      <span>⚠️</span> Disruption Probability <span style={{ color: '#D97706', fontWeight: 700 }}>(Demo M2: {(directParams.disruption_probability * 100).toFixed(0)}%)</span>
-                    </label>
-                    <div style={{ display: 'flex', width: '100%', borderRadius: '10px', overflow: 'hidden', border: `1.5px solid ${c.inputBorder}`, boxSizing: 'border-box' }}>
-                      <input
-                        type="number"
-                        step="0.05"
-                        min="0"
-                        max="1"
-                        value={directParams.disruption_probability}
-                        onChange={e => setDirectParams(p => ({ ...p, disruption_probability: parseFloat(e.target.value) || 0 }))}
-                        className="input-focus"
-                        style={{ flex: 1, minWidth: 0, border: 'none', padding: '10px 14px', background: c.inputBg, color: directParams.disruption_probability > 0.6 ? '#EF4444' : c.title, fontWeight: 800, fontSize: '13px', outline: 'none' }}
-                      />
-                      <span style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '11px', fontWeight: 700, color: c.sub, flexShrink: 0, borderLeft: `1px solid ${c.inputBorder}` }}>
-                        0.0–1.0
-                      </span>
+                  {/* M2: Lead Time */}
+                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>⏱ M2 · Avg Lead Time</span>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
                     </div>
+                    <div style={{ fontSize: '20px', fontWeight: 900, color: isDark ? '#FBBF24' : '#92400E' }}>
+                      {directParams.average_lead_time > 0 ? directParams.average_lead_time.toFixed(1) : '—'}
+                    </div>
+                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>days · σ = ±{directParams.lead_time_std_dev?.toFixed(2) || '—'} days</div>
                   </div>
+
+                  {/* M2: Risk Level Summary */}
+                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>🛡 M2 · Risk Classification</span>
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
+                    </div>
+                    <div style={{ fontSize: '18px', fontWeight: 900, color: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#F59E0B' : '#10B981' }}>
+                      {directParams.disruption_probability > 0.6 ? 'CRITICAL' : directParams.disruption_probability > 0.4 ? 'HIGH' : directParams.disruption_probability > 0.2 ? 'MEDIUM' : 'LOW'}
+                    </div>
+                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>computed from disruption prob.</div>
+                  </div>
+
                 </div>
               </div>
+
 
               {/* SECTION D: OPTIMIZATION SETTINGS & POLICIES */}
               <div style={{ background: isDark ? 'rgba(168,85,247,0.04)' : '#FAF5FF', border: `1.5px solid ${isDark ? 'rgba(168,85,247,0.25)' : '#E9D5FF'}`, borderRadius: '14px', padding: '16px 18px', boxSizing: 'border-box' }}>
@@ -7987,115 +9152,128 @@ export default function InventoryOptimizationView() {
 
             {/* ── FEATURE 1: Inline Field Validation Errors ── */}
             {(() => {
+              const mCurrentInv = Number(directParams.current_inventory);
+              const mInTransit = Number(directParams.in_transit_qty ?? 0);
+              const mLeadTime = Number(directParams.average_lead_time);
+              const mDemandVal = Number(directParams.forecasted_demand);
+
               const errs = [];
-              if (directParams.forecasted_demand <= 0) errs.push('⚠ Rolling Forecast Demand must be > 0 (Module 1 signal required).');
-              if (directParams.average_lead_time <= 0) errs.push('⚠ Baseline Lead Time must be > 0 days.');
+              if (isNaN(mDemandVal) || mDemandVal <= 0) errs.push('⚠ Rolling Forecast Demand must be > 0 (Module 1 AI feed required).');
+              if (isNaN(mLeadTime) || mLeadTime < 0.5) errs.push('⚠ Baseline Lead Time must be ≥ 0.5 days (instant supply is physically impossible).');
+              if (mLeadTime > 60.0) errs.push('⚠ Baseline Lead Time exceeds contract SLA boundary (max 60 days).');
+              if (isNaN(mCurrentInv) || mCurrentInv < 0) errs.push('⚠ Physical stock cannot be negative (WMS scan must be ≥ 0 units).');
+              if (mCurrentInv > 100000) errs.push('⚠ Physical stock exceeds warehouse bin capacity (max 100,000 units).');
+              if (isNaN(mInTransit) || mInTransit < 0) errs.push('⚠ In-transit PO quantity cannot be negative.');
+              if (mInTransit > 50000) errs.push('⚠ In-transit quantity exceeds max active PO capacity (max 50,000 units).');
               if (directParams.supplier_trust_score <= 0) errs.push('⚠ Supplier Trust Score must be > 0.');
               if (directParams.disruption_probability < 0 || directParams.disruption_probability > 1) errs.push('⚠ Disruption Probability must be between 0.0 and 1.0.');
-              if (errs.length === 0) return null;
+
+              const mHasErrors = errs.length > 0;
+
               return (
-                <div style={{ margin: '10px 0 4px', background: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2', border: '1.5px solid #FCA5A5', borderRadius: '10px', padding: '10px 14px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#DC2626', marginBottom: '6px' }}>🚫 VALIDATION ERRORS — Fix before submitting:</div>
-                  {errs.map((e, i) => (
-                    <div key={i} style={{ fontSize: '11px', color: '#DC2626', marginBottom: '3px', fontWeight: 600 }}>{e}</div>
-                  ))}
-                </div>
-              );
-            })()}
+                <>
+                  {mHasErrors && (
+                    <div style={{ margin: '10px 0 4px', background: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2', border: '1.5px solid #FCA5A5', borderRadius: '10px', padding: '10px 14px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: '#DC2626', marginBottom: '6px' }}>
+                        🚫 VALIDATION ALERT — Button disabled until input range errors are resolved:
+                      </div>
+                      {errs.map((e, i) => (
+                        <div key={i} style={{ fontSize: '11px', color: '#DC2626', marginBottom: '3px', fontWeight: 600 }}>{e}</div>
+                      ))}
+                    </div>
+                  )}
 
-            {/* ── FEATURE 2: Data Source Status Bar ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', padding: '10px 14px', background: isDark ? 'rgba(37,99,235,0.08)' : '#EFF6FF', borderRadius: '10px', border: `1px solid ${isDark ? 'rgba(37,99,235,0.25)' : '#BFDBFE'}`, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: c.sub }}>DATA SOURCES:</span>
-              {/* Module 1 Status */}
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: directParams.forecasted_demand > 0 ? '#15803D' : '#DC2626', background: directParams.forecasted_demand > 0 ? (isDark ? 'rgba(16,185,129,0.15)' : '#DCFCE7') : (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2'), padding: '3px 10px', borderRadius: '20px', border: `1px solid ${directParams.forecasted_demand > 0 ? '#86EFAC' : '#FCA5A5'}` }}>
-                📈 Module 1 (Demand): {directParams.forecasted_demand > 0 ? '● Demo Data' : '● No Data'}
-              </span>
-              {/* Module 2 Status */}
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: directParams.disruption_probability >= 0 && directParams.supplier_trust_score > 0 ? '#D97706' : '#DC2626', background: directParams.disruption_probability >= 0 && directParams.supplier_trust_score > 0 ? (isDark ? 'rgba(217,119,6,0.15)' : '#FEF3C7') : (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2'), padding: '3px 10px', borderRadius: '20px', border: `1px solid ${directParams.supplier_trust_score > 0 ? '#FDE68A' : '#FCA5A5'}` }}>
-                ⚠️ Module 2 (Risk): {directParams.supplier_trust_score > 0 ? '● Demo Data' : '● No Data'}
-              </span>
-              {/* ERP Status */}
-              <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', padding: '3px 10px', borderRadius: '20px', border: '1px solid #93C5FD' }}>
-                📦 WMS/ERP: ● Synchronized
-              </span>
-              <span style={{ marginLeft: 'auto', fontSize: '10px', color: c.sub }}>
-                Fetched: {new Date().toLocaleTimeString()}
-              </span>
-            </div>
+                  {/* ── FEATURE 2: Data Source Status Bar ── */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', padding: '10px 14px', background: isDark ? 'rgba(37,99,235,0.08)' : '#EFF6FF', borderRadius: '10px', border: `1px solid ${isDark ? 'rgba(37,99,235,0.25)' : '#BFDBFE'}`, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: c.sub }}>DATA SOURCES:</span>
+                    {/* Module 1 Status */}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: directParams.forecasted_demand > 0 ? '#15803D' : '#DC2626', background: directParams.forecasted_demand > 0 ? (isDark ? 'rgba(16,185,129,0.15)' : '#DCFCE7') : (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2'), padding: '3px 10px', borderRadius: '20px', border: `1px solid ${directParams.forecasted_demand > 0 ? '#86EFAC' : '#FCA5A5'}` }}>
+                      📈 Module 1 (Demand): {directParams.forecasted_demand > 0 ? '● Demo Data' : '● No Data'}
+                    </span>
+                    {/* Module 2 Status */}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: directParams.disruption_probability >= 0 && directParams.supplier_trust_score > 0 ? '#D97706' : '#DC2626', background: directParams.disruption_probability >= 0 && directParams.supplier_trust_score > 0 ? (isDark ? 'rgba(217,119,6,0.15)' : '#FEF3C7') : (isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2'), padding: '3px 10px', borderRadius: '20px', border: `1px solid ${directParams.supplier_trust_score > 0 ? '#FDE68A' : '#FCA5A5'}` }}>
+                      ⚠️ Module 2 (Risk): {directParams.supplier_trust_score > 0 ? '● Demo Data' : '● No Data'}
+                    </span>
+                    {/* ERP Status */}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', padding: '3px 10px', borderRadius: '20px', border: '1px solid #93C5FD' }}>
+                      📦 WMS/ERP: ● Synchronized
+                    </span>
+                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: c.sub }}>
+                      Fetched: {new Date().toLocaleTimeString()}
+                    </span>
+                  </div>
 
-            {/* ── FEATURE 3 & 4: Enhanced Footer + Results Panel ── */}
-            <div style={{ marginTop: '18px', borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`, paddingTop: '16px' }}>
-              {/* Action row */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div style={{ fontSize: '11px', color: c.sub }}>
-                  * Primary inputs marked. Dispatches to Python <code>InventoryOptimizer.optimize()</code>
-                </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    onClick={() => setShowOptimizerModal(false)}
-                    style={{ padding: '9px 18px', borderRadius: '10px', border: `1px solid ${c.tagBorder}`, background: 'transparent', color: c.sub, fontWeight: 700, fontSize: '12.5px', cursor: 'pointer' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="btn-hover"
-                    onClick={async () => {
-                      // Client-side validation before hitting API
-                      if (directParams.forecasted_demand <= 0) {
-                        showToast('❌ Forecasted demand is 0 — meaningless input. Please select a valid SKU or enter demand > 0.', 'error');
-                        return;
-                      }
-                      if (directParams.average_lead_time <= 0) {
-                        showToast('❌ Lead time must be > 0 days.', 'error');
-                        return;
-                      }
-                      if (directParams.supplier_trust_score <= 0) {
-                        showToast('❌ Supplier trust score must be > 0.', 'error');
-                        return;
-                      }
-                      setIsExecutingDirectApi(true);
-                      const requestId = `REQ-${Date.now()}`;
-                      const requestTimestamp = new Date().toISOString();
-                      try {
-                        const r = await optimizeInventoryDetailed({
-                          ...directParams,
-                          _request_id: requestId,
-                        });
-                        // Attach metadata for the results panel
-                        r._requestId = requestId;
-                        r._requestTimestamp = requestTimestamp;
-                        r._responseTimestamp = new Date().toISOString();
-                        r._inputSnapshot = { ...directParams };
-                        setDirectApiResult(r);
-                        // Keep modal open so the results panel is visible below
-                        showToast(`✅ Policy computed for ${directParams.product_id} · Request ID: ${requestId}`);
-                      } catch (e) {
-                        showToast(`❌ Optimization error: ${e.message || 'Unknown error from backend'}`, 'error');
-                      } finally {
-                        setIsExecutingDirectApi(false);
-                      }
-                    }}
-                    disabled={isExecutingDirectApi}
-                    style={{
-                      ...styles.execBtn,
-                      background: isExecutingDirectApi
-                        ? 'linear-gradient(135deg,#64748B,#475569)'
-                        : directApiResult?._requestId
-                          ? 'linear-gradient(135deg,#059669,#047857)'
-                          : 'linear-gradient(135deg,#2563EB,#1D4ED8)',
-                      boxShadow: isExecutingDirectApi ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
-                      padding: '9px 24px', fontSize: '12.5px', fontWeight: 800,
-                      display: 'flex', alignItems: 'center', gap: '8px',
-                    }}
-                  >
-                    {isExecutingDirectApi
-                      ? '⟳ Computing Policy...'
-                      : directApiResult?._requestId
-                        ? '✅ Results Ready — Scroll Down'
-                        : '🚀 Submit & Compute Policy'}
-                  </button>
-                </div>
-              </div>
+                  {/* ── FEATURE 3 & 4: Enhanced Footer + Results Panel ── */}
+                  <div style={{ marginTop: '18px', borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`, paddingTop: '16px' }}>
+                    {/* Action row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div style={{ fontSize: '11px', color: c.sub }}>
+                        {mHasErrors ? '❌ Validation failed · Fix input ranges before submitting' : '* Validated parameters ready for Python InventoryOptimizer'}
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button
+                          onClick={() => setShowOptimizerModal(false)}
+                          style={{ padding: '9px 18px', borderRadius: '10px', border: `1px solid ${c.tagBorder}`, background: 'transparent', color: c.sub, fontWeight: 700, fontSize: '12.5px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="btn-hover"
+                          onClick={async () => {
+                            if (mHasErrors) return;
+                            setIsExecutingDirectApi(true);
+                            const requestId = `REQ-${Date.now()}`;
+                            const requestTimestamp = new Date().toISOString();
+                            try {
+                              const r = await optimizeInventoryDetailed({
+                                ...directParams,
+                                _request_id: requestId,
+                              });
+                              r._requestId = requestId;
+                              r._requestTimestamp = requestTimestamp;
+                              r._responseTimestamp = new Date().toISOString();
+                              r._inputSnapshot = { ...directParams };
+                              setDirectApiResult(r);
+                              setComputedPolicies(prev => [{ ...r, _computedAt: new Date().toISOString() }, ...prev]);
+                              showToast(`✅ Policy computed for ${directParams.product_id} · Request ID: ${requestId}`);
+                            } catch (e) {
+                              showToast(`❌ Optimization error: ${e.message || 'Unknown error from backend'}`, 'error');
+                            } finally {
+                              setIsExecutingDirectApi(false);
+                            }
+                          }}
+                          disabled={isExecutingDirectApi || mHasErrors}
+                          style={{
+                            ...styles.execBtn,
+                            background: mHasErrors
+                              ? (isDark ? '#334155' : '#94A3B8')
+                              : isExecutingDirectApi
+                              ? 'linear-gradient(135deg,#64748B,#475569)'
+                              : directApiResult?._requestId
+                              ? 'linear-gradient(135deg,#059669,#047857)'
+                              : 'linear-gradient(135deg,#2563EB,#1D4ED8)',
+                            boxShadow: mHasErrors ? 'none' : isExecutingDirectApi ? 'none' : '0 4px 14px rgba(37,99,235,0.35)',
+                            padding: '9px 24px', fontSize: '12.5px', fontWeight: 800,
+                            display: 'flex', alignItems: 'center', gap: '8px',
+                            cursor: (isExecutingDirectApi || mHasErrors) ? 'not-allowed' : 'pointer',
+                            opacity: mHasErrors ? 0.65 : 1,
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          {isExecutingDirectApi
+                            ? '⟳ Computing Policy...'
+                            : mHasErrors
+                            ? '🚫 Fix Input Range Errors to Proceed'
+                            : directApiResult?._requestId
+                            ? '✅ Results Ready — Scroll Down'
+                            : '🚀 Submit & Compute Policy'}
+                        </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* ── FEATURE 4: Results Panel (shown inline after submit) ── */}
               {directApiResult && directApiResult._requestId && (
@@ -8217,7 +9395,6 @@ export default function InventoryOptimizationView() {
                   </div>
                 </div>
               )}
-            </div>
           </div>
         </div>
       )}
