@@ -302,6 +302,11 @@ export default function DemandForecastingView({ onNavigate }) {
   const [reconciliationMethod, setReconciliationMethod] = useState('MinT'); // 'MinT', 'BU', 'TD', 'MO'
 
   // Period & Multi-Factor Demand Forecasting to Inventory States (User-selectable, no auto-fill)
+  const [planningMode, setPlanningMode] = useState('month'); // 'month' (Month Only Option) | 'duration' (Time Duration Option)
+  const [durationStartMonth, setDurationStartMonth] = useState(''); // Empty: user selects start month (e.g. March)
+  const [durationEndMonth, setDurationEndMonth] = useState(''); // Empty: user selects end month (e.g. June)
+  const [durationStartYear, setDurationStartYear] = useState('2026');
+  const [durationEndYear, setDurationEndYear] = useState('2026');
   const [selectedMonth, setSelectedMonth] = useState(''); // Empty: user must select from 12 months or custom
   const [customPeriodName, setCustomPeriodName] = useState(''); // Empty: user inputs if custom selected
   const [selectedYear, setSelectedYear] = useState('2026'); // Selectable: 2026, 2027, 2028
@@ -523,19 +528,81 @@ export default function DemandForecastingView({ onNavigate }) {
     return 4200;
   }, [demandDriversData, realProducts]);
 
+  // Calculate duration info across 2 selected months (From Month to To Month)
+  const calculateMonthDurationInfo = useCallback((startM, endM, startY, endY) => {
+    if (!startM || !endM) {
+      return { isValid: false, monthsCount: 0, daysCount: 0, label: '', avgSeason: 1.20, error: 'Please select both start and end months.' };
+    }
+    const MONTH_ORDER = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const sIdx = MONTH_ORDER.indexOf(startM);
+    const eIdx = MONTH_ORDER.indexOf(endM);
+    if (sIdx === -1 || eIdx === -1) {
+      return { isValid: false, monthsCount: 0, daysCount: 0, label: '', avgSeason: 1.20, error: 'Invalid month selected.' };
+    }
+
+    const sy = Number(startY) || 2026;
+    const ey = Number(endY) || sy;
+
+    const totalMonths = (ey - sy) * 12 + (eIdx - sIdx + 1);
+    if (totalMonths < 1) {
+      return {
+        isValid: false,
+        error: 'End month & year must be on or after start month & year.',
+        monthsCount: 0,
+        daysCount: 0,
+        label: '',
+        avgSeason: 1.20,
+      };
+    }
+
+    let totalSeason = 0;
+    let count = 0;
+    for (let y = sy; y <= ey; y++) {
+      const firstM = y === sy ? sIdx : 0;
+      const lastM = y === ey ? eIdx : 11;
+      for (let m = firstM; m <= lastM; m++) {
+        const monthObj = ALL_12_MONTHS.find((item) => item.value === MONTH_ORDER[m]);
+        if (monthObj) {
+          totalSeason += monthObj.seasonMult;
+          count++;
+        }
+      }
+    }
+    const avgSeason = count > 0 ? Math.round((totalSeason / count) * 100) / 100 : 1.20;
+    const daysCount = totalMonths * 30;
+
+    const label = sy === ey
+      ? startM === endM
+        ? `${startM} ${sy}`
+        : `${startM} to ${endM} ${sy}`
+      : `${startM} ${sy} to ${endM} ${ey}`;
+
+    return {
+      isValid: true,
+      error: '',
+      monthsCount: totalMonths,
+      daysCount: daysCount,
+      label: label,
+      avgSeason: avgSeason,
+    };
+  }, []);
+
   // Client-side fallback calculation for period forecasting
-  const computePeriodFallbackWithValues = (fullPeriodLabel, stockVal, leadVal = 14) => {
+  const computePeriodFallbackWithValues = (fullPeriodLabel, stockVal, leadVal = 14, horizonDays = 30, seasonMultiplierVal = null) => {
     const base = periodProduct.includes('Bralette') ? 16800 : periodProduct.includes('Legging') ? 14500 : 12400;
     const trendMult = 1 + Number(factorTrendGrowth) / 100;
-    const seasonMult = Number(factorSeasonMultiplier);
+    const seasonMult = seasonMultiplierVal !== null ? Number(seasonMultiplierVal) : Number(factorSeasonMultiplier);
     const colorMult = 0.90 + Number(factorColorScore) / 500;
     const buyerMult = Number(factorBuyerWeight);
     const promoMult = 1 + Number(factorPromoLift) / 100;
     const compMult = trendMult * seasonMult * colorMult * buyerMult * promoMult;
-    const forecasted = Math.round(base * compMult * (Number(periodHorizonDays) / 30));
-    const dailyRate = Math.round((forecasted / Number(periodHorizonDays)) * 10) / 10;
+    const forecasted = Math.round(base * compMult * (Number(horizonDays) / 30));
+    const dailyRate = Math.round((forecasted / Number(horizonDays)) * 10) / 10;
     const uncertainty = Math.round(forecasted * 0.12);
-    const dailySigma = uncertainty / Math.sqrt(Number(periodHorizonDays));
+    const dailySigma = uncertainty / Math.sqrt(Number(horizonDays));
     const safetyStock = Math.round(1.65 * Math.sqrt(leadVal * (dailySigma ** 2) + (dailyRate ** 2) * (2.5 ** 2)));
     const rpoint = Math.round(dailyRate * leadVal + safetyStock);
     const eoqVal = Math.round(Math.sqrt((2 * forecasted * 75) / 3.5));
@@ -544,7 +611,7 @@ export default function DemandForecastingView({ onNavigate }) {
     setPeriodForecastResult({
       target_period: fullPeriodLabel,
       product_identifier: periodProduct,
-      horizon_days: Number(periodHorizonDays),
+      horizon_days: Number(horizonDays),
       baseline_demand: base,
       forecasted_demand: forecasted,
       daily_run_rate: dailyRate,
@@ -554,7 +621,7 @@ export default function DemandForecastingView({ onNavigate }) {
       factor_multiplier_composite: Math.round(compMult * 1000) / 1000,
       factor_breakdown: [
         { factor_name: "Fashion Trend Velocity", impact_pct: Number(factorTrendGrowth), description: `Apparel adoption lift (+${factorTrendGrowth}%)`, status: Number(factorTrendGrowth) > 15 ? "ACCELERATING" : "STEADY" },
-        { factor_name: "Seasonal Multiplier", impact_pct: Math.round((Number(factorSeasonMultiplier) - 1) * 100), description: `Calendar cycle index (${factorSeasonMultiplier}x) for ${fullPeriodLabel}`, status: Number(factorSeasonMultiplier) >= 1.25 ? "PEAK SURGE" : "MODERATE" },
+        { factor_name: "Seasonal Multiplier", impact_pct: Math.round((seasonMult - 1) * 100), description: `Calendar cycle index (${seasonMult}x) for ${fullPeriodLabel}`, status: seasonMult >= 1.25 ? "PEAK SURGE" : "MODERATE" },
         { factor_name: "Color Palette Affinity", impact_pct: Math.round((colorMult - 1) * 100), description: `Chemical dye shade rating (${factorColorScore}/100)`, status: Number(factorColorScore) >= 80 ? "HIGH AFFINITY" : "NEUTRAL" },
         { factor_name: "Buyer Purchasing Channel", impact_pct: Math.round((Number(factorBuyerWeight) - 1) * 100), description: `Wholesale reorder cadence (${factorBuyerWeight}x)`, status: Number(factorBuyerWeight) >= 1.15 ? "BULK EXPANSION" : "STANDARD" },
         { factor_name: "Promotional Campaign Lift", impact_pct: Number(factorPromoLift), description: `Seasonal campaign lift (+${factorPromoLift}%)`, status: Number(factorPromoLift) > 0 ? "CAMPAIGN ACTIVE" : "BASELINE" },
@@ -577,7 +644,7 @@ export default function DemandForecastingView({ onNavigate }) {
         lead_time_demand_units: Math.round(dailyRate * leadVal),
         fabric_bom_meters: fabricM,
         standard_minute_hours: Math.round((forecasted * 14.2) / 60),
-        modular_sewing_lines_needed: Math.ceil((forecasted * 14.2) / 60 / (Number(periodHorizonDays) * 54)),
+        modular_sewing_lines_needed: Math.ceil((forecasted * 14.2) / 60 / (Number(horizonDays) * 54)),
         stock_status: stockVal <= rpoint ? "REORDER_TRIGGERED" : "STOCK_HEALTHY",
         units_to_order: Math.max(0, Math.round(rpoint + eoqVal - stockVal)),
       },
@@ -586,14 +653,27 @@ export default function DemandForecastingView({ onNavigate }) {
 
   // Explicit User-Triggered Forecast Calculation (no auto-run on mount)
   const handleCalculatePeriodForecast = async () => {
-    if (!selectedMonth) {
-      setPeriodValidationError('Please select a planning month (from all 12 calendar months) or choose a custom period.');
-      return;
+    if (planningMode === 'month') {
+      if (!selectedMonth) {
+        setPeriodValidationError('Please select a planning month (from all 12 calendar months) or choose a custom period.');
+        return;
+      }
+      if (selectedMonth === 'CUSTOM' && !customPeriodName.trim()) {
+        setPeriodValidationError('Please enter a name for your custom period / campaign window.');
+        return;
+      }
+    } else {
+      if (!durationStartMonth || !durationEndMonth) {
+        setPeriodValidationError('Please select both a FROM Month and a TO Month to calculate the time duration.');
+        return;
+      }
+      const durCheck = calculateMonthDurationInfo(durationStartMonth, durationEndMonth, durationStartYear, durationEndYear);
+      if (!durCheck.isValid) {
+        setPeriodValidationError(durCheck.error || 'End month/year must be on or after start month/year.');
+        return;
+      }
     }
-    if (selectedMonth === 'CUSTOM' && !customPeriodName.trim()) {
-      setPeriodValidationError('Please enter a name for your custom period / campaign window.');
-      return;
-    }
+
     if (!periodProduct) {
       setPeriodValidationError('Please select a garment silhouette / product.');
       return;
@@ -602,9 +682,23 @@ export default function DemandForecastingView({ onNavigate }) {
     setPeriodValidationError('');
     setIsCalculatingPeriod(true);
 
-    const fullPeriodLabel = selectedMonth === 'CUSTOM'
-      ? `${customPeriodName.trim()} (${selectedYear})`
-      : `${selectedMonth} ${selectedYear}`;
+    let horizon = Number(periodHorizonDays);
+    let fullPeriodLabel = '';
+    let seasonMultiplierToUse = Number(factorSeasonMultiplier);
+
+    if (planningMode === 'month') {
+      fullPeriodLabel = selectedMonth === 'CUSTOM'
+        ? `${customPeriodName.trim()} (${selectedYear})`
+        : `${selectedMonth} ${selectedYear}`;
+      horizon = Number(periodHorizonDays);
+      seasonMultiplierToUse = Number(factorSeasonMultiplier);
+    } else {
+      const durInfo = calculateMonthDurationInfo(durationStartMonth, durationEndMonth, durationStartYear, durationEndYear);
+      fullPeriodLabel = `${durInfo.label} (${durInfo.monthsCount} Months / ${durInfo.daysCount} Days)`;
+      horizon = durInfo.daysCount;
+      seasonMultiplierToUse = durInfo.avgSeason;
+    }
+
     const stockVal = periodCurrentStock === '' ? 4200 : Math.max(0, Number(periodCurrentStock));
     const leadVal = 14; // Standard calibrated factory supplier lead time buffer
 
@@ -614,13 +708,13 @@ export default function DemandForecastingView({ onNavigate }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target_period: fullPeriodLabel,
-          horizon_days: Number(periodHorizonDays),
+          horizon_days: horizon,
           product_identifier: periodProduct,
           current_inventory: stockVal,
           lead_time_days: leadVal,
           factors: {
             fashion_trend_growth_pct: Number(factorTrendGrowth),
-            seasonal_multiplier: Number(factorSeasonMultiplier),
+            seasonal_multiplier: seasonMultiplierToUse,
             color_preference_score: Number(factorColorScore),
             buyer_behaviour_weight: Number(factorBuyerWeight),
             promotion_lift_pct: Number(factorPromoLift),
@@ -632,10 +726,10 @@ export default function DemandForecastingView({ onNavigate }) {
         const data = await resp.json();
         setPeriodForecastResult(data);
       } else {
-        computePeriodFallbackWithValues(fullPeriodLabel, stockVal, leadVal);
+        computePeriodFallbackWithValues(fullPeriodLabel, stockVal, leadVal, horizon, seasonMultiplierToUse);
       }
     } catch (e) {
-      computePeriodFallbackWithValues(fullPeriodLabel, stockVal, leadVal);
+      computePeriodFallbackWithValues(fullPeriodLabel, stockVal, leadVal, horizon, seasonMultiplierToUse);
     } finally {
       setIsCalculatingPeriod(false);
     }
@@ -643,9 +737,18 @@ export default function DemandForecastingView({ onNavigate }) {
 
   const handleTransmitToInventory = () => {
     if (!periodForecastResult) return;
-    const fullPeriodLabel = selectedMonth === 'CUSTOM'
-      ? `${customPeriodName.trim()} (${selectedYear})`
-      : `${selectedMonth} ${selectedYear}`;
+    let fullPeriodLabel = '';
+    if (planningMode === 'month') {
+      fullPeriodLabel = selectedMonth === 'CUSTOM'
+        ? `${customPeriodName.trim()} (${selectedYear})`
+        : `${selectedMonth} ${selectedYear}`;
+    } else {
+      const durInfo = calculateMonthDurationInfo(durationStartMonth, durationEndMonth, durationStartYear, durationEndYear);
+      fullPeriodLabel = durInfo?.isValid
+        ? `${durInfo.label} (${durInfo.monthsCount} Months / ${durInfo.daysCount} Days)`
+        : `${durationStartMonth} to ${durationEndMonth}`;
+    }
+
     const payload = {
       ...periodForecastResult.inventory_handoff_payload,
       material_requirements: periodForecastResult.material_requirements,
@@ -3108,75 +3211,357 @@ export default function DemandForecastingView({ onNavigate }) {
               </div>
             )}
 
-            {/* Row 1: Target Month (All 12 Months) & Year */}
-            <div style={styles.inputRowGrid}>
-              <div style={styles.inputFieldGroup}>
-                <label style={styles.inputLabel}>TARGET PLANNING MONTH (ALL 12 MONTHS)</label>
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSelectedMonth(val);
-                    const found = ALL_12_MONTHS.find((m) => m.value === val);
-                    if (found) {
-                      setFactorSeasonMultiplier(found.seasonMult);
-                    }
+            {/* Planning Mode Selection Buttons: Month Only Option vs Time Duration Option */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ ...styles.inputLabel, margin: 0 }}>
+                  PLANNING HORIZON SELECTION MODE
+                </label>
+                <span style={{ fontSize: '10px', color: '#38bdf8', fontWeight: 700 }}>
+                  {planningMode === 'month' ? '📅 Month Only Mode' : '⏱️ 2-Month Duration Mode (From Month → To Month)'}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '8px',
+                  background: 'rgba(15, 23, 42, 0.75)',
+                  padding: '5px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlanningMode('month');
                     setPeriodValidationError('');
                   }}
-                  style={styles.periodSelectInput}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: planningMode === 'month' ? 800 : 600,
+                    color: planningMode === 'month' ? '#38bdf8' : '#94a3b8',
+                    background: planningMode === 'month' ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                    border: planningMode === 'month' ? '1px solid #38bdf8' : '1px solid transparent',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: planningMode === 'month' ? '0 0 14px rgba(56, 189, 248, 0.25)' : 'none',
+                  }}
                 >
-                  <option value="">-- Choose Planning Month (12 Months Available) --</option>
-                  {ALL_12_MONTHS.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <span style={{ fontSize: '14px' }}>📅</span>
+                  <span>Month Only Option</span>
+                  {planningMode === 'month' && (
+                    <span style={{ fontSize: '9px', background: '#38bdf8', color: '#0b1120', padding: '1px 6px', borderRadius: '4px', fontWeight: 900 }}>
+                      ACTIVE
+                    </span>
+                  )}
+                </button>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div style={styles.inputFieldGroup}>
-                  <label style={styles.inputLabel}>YEAR</label>
-                  <select
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(e.target.value)}
-                    style={styles.periodSelectInput}
-                  >
-                    <option value="2026">2026</option>
-                    <option value="2027">2027</option>
-                    <option value="2028">2028</option>
-                  </select>
-                </div>
-
-                <div style={styles.inputFieldGroup}>
-                  <label style={styles.inputLabel}>HORIZON</label>
-                  <select
-                    value={periodHorizonDays}
-                    onChange={(e) => setPeriodHorizonDays(Number(e.target.value))}
-                    style={styles.periodSelectInput}
-                  >
-                    <option value={30}>30 Days (1 Mo)</option>
-                    <option value={60}>60 Days (2 Mo)</option>
-                    <option value={90}>90 Days (1 Qtr)</option>
-                  </select>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlanningMode('duration');
+                    setPeriodValidationError('');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: planningMode === 'duration' ? 800 : 600,
+                    color: planningMode === 'duration' ? '#38bdf8' : '#94a3b8',
+                    background: planningMode === 'duration' ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                    border: planningMode === 'duration' ? '1px solid #38bdf8' : '1px solid transparent',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: planningMode === 'duration' ? '0 0 14px rgba(56, 189, 248, 0.25)' : 'none',
+                  }}
+                >
+                  <span style={{ fontSize: '14px' }}>⏱️</span>
+                  <span>Time Duration Option (From Month → To Month)</span>
+                  {planningMode === 'duration' && (
+                    <span style={{ fontSize: '9px', background: '#38bdf8', color: '#0b1120', padding: '1px 6px', borderRadius: '4px', fontWeight: 900 }}>
+                      ACTIVE
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
 
-            {/* Custom Period Input Field (if user selects Custom Period) */}
-            {selectedMonth === 'CUSTOM' && (
-              <div style={{ ...styles.inputFieldGroup, marginTop: '2px' }}>
-                <label style={styles.inputLabel}>CUSTOM PLANNING PERIOD / EVENT WINDOW</label>
-                <input
-                  type="text"
-                  value={customPeriodName}
-                  onChange={(e) => {
-                    setCustomPeriodName(e.target.value);
-                    setPeriodValidationError('');
-                  }}
-                  placeholder="e.g. Q4 Festive Peak, Spring Launch Surge, Mid-Season Flash Sale"
-                  style={styles.periodNumberInput}
-                />
+            {/* Mode 1: Month Only Option (Unchanged 12 Calendar Months & Custom Window) */}
+            {planningMode === 'month' && (
+              <>
+                <div style={styles.inputRowGrid}>
+                  <div style={styles.inputFieldGroup}>
+                    <label style={styles.inputLabel}>TARGET PLANNING MONTH (ALL 12 MONTHS)</label>
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedMonth(val);
+                        const found = ALL_12_MONTHS.find((m) => m.value === val);
+                        if (found) {
+                          setFactorSeasonMultiplier(found.seasonMult);
+                        }
+                        setPeriodValidationError('');
+                      }}
+                      style={styles.periodSelectInput}
+                    >
+                      <option value="">-- Choose Planning Month (12 Months Available) --</option>
+                      {ALL_12_MONTHS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div style={styles.inputFieldGroup}>
+                      <label style={styles.inputLabel}>YEAR</label>
+                      <select
+                        value={selectedYear}
+                        onChange={(e) => setSelectedYear(e.target.value)}
+                        style={styles.periodSelectInput}
+                      >
+                        <option value="2026">2026</option>
+                        <option value="2027">2027</option>
+                        <option value="2028">2028</option>
+                      </select>
+                    </div>
+
+                    <div style={styles.inputFieldGroup}>
+                      <label style={styles.inputLabel}>HORIZON</label>
+                      <select
+                        value={periodHorizonDays}
+                        onChange={(e) => setPeriodHorizonDays(Number(e.target.value))}
+                        style={styles.periodSelectInput}
+                      >
+                        <option value={30}>30 Days (1 Mo)</option>
+                        <option value={60}>60 Days (2 Mo)</option>
+                        <option value={90}>90 Days (1 Qtr)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Custom Period Input Field (if user selects Custom Period) */}
+                {selectedMonth === 'CUSTOM' && (
+                  <div style={{ ...styles.inputFieldGroup, marginTop: '2px' }}>
+                    <label style={styles.inputLabel}>CUSTOM PLANNING PERIOD / EVENT WINDOW</label>
+                    <input
+                      type="text"
+                      value={customPeriodName}
+                      onChange={(e) => {
+                        setCustomPeriodName(e.target.value);
+                        setPeriodValidationError('');
+                      }}
+                      placeholder="e.g. Q4 Festive Peak, Spring Launch Surge, Mid-Season Flash Sale"
+                      style={styles.periodNumberInput}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Mode 2: Time Duration Option (Select 2 Months: From This Month to That Month) */}
+            {planningMode === 'duration' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  {/* From: Start Month & Year */}
+                  <div style={styles.inputFieldGroup}>
+                    <label style={styles.inputLabel}>FROM MONTH (START DURATION)</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                      <select
+                        value={durationStartMonth}
+                        onChange={(e) => {
+                          setDurationStartMonth(e.target.value);
+                          setPeriodValidationError('');
+                        }}
+                        style={styles.periodSelectInput}
+                      >
+                        <option value="">-- Start Month --</option>
+                        {ALL_12_MONTHS.filter((m) => m.value !== 'CUSTOM').map((m) => (
+                          <option key={m.value} value={m.value}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={durationStartYear}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setDurationStartYear(val);
+                          if (Number(durationEndYear) < Number(val)) {
+                            setDurationEndYear(val);
+                          }
+                          setPeriodValidationError('');
+                        }}
+                        style={styles.periodSelectInput}
+                      >
+                        <option value="2026">2026</option>
+                        <option value="2027">2027</option>
+                        <option value="2028">2028</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* To: End Month & Year */}
+                  <div style={styles.inputFieldGroup}>
+                    <label style={styles.inputLabel}>TO MONTH (END DURATION)</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                      <select
+                        value={durationEndMonth}
+                        onChange={(e) => {
+                          setDurationEndMonth(e.target.value);
+                          setPeriodValidationError('');
+                        }}
+                        style={styles.periodSelectInput}
+                      >
+                        <option value="">-- End Month --</option>
+                        {ALL_12_MONTHS.filter((m) => m.value !== 'CUSTOM').map((m) => (
+                          <option key={m.value} value={m.value}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={durationEndYear}
+                        onChange={(e) => {
+                          setDurationEndYear(e.target.value);
+                          setPeriodValidationError('');
+                        }}
+                        style={styles.periodSelectInput}
+                      >
+                        <option value="2026">2026</option>
+                        <option value="2027">2027</option>
+                        <option value="2028">2028</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Duration Calculation Summary Card */}
+                {(() => {
+                  if (!durationStartMonth || !durationEndMonth) {
+                    return (
+                      <div
+                        style={{
+                          background: 'rgba(15, 23, 42, 0.6)',
+                          border: '1px dashed rgba(56, 189, 248, 0.3)',
+                          borderRadius: '8px',
+                          padding: '10px 14px',
+                          fontSize: '11px',
+                          color: '#94a3b8',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}
+                      >
+                        <span style={{ fontSize: '15px' }}>⏱️</span>
+                        <span>
+                          Select both <strong>FROM Month</strong> and <strong>TO Month</strong> above to calculate the multi-month planning duration.
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  const durInfo = calculateMonthDurationInfo(
+                    durationStartMonth,
+                    durationEndMonth,
+                    durationStartYear,
+                    durationEndYear
+                  );
+
+                  if (!durInfo.isValid) {
+                    return (
+                      <div
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid #ef4444',
+                          borderRadius: '8px',
+                          padding: '10px 14px',
+                          fontSize: '11px',
+                          color: '#fca5a5',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}
+                      >
+                        <span>⚠️</span>
+                        <span>{durInfo.error}</span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(15, 23, 42, 0.85) 100%)',
+                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                        borderRadius: '8px',
+                        padding: '10px 14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '8px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '16px' }}>⏱️</span>
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#f1f5f9' }}>
+                            Calculated Duration: <strong style={{ color: '#38bdf8' }}>{durInfo.label}</strong>
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '1px' }}>
+                            Composite Seasonal Multiplier: <strong style={{ color: '#10b981' }}>{durInfo.avgSeason}x</strong>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            background: '#38bdf8',
+                            color: '#0b1120',
+                            padding: '3px 8px',
+                            borderRadius: '5px',
+                            fontWeight: 900,
+                          }}
+                        >
+                          {durInfo.monthsCount} {durInfo.monthsCount === 1 ? 'Month' : 'Months'}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            color: '#cbd5e1',
+                            padding: '3px 8px',
+                            borderRadius: '5px',
+                            fontWeight: 700,
+                            border: '1px solid rgba(255, 255, 255, 0.12)',
+                          }}
+                        >
+                          ~{durInfo.daysCount} Days
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -3288,11 +3673,11 @@ export default function DemandForecastingView({ onNavigate }) {
                   Ready for Factor-Driven Demand Analysis
                 </div>
                 <p style={{ fontSize: '12px', color: '#94a3b8', maxWidth: '380px', marginTop: '6px', lineHeight: 1.5 }}>
-                  Select your target planning month from all <strong>12 calendar months</strong>, choose your garment silhouette, enter factory stock & lead time, and click <strong>"ANALYZE FACTORS & CALCULATE DEMAND"</strong>.
+                  Select your target planning month from all <strong>12 calendar months</strong> or pick a <strong>custom time duration</strong>, choose your garment silhouette, and click <strong>"ANALYZE FACTORS & CALCULATE DEMAND"</strong>.
                 </p>
                 <div style={{ marginTop: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '4px', background: '#0b1120', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
-                    📅 All 12 Months Available
+                    📅 12 Months & Custom Duration
                   </span>
                   <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '4px', background: '#0b1120', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                     ✋ Selectable (No Auto-Fill)
