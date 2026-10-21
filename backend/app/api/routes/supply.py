@@ -154,7 +154,6 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import mm
     from reportlab.platypus import (
         Paragraph,
         SimpleDocTemplate,
@@ -167,10 +166,10 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
     doc = SimpleDocTemplate(
         buf,
         pagesize=landscape(A4),
-        leftMargin=15 * mm,
-        rightMargin=15 * mm,
-        topMargin=15 * mm,
-        bottomMargin=15 * mm,
+        leftMargin=20,
+        rightMargin=20,
+        topMargin=20,
+        bottomMargin=20,
         title="OptiChain — Supplier Risk Audit Report",
         author="OptiChain Procurement Guardian",
     )
@@ -189,7 +188,7 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
     styles = getSampleStyleSheet()
     h1 = ParagraphStyle(
         "h1", parent=styles["Normal"],
-        fontSize=20, textColor=WHITE, fontName="Helvetica-Bold",
+        fontSize=18, textColor=WHITE, fontName="Helvetica-Bold",
         alignment=TA_LEFT, spaceAfter=2,
     )
     subtitle_st = ParagraphStyle(
@@ -205,13 +204,23 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
     cell_st = ParagraphStyle(
         "cell", parent=styles["Normal"],
         fontSize=7.5, textColor=BRAND_DARK,
-        fontName="Helvetica", leading=10,
+        fontName="Helvetica", leading=9, alignment=TA_CENTER,
+    )
+    cell_left_st = ParagraphStyle(
+        "cell_left", parent=styles["Normal"],
+        fontSize=7.5, textColor=BRAND_DARK,
+        fontName="Helvetica", leading=9, alignment=TA_LEFT,
     )
     header_cell_st = ParagraphStyle(
         "hcell", parent=styles["Normal"],
-        fontSize=8, textColor=WHITE,
-        fontName="Helvetica-Bold", alignment=TA_CENTER, leading=10,
+        fontSize=7.5, textColor=WHITE,
+        fontName="Helvetica-Bold", alignment=TA_CENTER, leading=9,
     )
+    rl_styles = {
+        "high": ParagraphStyle("rl_high", parent=styles["Normal"], fontSize=7.5, textColor=HIGH_RED, fontName="Helvetica-Bold", alignment=TA_CENTER, leading=9),
+        "medium": ParagraphStyle("rl_med", parent=styles["Normal"], fontSize=7.5, textColor=MED_AMBER, fontName="Helvetica-Bold", alignment=TA_CENTER, leading=9),
+        "low": ParagraphStyle("rl_low", parent=styles["Normal"], fontSize=7.5, textColor=LOW_GREEN, fontName="Helvetica-Bold", alignment=TA_CENTER, leading=9),
+    }
 
     # --- Summary metrics ---
     total = len(records)
@@ -228,33 +237,33 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
 
     story = []
 
-    # ---- Header banner ----
+    # ---- Header banner (800pt width matching table) ----
     banner_data = [[
         Paragraph("🔗 OptiChain — Procurement Guardian", h1),
         Paragraph("Supplier Risk Audit Report", subtitle_st),
         Paragraph(f"Generated: {generated_at}", meta_st),
     ]]
-    banner_col_w = [160 * mm, 60 * mm, 50 * mm]
+    banner_col_w = [470, 180, 150]
     banner = Table(banner_data, colWidths=banner_col_w)
     banner.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), BRAND_ACCENT),
         ("ROWBACKGROUNDS", (0, 0), (-1, -1), [BRAND_DARK]),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (0, 0), 12),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(banner)
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 14))
 
-    # ---- Summary metric cards ----
+    # ---- Summary metric cards (800pt width) ----
     def metric_cell(label: str, value: str, color) -> Table:
         inner = Table(
             [[Paragraph(label, ParagraphStyle("lbl", parent=styles["Normal"],
                         fontSize=7, textColor=colors.HexColor("#64748b"),
                         fontName="Helvetica-Bold", alignment=TA_CENTER))],
              [Paragraph(value, ParagraphStyle("val", parent=styles["Normal"],
-                        fontSize=18, textColor=color,
+                        fontSize=17, textColor=color,
                         fontName="Helvetica-Bold", alignment=TA_CENTER))]],
             colWidths=[None],
         )
@@ -262,8 +271,8 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
             ("BACKGROUND", (0, 0), (-1, -1), WHITE),
             ("BOX", (0, 0), (-1, -1), 1, BORDER),
             ("ROUNDEDCORNERS", [6]),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ]))
         return inner
 
@@ -275,16 +284,15 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
         metric_cell("AVG RISK SCORE", f"{avg_risk:.1f}%", BRAND_ACCENT),
         metric_cell("AVG TRUST SCORE", f"{avg_trust:.1f}%", LOW_GREEN),
     ]]
-    w = doc.width / 6
-    cards = Table(cards_data, colWidths=[w] * 6)
+    cards = Table(cards_data, colWidths=[800 / 6] * 6)
     cards.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(cards)
-    story.append(Spacer(1, 6 * mm))
+    story.append(Spacer(1, 14))
 
     # ---- Data table ----
     header_row = [Paragraph(h, header_cell_st) for h in _CSV_HEADERS]
@@ -292,21 +300,21 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
 
     for r in records:
         vals = _row_values(r)
-        risk_level = vals[11]
-        risk_color = HIGH_RED if risk_level == "high" else (MED_AMBER if risk_level == "medium" else LOW_GREEN)
-        row = [Paragraph(str(v), cell_st) for v in vals]
-        # Colour-code risk level cell
-        row[11] = Paragraph(
-            risk_level.upper(),
-            ParagraphStyle("rl", parent=styles["Normal"],
-                           fontSize=7.5, textColor=risk_color,
-                           fontName="Helvetica-Bold", alignment=TA_CENTER, leading=10),
-        )
+        risk_level = str(vals[11]).lower()
+        row = []
+        for i, v in enumerate(vals):
+            if i in (1, 2, 3, 7, 8):
+                # Product Name, Category Name, Supplier Name, Shipping Mode, Order Region: left align
+                row.append(Paragraph(str(v), cell_left_st))
+            elif i == 11:
+                # Risk level badge
+                row.append(Paragraph(risk_level.upper(), rl_styles.get(risk_level, rl_styles["low"])))
+            else:
+                row.append(Paragraph(str(v), cell_st))
         table_data.append(row)
 
-    # Column widths for landscape A4 (approx 267mm usable)
-    col_widths = [38, 42, 32, 38, 16, 24, 20, 30, 34, 20, 20, 18]
-    col_widths = [w * mm for w in col_widths]
+    # Column widths strictly matching printable width (~800pt total)
+    col_widths = [85, 95, 75, 80, 35, 65, 60, 70, 75, 55, 55, 50]
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     ts = [
@@ -315,21 +323,20 @@ def _build_pdf(records: Sequence[SupplyRiskRecord]) -> bytes:
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 8),
+        ("FONTSIZE", (0, 0), (-1, 0), 7.5),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, ROW_ALT]),
         ("GRID", (0, 0), (-1, -1), 0.4, BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        # Accent left border on first col
-        ("LINEAFTER", (0, 0), (0, -1), 1.5, ACCENT_LIGHT),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("LINEAFTER", (0, 0), (0, -1), 1.2, ACCENT_LIGHT),
     ]
     table.setStyle(TableStyle(ts))
     story.append(table)
 
     # ---- Footer ----
-    story.append(Spacer(1, 4 * mm))
+    story.append(Spacer(1, 10))
     story.append(Paragraph(
         f"OptiChain Procurement Guardian  ·  AI-Driven Supply Chain Disruption Predictor  ·  {generated_at}",
         ParagraphStyle("footer", parent=styles["Normal"],
