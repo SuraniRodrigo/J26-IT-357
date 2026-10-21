@@ -160,6 +160,9 @@ latest matching timestamp is used. Risk Score (%) maps to disruption
 probability, Trust Score (%) maps to supplier trust, and Expected Delay (Days)
 is added to the normal supplier lead time before the risk adjustment. Supplier
 name and reported risk level are retained with the inventory record.
+The presentation dropdown provides six matched synthetic Demand SKU examples
+(`LK-APP-001` through `LK-APP-006`), each with its own forecast, inventory
+position, and supplier-risk record.
 
 These separate files leave the existing raw-material demo feeds unchanged.
 Physical stock, in-transit stock, normal supplier lead time, lead-time
@@ -177,6 +180,11 @@ exports are separate from the generic raw-material ERP CSV and executive PDF.
 The CSV includes `Is_Demo_Data`; the PDF prominently warns when synthetic demo
 records are present so presentation values are not mistaken for live procurement
 instructions.
+Use **Reorder** on an inventory row or **Reorder Materials** in the product
+detail view to fetch a fresh optimizer recommendation, review/edit the order
+quantity and freight mode, then create a purchase-order record. Creating the PO
+stores it in the inventory database; sending it to an external ERP still
+requires an ERP integration.
 
 ### Upstream Integration Mode
 - `UPSTREAM_DATA_MODE="DEMO"` (Default): Feeds deterministic synthetic profiles for 8 MAS factory materials.

@@ -1,3 +1,7 @@
 SKU,Timestamp,Product Name,Category Name,Supplier Name,Year,Delivery Month,Expected Delay (Days),Shipping Mode,Order Region,Risk Score (%),Trust Score (%),Risk Level
 LK-APP-001,2026-10-21 11:32:00,Active Training Leggings,Finished Apparel,TexLanka Mills,2026,May,2,Standard Class,Western Europe,98.5,1.5,HIGH
 LK-APP-002,2026-10-21 11:07:00,Performance Running Top,Finished Apparel,Pacific Apparel Co,2026,June,0,Standard Class,North America,3.5,96.5,LOW
+LK-APP-003,2026-10-21 12:05:00,Trail Running Shorts,Finished Apparel,Island Stitchwear,2026,July,1,Standard Class,Western Europe,24.0,76.0,MEDIUM
+LK-APP-004,2026-10-21 12:12:00,Core Support Sports Bra,Finished Apparel,Serendib Activewear,2026,August,4,Ocean Freight,North America,72.0,28.0,HIGH
+LK-APP-005,2026-10-21 12:18:00,Lightweight Training Hoodie,Finished Apparel,Pacific Apparel Co,2026,September,0,Standard Class,Western Europe,12.0,88.0,LOW
+LK-APP-006,2026-10-21 12:24:00,Recycled Yoga Leggings,Finished Apparel,GreenThread Manufacturing,2026,October,2,Ocean Freight,Australia,48.0,52.0,MEDIUM

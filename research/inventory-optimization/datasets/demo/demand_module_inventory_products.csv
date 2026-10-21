@@ -1,3 +1,7 @@
 SKU,Product Name (Real DataCo CSV),Department,Category,Export Markets,Unit Price (USD),Historical Orders (CSV),Total Historical Units (CSV),Projected Demand (30D),Fabric Requirement,Sewing SMV (Mins),Planning Status
 LK-APP-001,Active Training Leggings,Apparel,Activewear,"USA, Europe, Australia",49.99,24515,73698,18420,11973,22.8,Ready for production
 LK-APP-002,Performance Running Top,Apparel,Activewear,"USA, Europe, Australia",34.50,18640,52192,12600,8190,18.5,Ready for production
+LK-APP-003,Trail Running Shorts,Apparel,Activewear,"USA, Europe, Australia",39.95,12840,35310,9250,6013,19.2,Ready for production
+LK-APP-004,Core Support Sports Bra,Apparel,Activewear,"USA, Europe, Australia",42.00,15420,46260,11100,7215,21.4,Ready for production
+LK-APP-005,Lightweight Training Hoodie,Apparel,Activewear,"USA, Europe, Australia",64.00,9320,18640,5840,3796,28.6,Ready for production
+LK-APP-006,Recycled Yoga Leggings,Apparel,Activewear,"USA, Europe, Australia",54.50,11780,35340,8720,5668,23.1,Ready for production

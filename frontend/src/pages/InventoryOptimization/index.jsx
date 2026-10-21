@@ -1190,6 +1190,9 @@ const LINE_METADATA = {
 // ─── Financial Impact & Cost-of-Inaction Calculation Helper ──────────────────
 const getProductUnitCost = (product) => {
   if (!product) return 5.0;
+  if (product.is_demand_product && Number.isFinite(Number(product.unit_price_usd))) {
+    return Number(product.unit_price_usd);
+  }
   if (product.category === 'Fabrics') return 8.5;
   if (product.category === 'Dyes & Chemicals') return 24.0;
   return 0.45; // Accessories / Trims
@@ -1302,6 +1305,7 @@ export default function InventoryOptimizationView() {
   // ── Modals & PO ───────────────────────────────────────────────────────────
   const [xaiModalSku, setXaiModalSku] = useState(null);
   const [poModalItem, setPoModalItem] = useState(null);
+  const [isSubmittingPO, setIsSubmittingPO] = useState(false);
   const [freightMode, setFreightMode] = useState('sea');
   const [dispatchedPOs, setDispatchedPOs] = useState({});
   const [showPoHistory, setShowPoHistory] = useState(false);
@@ -1467,14 +1471,36 @@ export default function InventoryOptimizationView() {
     setDisruptionProb(dp); setLeadTimeVar(ltv); setDemandSurge(ds); setServiceLevel(sl);
   };
 
+  const handlePrepareReorder = async (product) => {
+    try {
+      const results = await batchOptimizeInventory({});
+      const recommendation = results.find(result => result.product_id === product.product_id);
+      if (!recommendation) throw new Error(`No optimization result found for ${product.product_id}.`);
+      setFreightMode('sea');
+      setPoModalItem({
+        ...product,
+        reorder_quantity:Math.max(1, Math.ceil(recommendation.reorder_quantity)),
+        reorder_required:recommendation.reorder_required,
+        reorder_point:recommendation.reorder_point,
+        risk_adjusted_lead_time:recommendation.risk_adjusted_lead_time,
+      });
+    } catch (error) {
+      showToast(`Could not prepare reorder recommendation: ${error.message || 'Optimization failed'}`, 'error');
+    }
+  };
+
   // ── PO dispatch ───────────────────────────────────────────────────────────
   const handleDispatchPO = async () => {
     if (!poModalItem) return;
+    if (!Number.isFinite(Number(poModalItem.reorder_quantity)) || Number(poModalItem.reorder_quantity) <= 0) {
+      showToast('Enter a reorder quantity greater than zero.', 'error');
+      return;
+    }
     const poNum = `PO-${Math.floor(100000 + Math.random() * 900000)}`;
-    const costPerUnit = poModalItem.category === 'Fabrics' ? 8.5 : poModalItem.category === 'Dyes & Chemicals' ? 24.0 : 0.45;
-    const totalCost = Math.round(poModalItem.reorder_quantity * costPerUnit * (freightMode === 'air' ? 2.4 : 1.0));
+    const totalCost = Math.round(poModalItem.reorder_quantity * getProductUnitCost(poModalItem) * (freightMode === 'air' ? 2.4 : 1.0));
 
     try {
+      setIsSubmittingPO(true);
       await createPurchaseOrder({
         po_number: poNum,
         product_id: poModalItem.product_id,
@@ -1483,16 +1509,19 @@ export default function InventoryOptimizationView() {
         freight_mode: freightMode,
         estimated_cost_usd: totalCost,
       });
-    } catch (e) {
-      console.warn('Failed to save PO to SQLite:', e);
+    } catch (error) {
+      showToast(`Purchase order was not saved: ${error.message || 'Database error'}`, 'error');
+      setIsSubmittingPO(false);
+      return;
     }
 
     setDispatchedPOs(prev => ({
       ...prev,
       [poModalItem.product_id]: { poNum, qty: poModalItem.reorder_quantity, cost: totalCost, mode: freightMode, at: new Date().toLocaleTimeString(), sku: poModalItem.product_id, name: poModalItem.product_name },
     }));
-    showToast(`Purchase Order #${poNum} saved to SQLite & dispatched to ERP ✓`);
+    showToast(`Purchase Order #${poNum} saved to inventory records. Submit it through your ERP workflow when ready.`);
     setPoModalItem(null);
+    setIsSubmittingPO(false);
   };
 
   // ── Material CRUD State & Handlers ────────────────────────────────────────
@@ -1703,57 +1732,58 @@ export default function InventoryOptimizationView() {
   };
 
   const useDemandProductSample = async () => {
-    const sample = selectedDemandDemoSku === 'LK-APP-002'
-      ? {
-        product_id: 'LK-APP-002',
-        product_name: 'Performance Running Top',
-        department: 'Apparel',
-        category: 'Activewear',
-        export_markets: 'USA, Europe, Australia',
-        unit_price_usd: '34.50',
-        historical_orders: '18640',
-        total_historical_units: '52192',
-        projected_demand_30d: '12600',
-        fabric_requirement: '8190',
-        sewing_smv_minutes: '18.5',
-        planning_status: 'Ready for production',
-        current_inventory: '3400',
-        in_transit_qty: '1200',
-        demand_std_dev: '63',
-        average_lead_time: '10',
-        lead_time_std_dev: '2.4',
-        expected_delay_days: '',
-        disruption_probability_pct: '',
-        supplier_trust_score: '',
-        supplier_name: '',
-        supplier_report_risk_level: '',
-        is_demo_data: true,
-      }
-      : {
-        product_id: 'LK-APP-001',
-        product_name: 'Active Training Leggings',
-        department: 'Apparel',
-        category: 'Activewear',
-        export_markets: 'USA, Europe, Australia',
-        unit_price_usd: '49.99',
-        historical_orders: '24515',
-        total_historical_units: '73698',
-        projected_demand_30d: '18420',
-        fabric_requirement: '11973',
-        sewing_smv_minutes: '22.8',
-        planning_status: 'Ready for production',
-        current_inventory: '5200',
-        in_transit_qty: '900',
-        demand_std_dev: '92',
-        average_lead_time: '14',
-        lead_time_std_dev: '3',
-        expected_delay_days: '',
-        disruption_probability_pct: '',
-        supplier_trust_score: '',
-        supplier_name: '',
-        supplier_report_risk_level: '',
-        is_demo_data: true,
-      };
+    const demoProducts = {
+      'LK-APP-001': {
+        product_name:'Active Training Leggings', unit_price_usd:'49.99', historical_orders:'24515',
+        total_historical_units:'73698', projected_demand_30d:'18420', fabric_requirement:'11973',
+        sewing_smv_minutes:'22.8', current_inventory:'5200', in_transit_qty:'900',
+        demand_std_dev:'92', average_lead_time:'14', lead_time_std_dev:'3',
+      },
+      'LK-APP-002': {
+        product_name:'Performance Running Top', unit_price_usd:'34.50', historical_orders:'18640',
+        total_historical_units:'52192', projected_demand_30d:'12600', fabric_requirement:'8190',
+        sewing_smv_minutes:'18.5', current_inventory:'3400', in_transit_qty:'1200',
+        demand_std_dev:'63', average_lead_time:'10', lead_time_std_dev:'2.4',
+      },
+      'LK-APP-003': {
+        product_name:'Trail Running Shorts', unit_price_usd:'39.95', historical_orders:'12840',
+        total_historical_units:'35310', projected_demand_30d:'9250', fabric_requirement:'6013',
+        sewing_smv_minutes:'19.2', current_inventory:'1800', in_transit_qty:'450',
+        demand_std_dev:'51', average_lead_time:'12', lead_time_std_dev:'2.8',
+      },
+      'LK-APP-004': {
+        product_name:'Core Support Sports Bra', unit_price_usd:'42.00', historical_orders:'15420',
+        total_historical_units:'46260', projected_demand_30d:'11100', fabric_requirement:'7215',
+        sewing_smv_minutes:'21.4', current_inventory:'1250', in_transit_qty:'300',
+        demand_std_dev:'68', average_lead_time:'13', lead_time_std_dev:'3.2',
+      },
+      'LK-APP-005': {
+        product_name:'Lightweight Training Hoodie', unit_price_usd:'64.00', historical_orders:'9320',
+        total_historical_units:'18640', projected_demand_30d:'5840', fabric_requirement:'3796',
+        sewing_smv_minutes:'28.6', current_inventory:'2100', in_transit_qty:'600',
+        demand_std_dev:'36', average_lead_time:'9', lead_time_std_dev:'1.8',
+      },
+      'LK-APP-006': {
+        product_name:'Recycled Yoga Leggings', unit_price_usd:'54.50', historical_orders:'11780',
+        total_historical_units:'35340', projected_demand_30d:'8720', fabric_requirement:'5668',
+        sewing_smv_minutes:'23.1', current_inventory:'1600', in_transit_qty:'500',
+        demand_std_dev:'57', average_lead_time:'11', lead_time_std_dev:'2.6',
+      },
+    };
+    const sample = {
+      ...demoProducts[selectedDemandDemoSku],
+      product_id:selectedDemandDemoSku,
+      department:'Apparel',
+      category:'Activewear',
+      export_markets:'USA, Europe, Australia',
+      planning_status:'Ready for production',
+      expected_delay_days:'',
+      disruption_probability_pct:'',
+      supplier_trust_score:'',
+      supplier_name:'',
+      supplier_report_risk_level:'',
+      is_demo_data:true,
+    };
     setDemandProductForm(sample);
     try {
       const supplier = await getDemoDemandSupplierRisk(sample.product_id);
@@ -5030,7 +5060,7 @@ export default function InventoryOptimizationView() {
                   onClick={() => setIsDemandProductModalOpen(true)}
                   style={{ ...styles.addBtn, background:'linear-gradient(135deg,#059669,#047857)' }}
                 >
-                  <span style={{ fontSize:'14px' }}>＋</span> Add Demand SKU
+                  <span style={{ fontSize:'14px' }}>＋</span> Add Finished Product
                 </button>
                 <button
                   className="btn-hover"
@@ -5558,9 +5588,7 @@ export default function InventoryOptimizationView() {
                       }} onClick={e => e.stopPropagation()}>
                         <button
                           className="btn-hover"
-                          onClick={() => {
-                            setPoModalItem({ ...item, reorder_quantity: roq });
-                          }}
+                          onClick={() => handlePrepareReorder(item)}
                           style={{
                             flex: 1,
                             background: isDispatched ? '#059669' : (isDark ? 'linear-gradient(135deg,#1E40AF,#2563EB)' : 'linear-gradient(135deg,#2563EB,#1D4ED8)'),
@@ -5578,7 +5606,7 @@ export default function InventoryOptimizationView() {
                             boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
                           }}
                         >
-                          {isDispatched ? '✓ PO Sent' : '⚡ Quick PO'}
+                          {isDispatched ? '✓ PO Sent' : '⚡ Reorder'}
                         </button>
                         <button
                           className="btn-hover"
@@ -8334,6 +8362,10 @@ export default function InventoryOptimizationView() {
                   >
                     <option value="LK-APP-001">LK-APP-001 · Leggings</option>
                     <option value="LK-APP-002">LK-APP-002 · Running Top</option>
+                    <option value="LK-APP-003">LK-APP-003 · Trail Shorts</option>
+                    <option value="LK-APP-004">LK-APP-004 · Sports Bra</option>
+                    <option value="LK-APP-005">LK-APP-005 · Training Hoodie</option>
+                    <option value="LK-APP-006">LK-APP-006 · Yoga Leggings</option>
                   </select>
                   <button type="button" className="btn-hover" onClick={useDemandProductSample} style={{ ...styles.addBtn, padding:'9px 14px', fontSize:'12px' }}>
                     Load demo data
@@ -8644,9 +8676,23 @@ export default function InventoryOptimizationView() {
                 <div style={{ fontSize:'10.5px', color:c.sub, fontWeight:700, marginBottom:'3px' }}>MATERIAL</div>
                 <div style={{ fontWeight:700, color:c.title, fontSize:'14px' }}>{poModalItem.product_name}</div>
               </div>
+              {typeof poModalItem.reorder_required === 'boolean' && (
+                <div style={{
+                  padding:'10px 12px',
+                  borderRadius:'9px',
+                  border:`1px solid ${poModalItem.reorder_required?'#FECACA':'#BBF7D0'}`,
+                  background:poModalItem.reorder_required?(isDark?'rgba(127,29,29,.2)':'#FEF2F2'):(isDark?'rgba(6,78,59,.2)':'#F0FDF4'),
+                  color:poModalItem.reorder_required?(isDark?'#FCA5A5':'#B91C1C'):(isDark?'#86EFAC':'#15803D'),
+                  fontSize:'11px',
+                  lineHeight:1.5,
+                }}>
+                  <strong>{poModalItem.reorder_required?'Reorder recommended':'Stock is above the reorder point'}</strong>
+                  {' '}· Reorder point: {Number(poModalItem.reorder_point || 0).toLocaleString()} · Risk-adjusted lead time: {Number(poModalItem.risk_adjusted_lead_time || 0).toFixed(1)} days. You can still adjust the order quantity below.
+                </div>
+              )}
               <div style={styles.inputField}>
                 <label style={styles.inputLabel}>📦 Recommended Reorder Quantity *</label>
-                <input type="number" value={poModalItem.reorder_quantity} onChange={e=>setPoModalItem(p=>({...p,reorder_quantity:parseInt(e.target.value)||0}))} className="input-focus" style={{ ...styles.textInput, fontSize:'16px', fontWeight:700 }} />
+                <input type="number" min="1" step="1" value={poModalItem.reorder_quantity} onChange={e=>setPoModalItem(p=>({...p,reorder_quantity:parseInt(e.target.value)||0}))} className="input-focus" style={{ ...styles.textInput, fontSize:'16px', fontWeight:700 }} />
               </div>
               <div style={styles.inputField}>
                 <label style={styles.inputLabel}>🚚 Freight Dispatch Mode</label>
@@ -8694,8 +8740,10 @@ export default function InventoryOptimizationView() {
               })()}
             </div>
             <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px', marginTop:'20px' }}>
-              <button onClick={()=>setPoModalItem(null)} style={styles.cancelBtn}>Cancel</button>
-              <button className="btn-hover" onClick={handleDispatchPO} style={styles.confirmBtn}>✓ Confirm & Dispatch</button>
+              <button disabled={isSubmittingPO} onClick={()=>setPoModalItem(null)} style={styles.cancelBtn}>Cancel</button>
+              <button disabled={isSubmittingPO || Number(poModalItem.reorder_quantity)<=0} className="btn-hover" onClick={handleDispatchPO} style={{ ...styles.confirmBtn, opacity:(isSubmittingPO || Number(poModalItem.reorder_quantity)<=0) ? 0.55 : 1 }}>
+                {isSubmittingPO?'Saving PO…':'✓ Create Purchase Order'}
+              </button>
             </div>
           </div>
         </div>
@@ -8899,7 +8947,7 @@ export default function InventoryOptimizationView() {
                 <button
                   className="btn-hover"
                   onClick={() => {
-                    setPoModalItem({ ...item, reorder_quantity: roq });
+                    handlePrepareReorder(item);
                     setDrawerItem(null);
                   }}
                   style={{
@@ -8917,7 +8965,7 @@ export default function InventoryOptimizationView() {
                     boxShadow: '0 2px 8px rgba(5,150,105,0.3)',
                   }}
                 >
-                  {isDispatched ? '✓ PO Dispatched' : '⚡ Dispatch Quick PO'}
+                  {isDispatched ? '✓ PO Created' : '⚡ Reorder Materials'}
                 </button>
                 <button
                   className="btn-hover"
