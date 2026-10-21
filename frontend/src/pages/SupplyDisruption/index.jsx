@@ -992,6 +992,7 @@ export default function SupplyDisruptionView() {
                   aria-label="Close export modal"
                   onClick={() => setIsExportModalOpen(false)}
                   style={styles.modalClose}
+                  className="modal-close-btn"
                 >
                   ✕
                 </button>
@@ -1057,6 +1058,7 @@ export default function SupplyDisruptionView() {
                   type="button"
                   onClick={() => setIsExportModalOpen(false)}
                   style={styles.modalCancelBtn}
+                  className="modal-cancel-btn"
                 >
                   Cancel
                 </button>
@@ -1065,6 +1067,7 @@ export default function SupplyDisruptionView() {
                   type="button"
                   onClick={handleModalDownload}
                   style={styles.modalDownloadBtn}
+                  className="modal-download-btn"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -2011,13 +2014,13 @@ const styles = {
     WebkitBackdropFilter: 'blur(8px)',
   },
   modalPanel: {
-    background: 'linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.96) 100%)',
-    border: '1px solid rgba(99,102,241,0.3)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '20px',
     padding: '28px',
     width: '100%',
     maxWidth: '560px',
-    boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.1) inset',
+    boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border-subtle)',
     animation: 'fadeInScale 0.2s ease',
   },
   modalHeader: {
@@ -2039,7 +2042,7 @@ const styles = {
     marginTop: '4px',
   },
   modalClose: {
-    background: 'none',
+    background: 'var(--bg-card-hover)',
     border: '1px solid var(--border-subtle)',
     borderRadius: '8px',
     color: 'var(--text-muted)',
@@ -2047,7 +2050,7 @@ const styles = {
     fontSize: '14px',
     padding: '4px 8px',
     lineHeight: 1,
-    transition: 'background 0.15s',
+    transition: 'all 0.15s ease',
   },
   formatCardGrid: {
     display: 'grid',
@@ -2056,8 +2059,8 @@ const styles = {
     marginBottom: '18px',
   },
   formatCard: {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1.5px solid rgba(255,255,255,0.1)',
+    background: 'var(--bg-card-hover)',
+    border: '1.5px solid var(--border-subtle)',
     borderRadius: '14px',
     padding: '18px 16px',
     cursor: 'pointer',
@@ -2065,13 +2068,13 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '6px',
-    transition: 'border-color 0.2s, background 0.2s, transform 0.15s',
+    transition: 'border-color 0.2s, background 0.2s, transform 0.15s, box-shadow 0.2s',
     position: 'relative',
   },
   formatCardActive: {
-    background: 'rgba(99,102,241,0.12)',
-    borderColor: '#6366f1',
-    boxShadow: '0 0 0 3px rgba(99,102,241,0.15)',
+    background: 'rgba(59, 130, 246, 0.12)',
+    borderColor: '#3b82f6',
+    boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.2)',
     transform: 'translateY(-1px)',
   },
   formatIcon: {
@@ -2097,32 +2100,32 @@ const styles = {
     width: '14px',
     height: '14px',
     borderRadius: '50%',
-    border: '2px solid rgba(255,255,255,0.25)',
+    border: '2px solid var(--text-dim)',
     background: 'transparent',
     transition: 'border-color 0.2s, background 0.2s',
   },
   formatRadioDotActive: {
-    borderColor: '#6366f1',
-    background: '#6366f1',
-    boxShadow: '0 0 0 3px rgba(99,102,241,0.25)',
+    borderColor: '#3b82f6',
+    background: '#3b82f6',
+    boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.25)',
   },
   selectedFormatPill: {
     display: 'flex',
     alignItems: 'center',
-    background: 'rgba(99,102,241,0.08)',
-    border: '1px solid rgba(99,102,241,0.2)',
+    background: 'var(--bg-card-subtle)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '8px',
     padding: '8px 14px',
     marginBottom: '20px',
     fontSize: '12px',
-    color: 'var(--text-muted)',
+    color: 'var(--text-main)',
   },
   selectedFormatPillLabel: {
     fontWeight: 600,
-    color: 'var(--text-dim)',
+    color: 'var(--text-muted)',
   },
   selectedFormatPillValue: {
-    color: '#a5b4fc',
+    color: '#3b82f6',
     fontWeight: 700,
   },
   modalActions: {
@@ -2131,28 +2134,28 @@ const styles = {
     justifyContent: 'flex-end',
   },
   modalCancelBtn: {
-    background: 'none',
+    background: 'var(--bg-card-hover)',
     border: '1px solid var(--border-subtle)',
     borderRadius: '10px',
-    color: 'var(--text-muted)',
+    color: 'var(--text-main)',
     cursor: 'pointer',
     fontSize: '13px',
     fontWeight: 600,
     padding: '10px 20px',
-    transition: 'background 0.15s',
+    transition: 'all 0.15s ease',
   },
   modalDownloadBtn: {
-    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
     border: 'none',
     borderRadius: '10px',
-    color: '#fff',
+    color: '#ffffff',
     cursor: 'pointer',
     fontSize: '13px',
     fontWeight: 700,
     padding: '10px 22px',
     display: 'flex',
     alignItems: 'center',
-    boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
-    transition: 'opacity 0.15s, transform 0.15s',
+    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+    transition: 'opacity 0.15s, transform 0.15s, filter 0.15s',
   },
 };
