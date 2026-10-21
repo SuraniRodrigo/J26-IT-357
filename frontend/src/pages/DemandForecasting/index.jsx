@@ -95,6 +95,7 @@ const FALLBACK_DEMAND_DRIVERS = {
       sales_display: "$4,421k USD",
       sales_amount: 4421143.14,
       velocity: 92,
+      image_url: "/images/silhouette_bralette.jpg",
     },
     {
       silhouette_name: "High-Compression Align Leggings",
@@ -105,6 +106,7 @@ const FALLBACK_DEMAND_DRIVERS = {
       sales_display: "$3,148k USD",
       sales_amount: 3147800.0,
       velocity: 95,
+      image_url: "/images/silhouette_leggings.jpg",
     },
     {
       silhouette_name: "Engineered Cleats & Breathable Shoes",
@@ -115,6 +117,7 @@ const FALLBACK_DEMAND_DRIVERS = {
       sales_display: "$2,892k USD",
       sales_amount: 2891757.66,
       velocity: 78,
+      image_url: "/images/silhouette_cleats.jpg",
     },
   ],
   seasonal_demands: [
@@ -1175,27 +1178,48 @@ export default function DemandForecastingView() {
                 <p style={styles.deepDiveText}>
                   Garment assembly complexity dictates sewing line loading and machine allocation across Sri Lankan apparel facilities.
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
                   <div style={styles.silhouetteRow}>
-                    <div>
-                      <strong style={{ color: '#f1f5f9', fontSize: '13px' }}>Polos, Tees & Knit Tops</strong>
-                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>Single Jersey 180 GSM · 4-Thread Overlock</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <img
+                        src="/images/silhouette_bralette.jpg"
+                        alt="Seamless Athleisure & Active Bralettes"
+                        style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', border: '1px solid rgba(56, 189, 248, 0.3)' }}
+                      />
+                      <div>
+                        <strong style={{ color: '#f1f5f9', fontSize: '13px' }}>Seamless Athleisure & Active Bralettes</strong>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>Circular Seamless Knit · High Moisture-Wicking Elastane</div>
+                      </div>
                     </div>
                     <span style={styles.smvPill}>14.2 min SMV</span>
                   </div>
                   <div style={styles.silhouetteRow}>
-                    <div>
-                      <strong style={{ color: '#f1f5f9', fontSize: '13px' }}>Compression Leggings & Pants</strong>
-                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>Interlock Nylon-Elastane 240 GSM · Flatlock Seaming</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <img
+                        src="/images/silhouette_leggings.jpg"
+                        alt="High-Compression Align Leggings"
+                        style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', border: '1px solid rgba(56, 189, 248, 0.3)' }}
+                      />
+                      <div>
+                        <strong style={{ color: '#f1f5f9', fontSize: '13px' }}>High-Compression Align Leggings</strong>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>Interlock Micro-Poly 220 GSM · Flatlock 4-Needle Seaming</div>
+                      </div>
                     </div>
                     <span style={styles.smvPill}>18.4 min SMV</span>
                   </div>
                   <div style={styles.silhouetteRow}>
-                    <div>
-                      <strong style={{ color: '#f1f5f9', fontSize: '13px' }}>Technical Outerwear & Shells</strong>
-                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>Bonded Poly-Spandex 220 GSM · Seam-Sealing & Welded Pockets</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <img
+                        src="/images/silhouette_cleats.jpg"
+                        alt="Engineered Cleats & Breathable Shoes"
+                        style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', border: '1px solid rgba(56, 189, 248, 0.3)' }}
+                      />
+                      <div>
+                        <strong style={{ color: '#f1f5f9', fontSize: '13px' }}>Engineered Cleats & Breathable Shoes</strong>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>Recycled TPU Skeleton · Molded Heel Counters</div>
+                      </div>
                     </div>
-                    <span style={{ ...styles.smvPill, color: '#f59e0b', borderColor: '#f59e0b' }}>24.8 min SMV</span>
+                    <span style={{ ...styles.smvPill, color: '#f59e0b', borderColor: '#f59e0b' }}>22.8 min SMV</span>
                   </div>
                 </div>
               </div>
@@ -2390,54 +2414,98 @@ export default function DemandForecastingView() {
                       cursor: 'pointer',
                       border: isSelected ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.05)',
                       background: isSelected ? 'rgba(56, 189, 248, 0.1)' : '#131c2d',
+                      display: 'flex',
+                      flexDirection: 'row',
+                      gap: '12px',
+                      alignItems: 'center',
                     }}
                     title={`Click to select ${item.product_name} in forecast trajectory`}
                   >
-                    <div style={styles.dimItemTop}>
-                      <div>
-                        <strong style={{ fontSize: '12px', color: isSelected ? '#38bdf8' : '#f1f5f9' }}>
-                          {item.silhouette_name}
-                        </strong>
-                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
-                          {item.specs}
-                        </div>
-                      </div>
-                      <span
-                        style={{
-                          fontSize: '9px',
-                          fontWeight: 700,
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          background: `${badgeColor}18`,
-                          color: badgeColor,
-                          border: `1px solid ${badgeColor}35`,
-                          whiteSpace: 'nowrap',
-                          marginLeft: '8px',
-                        }}
-                      >
-                        {item.badge}
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>
-                      <span>Orders: <strong style={{ color: '#f1f5f9' }}>{item.orders.toLocaleString()}</strong></span>
-                      <span>Sales: <strong style={{ color: '#10b981' }}>{item.sales_display}</strong></span>
-                      <span>Velocity: <strong style={{ color: '#38bdf8' }}>{item.velocity} / 100</strong></span>
-                    </div>
-
-                    <div style={styles.progressBarBg}>
+                    {item.image_url && (
                       <div
                         style={{
-                          ...styles.progressBarFill,
-                          width: `${progressPct}%`,
-                          background:
-                            idx === 0
-                              ? 'linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)'
-                              : idx === 1
-                              ? 'linear-gradient(90deg, #38bdf8 0%, #2563eb 100%)'
-                              : 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                          width: '56px',
+                          height: '56px',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                          border: isSelected ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                          boxShadow: isSelected ? '0 0 10px rgba(56, 189, 248, 0.35)' : 'none',
+                          background: '#090d16',
                         }}
-                      />
+                      >
+                        <img
+                          src={item.image_url}
+                          alt={item.silhouette_name}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            display: 'block',
+                            transition: 'transform 0.25s ease',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.08)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1.0)')}
+                        />
+                      </div>
+                    )}
+
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={styles.dimItemTop}>
+                        <div style={{ minWidth: 0 }}>
+                          <strong
+                            style={{
+                              fontSize: '12px',
+                              color: isSelected ? '#38bdf8' : '#f1f5f9',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: 'block',
+                            }}
+                          >
+                            {item.silhouette_name}
+                          </strong>
+                          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '1px' }}>
+                            {item.specs}
+                          </div>
+                        </div>
+                        <span
+                          style={{
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: `${badgeColor}18`,
+                            color: badgeColor,
+                            border: `1px solid ${badgeColor}35`,
+                            whiteSpace: 'nowrap',
+                            marginLeft: '8px',
+                          }}
+                        >
+                          {item.badge}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
+                        <span>Orders: <strong style={{ color: '#f1f5f9' }}>{item.orders.toLocaleString()}</strong></span>
+                        <span>Sales: <strong style={{ color: '#10b981' }}>{item.sales_display}</strong></span>
+                        <span>Velocity: <strong style={{ color: '#38bdf8' }}>{item.velocity} / 100</strong></span>
+                      </div>
+
+                      <div style={styles.progressBarBg}>
+                        <div
+                          style={{
+                            ...styles.progressBarFill,
+                            width: `${progressPct}%`,
+                            background:
+                              idx === 0
+                                ? 'linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)'
+                                : idx === 1
+                                ? 'linear-gradient(90deg, #38bdf8 0%, #2563eb 100%)'
+                                : 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
                 );
@@ -2760,6 +2828,50 @@ export default function DemandForecastingView() {
           <div style={styles.mrpStatusBadge}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
             MRP Reconciled via MinT · View Detailed BOM →
+          </div>
+        </div>
+
+        {/* Smart Garment Factory Floor Visual Banner */}
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '140px',
+            borderRadius: '10px',
+            overflow: 'hidden',
+            border: '1px solid rgba(56, 189, 248, 0.2)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+            marginTop: '4px',
+            marginBottom: '4px',
+          }}
+        >
+          <img
+            src="/images/factory_floor_banner.jpg"
+            alt="Smart Garment Manufacturing Facility"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background:
+                'linear-gradient(90deg, rgba(13, 19, 34, 0.94) 0%, rgba(13, 19, 34, 0.72) 50%, rgba(13, 19, 34, 0.35) 100%)',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              padding: '0 20px',
+            }}
+          >
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#38bdf8', fontSize: '10px', fontWeight: 800, letterSpacing: '0.08em' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#38bdf8' }} />
+              SMART GARMENT MANUFACTURING · SRI LANKAN EXPORT HUBS
+            </div>
+            <div style={{ fontSize: '16px', fontWeight: 800, color: '#ffffff', marginTop: '3px', letterSpacing: '-0.01em' }}>
+              Modular Sewing Lines & Automated Fabric Spreading Synchronization
+            </div>
+            <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '3px', maxWidth: '640px', lineHeight: '1.4' }}>
+              Decomposed fashion velocity feeds directly into fabric roll procurement, ZDHC chemical dye batching, and line-level standard minute values (SMV).
+            </div>
           </div>
         </div>
 

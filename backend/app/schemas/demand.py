@@ -132,6 +132,7 @@ class FashionTrendItemSchema(BaseModel):
     sales_display: str
     sales_amount: float
     velocity: int
+    image_url: str | None = None
 
 
 class SeasonalDemandItemSchema(BaseModel):

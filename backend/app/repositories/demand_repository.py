@@ -511,6 +511,7 @@ class DemandRepository:
                     "sales_display": f"${round(p1['total_sales'] / 1000):,}k USD",
                     "sales_amount": p1["total_sales"],
                     "velocity": 92,
+                    "image_url": "/images/silhouette_bralette.jpg",
                 },
                 {
                     "silhouette_name": "High-Compression Align Leggings",
@@ -521,6 +522,7 @@ class DemandRepository:
                     "sales_display": f"${round((p3['total_sales'] if len(self._dataco_products_summary) > 2 else p2['total_sales']) / 1000):,}k USD",
                     "sales_amount": p3["total_sales"] if len(self._dataco_products_summary) > 2 else p2["total_sales"],
                     "velocity": 95,
+                    "image_url": "/images/silhouette_leggings.jpg",
                 },
                 {
                     "silhouette_name": "Engineered Cleats & Breathable Shoes",
@@ -531,6 +533,7 @@ class DemandRepository:
                     "sales_display": f"${round(p2['total_sales'] / 1000):,}k USD",
                     "sales_amount": p2["total_sales"],
                     "velocity": 78,
+                    "image_url": "/images/silhouette_cleats.jpg",
                 },
             ]
         else:
@@ -544,6 +547,7 @@ class DemandRepository:
                     "sales_display": "$4,421k USD",
                     "sales_amount": 4421143.14,
                     "velocity": 92,
+                    "image_url": "/images/silhouette_bralette.jpg",
                 },
                 {
                     "silhouette_name": "High-Compression Align Leggings",
@@ -554,6 +558,7 @@ class DemandRepository:
                     "sales_display": "$3,148k USD",
                     "sales_amount": 3147800.0,
                     "velocity": 95,
+                    "image_url": "/images/silhouette_leggings.jpg",
                 },
                 {
                     "silhouette_name": "Engineered Cleats & Breathable Shoes",
@@ -564,6 +569,7 @@ class DemandRepository:
                     "sales_display": "$2,892k USD",
                     "sales_amount": 2891757.66,
                     "velocity": 78,
+                    "image_url": "/images/silhouette_cleats.jpg",
                 },
             ]
 
