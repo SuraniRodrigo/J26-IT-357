@@ -3244,178 +3244,28 @@ export default function DemandForecastingView({ onNavigate }) {
               </div>
             </div>
 
-            {/* Factor Tuning Sliders Section */}
-            <div style={{ marginTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#f8fafc', letterSpacing: '0.05em' }}>
-                  MULTI-DRIVER DEMAND FACTOR ADJUSTMENTS
+            {/* Automated Multi-Driver Factor Engine Information Banner */}
+            <div
+              style={{
+                marginTop: '16px',
+                padding: '12px 14px',
+                borderRadius: '8px',
+                background: 'rgba(15, 23, 42, 0.65)',
+                border: '1px solid rgba(56, 189, 248, 0.2)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '13px' }}>⚙️</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.04em' }}>
+                  AUTOMATED MULTI-DRIVER FACTOR ENGINE
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFactorTrendGrowth(25);
-                    setFactorSeasonMultiplier(1.20);
-                    setFactorColorScore(85);
-                    setFactorBuyerWeight(1.15);
-                    setFactorPromoLift(10);
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#38bdf8',
-                    fontSize: '11px',
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                  }}
-                >
-                  Reset Factor Defaults
-                </button>
               </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Factor 1: Fashion Trend Velocity */}
-                <div style={styles.sliderRow}>
-                  <div style={styles.sliderLabelRow}>
-                    <span style={styles.sliderName}>✂️ Fashion Trend Velocity Lift</span>
-                    <span style={{ ...styles.sliderValueBadge, color: factorTrendGrowth >= 0 ? '#10b981' : '#f87171' }}>
-                      {factorTrendGrowth >= 0 ? `+${factorTrendGrowth}%` : `${factorTrendGrowth}%`}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-20"
-                    max="60"
-                    step="1"
-                    value={factorTrendGrowth}
-                    onChange={(e) => setFactorTrendGrowth(Number(e.target.value))}
-                    style={styles.sliderInput}
-                  />
-                </div>
-
-                {/* Factor 2: Seasonal Multiplier */}
-                <div style={styles.sliderRow}>
-                  <div style={styles.sliderLabelRow}>
-                    <span style={styles.sliderName}>🌦️ Cyclical Seasonality Multiplier</span>
-                    <span style={{ ...styles.sliderValueBadge, color: '#38bdf8' }}>
-                      {Number(factorSeasonMultiplier).toFixed(2)}x
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.70"
-                    max="1.80"
-                    step="0.05"
-                    value={factorSeasonMultiplier}
-                    onChange={(e) => setFactorSeasonMultiplier(Number(e.target.value))}
-                    style={styles.sliderInput}
-                  />
-                </div>
-
-                {/* Factor 3: Color Palette Affinity */}
-                <div style={styles.sliderRow}>
-                  <div style={styles.sliderLabelRow}>
-                    <span style={styles.sliderName}>🎨 Colorway & Dye Batching Affinity</span>
-                    <span style={{ ...styles.sliderValueBadge, color: '#ec4899' }}>
-                      {factorColorScore} / 100
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="50"
-                    max="100"
-                    step="1"
-                    value={factorColorScore}
-                    onChange={(e) => setFactorColorScore(Number(e.target.value))}
-                    style={styles.sliderInput}
-                  />
-                </div>
-
-                {/* Factor 4: Buyer Order Behavior */}
-                <div style={styles.sliderRow}>
-                  <div style={styles.sliderLabelRow}>
-                    <span style={styles.sliderName}>🛍️ Buyer Channel Reorder Cadence</span>
-                    <span style={{ ...styles.sliderValueBadge, color: '#f59e0b' }}>
-                      {Number(factorBuyerWeight).toFixed(2)}x
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.80"
-                    max="1.50"
-                    step="0.05"
-                    value={factorBuyerWeight}
-                    onChange={(e) => setFactorBuyerWeight(Number(e.target.value))}
-                    style={styles.sliderInput}
-                  />
-                </div>
-
-                {/* Factor 5: Promotional Campaign Lift */}
-                <div style={styles.sliderRow}>
-                  <div style={styles.sliderLabelRow}>
-                    <span style={styles.sliderName}>📣 Omnichannel Campaign / Marketing Lift</span>
-                    <span style={{ ...styles.sliderValueBadge, color: '#818cf8' }}>
-                      +{factorPromoLift}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="30"
-                    step="1"
-                    value={factorPromoLift}
-                    onChange={(e) => setFactorPromoLift(Number(e.target.value))}
-                    style={styles.sliderInput}
-                  />
-                </div>
-              </div>
-
-              {/* Real-time Factor Composite Preview */}
-              {(() => {
-                const liveTrendMult = 1 + Number(factorTrendGrowth) / 100;
-                const liveSeasonMult = Number(factorSeasonMultiplier);
-                const liveColorMult = 0.90 + Number(factorColorScore) / 500;
-                const liveBuyerMult = Number(factorBuyerWeight);
-                const livePromoMult = 1 + Number(factorPromoLift) / 100;
-                const liveComp = Math.round(liveTrendMult * liveSeasonMult * liveColorMult * liveBuyerMult * livePromoMult * 1000) / 1000;
-                const baseD = periodProduct.includes('Bralette') ? 16800 : periodProduct.includes('Legging') ? 14500 : 12400;
-                const liveEst = Math.round(baseD * liveComp * (Number(periodHorizonDays) / 30));
-
-                return (
-                  <div
-                    style={{
-                      marginTop: '12px',
-                      padding: '10px 14px',
-                      borderRadius: '8px',
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      border: '1px solid rgba(56, 189, 248, 0.25)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 800, letterSpacing: '0.04em' }}>
-                        LIVE FACTOR COMPOSITE MULTIPLIER
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
-                        Net Factor Impact:{' '}
-                        <strong style={{ color: liveComp >= 1.0 ? '#10b981' : '#f87171' }}>
-                          {liveComp >= 1.0 ? `+${Math.round((liveComp - 1) * 100)}%` : `${Math.round((liveComp - 1) * 100)}%`} ({liveComp}x)
-                        </strong>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 800 }}>
-                        EST. FACTOR DEMAND
-                      </div>
-                      <div style={{ fontSize: '16px', fontWeight: 900, color: '#38bdf8' }}>
-                        ~{liveEst.toLocaleString()}{' '}
-                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 500 }}>units</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+              <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0, lineHeight: 1.45 }}>
+                Demand factors (<strong>Trend Velocity</strong>, <strong>Calendar Seasonality</strong>, <strong>Colorway Affinity</strong>, <strong>Buyer Purchasing Channel</strong>, and <strong>Promo Lift</strong>) are automatically synthesized from authentic order book metrics for the chosen period and silhouette.
+              </p>
             </div>
 
             {/* Calculate Button (Explicit user trigger, no auto-fill) */}
