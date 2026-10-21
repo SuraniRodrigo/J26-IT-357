@@ -134,17 +134,17 @@ export default function DashboardView({ onNavigate }) {
 
               <div style={styles.demandMetricBox}>
                 <div style={styles.demandMetricLabel}>TOP GROWING SKU</div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9', marginTop: '4px' }}>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-main)', marginTop: '4px' }}>
                   AC-PERF-LG-02
                 </div>
-                <div style={{ fontSize: '11px', color: '#94a3b8' }}>Performance Legging · 210,000 units</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Performance Legging · 210,000 units</div>
               </div>
 
               <div style={styles.demandMetricBox}>
                 <div style={styles.demandMetricLabel}>DOMINANT COLOR PALETTE</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                   <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#d97706' }} />
-                  <strong style={{ fontSize: '14px', color: '#ffffff' }}>Solar Amber</strong>
+                  <strong style={{ fontSize: '14px', color: 'var(--text-main)' }}>Solar Amber</strong>
                   <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 600 }}>Idx: 142</span>
                 </div>
               </div>
@@ -155,8 +155,8 @@ export default function DashboardView({ onNavigate }) {
           <div style={styles.demandChartCol}>
             <div style={styles.chartHeaderRow}>
               <div>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff' }}>Forecasted Demand Curve</span>
-                <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>Indexed Volume Growth</span>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>Forecasted Demand Curve</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>Indexed Volume Growth</span>
               </div>
               <span style={styles.pulseActiveTag}>● Live Projection</span>
             </div>
@@ -171,9 +171,9 @@ export default function DashboardView({ onNavigate }) {
                   </linearGradient>
                 </defs>
                 {/* Horizontal reference lines */}
-                <line x1="20" y1="30" x2="430" y2="30" stroke="rgba(255,255,255,0.06)" strokeDasharray="3" />
-                <line x1="20" y1="75" x2="430" y2="75" stroke="rgba(255,255,255,0.06)" strokeDasharray="3" />
-                <line x1="20" y1="120" x2="430" y2="120" stroke="rgba(255,255,255,0.06)" strokeDasharray="3" />
+                <line x1="20" y1="30" x2="430" y2="30" stroke="var(--border-subtle)" strokeDasharray="3" />
+                <line x1="20" y1="75" x2="430" y2="75" stroke="var(--border-subtle)" strokeDasharray="3" />
+                <line x1="20" y1="120" x2="430" y2="120" stroke="var(--border-subtle)" strokeDasharray="3" />
 
                 {/* Primary Growth Wave */}
                 <path
@@ -197,9 +197,9 @@ export default function DashboardView({ onNavigate }) {
                 />
 
                 {/* Month labels */}
-                <text x="30" y="152" fill="#64748b" fontSize="10">Q1 '25</text>
-                <text x="160" y="152" fill="#64748b" fontSize="10">Q3 '25</text>
-                <text x="290" y="152" fill="#64748b" fontSize="10">Q1 '26</text>
+                <text x="30" y="152" fill="var(--text-dim)" fontSize="10">Q1 '25</text>
+                <text x="160" y="152" fill="var(--text-dim)" fontSize="10">Q3 '25</text>
+                <text x="290" y="152" fill="var(--text-dim)" fontSize="10">Q1 '26</text>
                 <text x="390" y="152" fill="#38bdf8" fontSize="10" fontWeight="700">Q4 '26 (Est)</text>
               </svg>
             </div>
@@ -208,11 +208,11 @@ export default function DashboardView({ onNavigate }) {
             <div style={styles.chartMiniLegend}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8' }} />
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>AI Predicted Volume</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>AI Predicted Volume</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }} />
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Historical Baseline</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Historical Baseline</span>
               </div>
             </div>
           </div>
@@ -581,12 +581,12 @@ const styles = {
     fontSize: '22px',
     fontWeight: 800,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
     letterSpacing: '-0.01em',
   },
   demandHeroParagraph: {
     fontSize: '13px',
-    color: '#cbd5e1',
+    color: 'var(--text-muted)',
     lineHeight: 1.6,
     margin: '10px 0 20px',
   },
@@ -596,8 +596,8 @@ const styles = {
     gap: '14px',
   },
   demandMetricBox: {
-    background: 'rgba(9, 14, 26, 0.75)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '10px',
     padding: '14px 16px',
   },
@@ -605,13 +605,13 @@ const styles = {
     fontSize: '9px',
     fontWeight: 700,
     letterSpacing: '0.08em',
-    color: '#94a3b8',
+    color: 'var(--text-dim)',
   },
   demandMetricValue: {
     fontSize: '26px',
     fontWeight: 800,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
     margin: '4px 0',
   },
   demandMetricPillGreen: {
@@ -625,8 +625,8 @@ const styles = {
     color: '#38bdf8',
   },
   demandChartCol: {
-    background: 'rgba(9, 14, 26, 0.85)',
-    border: '1px solid rgba(56, 189, 248, 0.18)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '14px',
     padding: '18px',
     display: 'flex',
@@ -654,7 +654,7 @@ const styles = {
   chartMiniLegend: {
     display: 'flex',
     gap: '16px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+    borderTop: '1px solid var(--border-subtle)',
     paddingTop: '10px',
   },
 

@@ -859,7 +859,7 @@ const styles = {
   },
   radarViewport: {
     height: '380px',
-    background: 'radial-gradient(circle at center, #111d33 0%, #090e1a 100%)',
+    background: 'radial-gradient(circle at center, var(--bg-card-hover) 0%, var(--bg-main) 100%)',
     borderRadius: '12px',
     position: 'relative',
     overflow: 'hidden',
@@ -879,19 +879,19 @@ const styles = {
   ring: {
     position: 'absolute',
     borderRadius: '50%',
-    border: '1px dashed rgba(56, 189, 248, 0.18)',
+    border: '1px dashed rgba(56, 189, 248, 0.35)',
   },
   crosshairH: {
     position: 'absolute',
     width: '100%',
     height: '1px',
-    background: 'rgba(56, 189, 248, 0.12)',
+    background: 'rgba(56, 189, 248, 0.25)',
   },
   crosshairV: {
     position: 'absolute',
     height: '100%',
     width: '1px',
-    background: 'rgba(56, 189, 248, 0.12)',
+    background: 'rgba(56, 189, 248, 0.25)',
   },
   sweepLine: {
     position: 'absolute',
@@ -915,14 +915,18 @@ const styles = {
     width: '12px',
     height: '12px',
     borderRadius: '50%',
-    border: '2px solid #ffffff',
+    border: '2px solid var(--bg-card)',
   },
   nodeLabel: {
     marginTop: '4px',
     fontSize: '10px',
     fontWeight: 600,
-    color: '#cbd5e1',
-    textShadow: '0 1px 4px rgba(0, 0, 0, 0.9)',
+    color: 'var(--text-main)',
+    background: 'var(--bg-card-subtle)',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    border: '1px solid var(--border-subtle)',
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
     whiteSpace: 'nowrap',
   },
   bottomChips: {
