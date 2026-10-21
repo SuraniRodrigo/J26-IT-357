@@ -43,17 +43,43 @@ def _expected_feature_names(model) -> list[str]:
     raise RuntimeError("Supply risk model does not expose its trained feature names")
 
 
-def _build_model_input(request: SupplyPredictionRequest, model) -> tuple[pd.DataFrame, int]:
-    shipping_variance = (
-        request.days_for_shipping_real - request.days_for_shipment_scheduled
-    )
+CATEGORY_NAME_MAP: dict[str, int] = {
+    "knitted fabric": 17,
+    "organic cotton denim fabric": 17,
+    "cotton": 17,
+    "denim": 18,
+    "woven fabric": 24,
+    "accessories": 34,
+    "trims": 12,
+    "yarn": 12,
+    "apparel": 17,
+    "dresses": 17,
+}
+
+
+def _resolve_category_id(request: SupplyPredictionRequest) -> int:
+    if request.category_id is not None:
+        return request.category_id
+    cat_lower = request.category_name.strip().lower()
+    if cat_lower in CATEGORY_NAME_MAP:
+        return CATEGORY_NAME_MAP[cat_lower]
+    return (abs(hash(cat_lower)) % 45) + 1
+
+
+def _build_model_input(
+    request: SupplyPredictionRequest, model
+) -> tuple[pd.DataFrame, int, int]:
+    actual_shipping_days = request.scheduled_shipping_days + request.expected_delay_days
+    shipping_variance = request.expected_delay_days
+    category_id = _resolve_category_id(request)
+
     raw_features = pd.DataFrame(
         [
             {
-                "Days for shipping (real)": request.days_for_shipping_real,
-                "Days for shipment (scheduled)": request.days_for_shipment_scheduled,
+                "Days for shipping (real)": actual_shipping_days,
+                "Days for shipment (scheduled)": request.scheduled_shipping_days,
                 "Shipping_Variance": shipping_variance,
-                "Category Id": request.category_id,
+                "Category Id": category_id,
                 "Shipping Mode": request.shipping_mode,
                 "Order Region": request.order_region,
             }
@@ -81,33 +107,73 @@ def _build_model_input(request: SupplyPredictionRequest, model) -> tuple[pd.Data
         if feature_name is not None:
             aligned_features[expected_name] = encoded_features[feature_name].astype(int)
 
-    return aligned_features, shipping_variance
+    return aligned_features, shipping_variance, actual_shipping_days
 
 
 def predict_supply_risk(
     request: SupplyPredictionRequest,
 ) -> SupplyPredictionResponse:
     model = _load_model()
-    model_input, shipping_variance = _build_model_input(request, model)
+    model_input, shipping_variance, actual_shipping_days = _build_model_input(request, model)
     probabilities = model.predict_proba(model_input)[0]
 
     classes = getattr(model, "classes_", None)
     positive_class_index = list(classes).index(1) if classes is not None and 1 in classes else -1
-    disruption_probability = float(probabilities[positive_class_index])
-    probability_percent = round(disruption_probability * 100, 2)
+    raw_disruption_prob = float(probabilities[positive_class_index])
+    raw_risk_score = raw_disruption_prob * 100.0
 
-    if probability_percent >= 70:
+    # 1. Delay penalty: +18.5% risk per day of expected delay (additive, not multiplicative)
+    delay_days = request.expected_delay_days
+    delay_penalty = delay_days * 18.5
+
+    # 2. Monsoon/Seasonal penalty: +20% flat during high-disruption months (5, 6, 10, 11)
+    is_monsoon_month = request.month in (5, 6, 10, 11)
+    monsoon_penalty = 20.0 if is_monsoon_month else 0.0
+
+    # 3. Final risk: clamp to [3.5, 98.5] so it's never trivially 0% or 100%
+    calculated_risk = min(98.5, max(3.5, raw_risk_score + delay_penalty + monsoon_penalty))
+    risk_score = round(calculated_risk, 2)
+
+    # 4. Strict inverse trust score
+    trust_score = round(100.0 - risk_score, 2)
+
+    if risk_score >= 70.0:
         risk_level = "high"
-    elif probability_percent >= 30:
+    elif risk_score >= 35.0:
         risk_level = "medium"
     else:
         risk_level = "low"
 
+    early_warning_alert = risk_score >= 50.0
+
+    if delay_days > 0:
+        delay_impact_description = (
+            f"{delay_days} day(s) expected delay detected. "
+            f"Real transit time extends from {request.scheduled_shipping_days} to {actual_shipping_days} days "
+            f"(+{round(delay_penalty, 1)}% disruption penalty applied)."
+        )
+    else:
+        delay_impact_description = (
+            f"On-time schedule ({request.scheduled_shipping_days} days). No delay penalty applied."
+        )
+
     return SupplyPredictionResponse(
         status="success",
+        product_name=request.product_name,
+        supplier_name=request.supplier_name,
+        category_name=request.category_name,
+        year=request.year,
+        month=request.month,
+        scheduled_shipping_days=request.scheduled_shipping_days,
+        expected_delay_days=request.expected_delay_days,
+        actual_shipping_days=actual_shipping_days,
         shipping_variance=shipping_variance,
-        disruption_probability_percent=probability_percent,
-        supplier_trust_score=round((1 - disruption_probability) * 100, 2),
-        early_warning_alert=probability_percent >= 50,
+        risk_score=risk_score,
+        trust_score=trust_score,
         risk_level=risk_level,
+        disruption_probability_percent=risk_score,
+        supplier_trust_score=trust_score,
+        early_warning_alert=early_warning_alert,
+        seasonal_risk_applied=is_monsoon_month,
+        delay_impact_description=delay_impact_description,
     )

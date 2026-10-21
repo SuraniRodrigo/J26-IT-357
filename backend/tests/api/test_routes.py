@@ -19,9 +19,13 @@ def test_demand_endpoint():
 
 def test_supply_predict_endpoint():
     payload = {
-        'days_for_shipping_real': 4,
-        'days_for_shipment_scheduled': 2,
-        'category_id': 17,
+        'product_name': 'Organic Cotton Denim Fabric',
+        'category_name': 'Knitted Fabric',
+        'supplier_name': 'TexLanka Mills',
+        'year': 2026,
+        'month': 5,
+        'scheduled_shipping_days': 4,
+        'expected_delay_days': 2,
         'shipping_mode': 'Standard Class',
         'order_region': 'Western Europe',
     }
@@ -29,11 +33,69 @@ def test_supply_predict_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data['status'] == 'success'
+    assert data['product_name'] == 'Organic Cotton Denim Fabric'
+    assert data['supplier_name'] == 'TexLanka Mills'
+    assert data['actual_shipping_days'] == 6
     assert data['shipping_variance'] == 2
-    assert 0 <= data['disruption_probability_percent'] <= 100
-    assert 0 <= data['supplier_trust_score'] <= 100
+    assert 0 <= data['risk_score'] <= 100
+    assert 0 <= data['trust_score'] <= 100
+    # Enforce strict inverse relationship
+    assert data['trust_score'] == round(100.0 - data['risk_score'], 2)
     assert data['risk_level'] in ['low', 'medium', 'high']
     assert isinstance(data['early_warning_alert'], bool)
+    assert data['seasonal_risk_applied'] is True
+
+
+def test_supply_predict_seasonal_and_delay_effects():
+    # Base on-time non-monsoon
+    on_time_feb = client.post('/api/supply/predict', json={
+        'product_name': 'Organic Cotton Denim Fabric',
+        'category_name': 'Knitted Fabric',
+        'supplier_name': 'TexLanka Mills',
+        'year': 2026,
+        'month': 2,
+        'scheduled_shipping_days': 4,
+        'expected_delay_days': 0,
+        'shipping_mode': 'Standard Class',
+        'order_region': 'Western Europe',
+    }).json()
+
+    # Delayed non-monsoon
+    delayed_feb = client.post('/api/supply/predict', json={
+        'product_name': 'Organic Cotton Denim Fabric',
+        'category_name': 'Knitted Fabric',
+        'supplier_name': 'TexLanka Mills',
+        'year': 2026,
+        'month': 2,
+        'scheduled_shipping_days': 4,
+        'expected_delay_days': 4,
+        'shipping_mode': 'Standard Class',
+        'order_region': 'Western Europe',
+    }).json()
+
+    # Delayed monsoon (month 5 = May) — use 2d delay so clamp headroom exists for monsoon uplift
+    delayed_may = client.post('/api/supply/predict', json={
+        'product_name': 'Organic Cotton Denim Fabric',
+        'category_name': 'Knitted Fabric',
+        'supplier_name': 'TexLanka Mills',
+        'year': 2026,
+        'month': 5,
+        'scheduled_shipping_days': 4,
+        'expected_delay_days': 2,
+        'shipping_mode': 'Standard Class',
+        'order_region': 'Western Europe',
+    }).json()
+
+    # Delay penalty increases risk
+    assert delayed_feb['risk_score'] > on_time_feb['risk_score']
+    assert delayed_feb['trust_score'] < on_time_feb['trust_score']
+
+    # Monsoon season increases risk further (flat +20% on top of delay penalty)
+    assert delayed_may['risk_score'] > on_time_feb['risk_score']
+    assert delayed_may['trust_score'] < on_time_feb['trust_score']
+    assert delayed_may['seasonal_risk_applied'] is True
+    assert on_time_feb['seasonal_risk_applied'] is False
+    assert delayed_may['trust_score'] == round(100.0 - delayed_may['risk_score'], 2)
 
 
 def test_supply_history_endpoint():

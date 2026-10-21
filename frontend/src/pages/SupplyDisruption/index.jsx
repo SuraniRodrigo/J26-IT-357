@@ -5,11 +5,14 @@ export default function SupplyDisruptionView() {
   const [filterMode, setFilterMode] = useState('all'); // 'all' or 'highRisk'
   const [selectedNode, setSelectedNode] = useState(null);
   const [predictionInput, setPredictionInput] = useState({
-    days_for_shipping_real: '',
-    days_for_shipment_scheduled: '',
-    category_id: '',
-    shipping_mode: '',
-    order_region: '',
+    product_name: 'Organic Cotton Denim Fabric',
+    category_name: 'Knitted Fabric',
+    supplier_name: 'TexLanka Mills',
+    year: '2026',
+    month: '5',
+    expected_delay_days: '0',
+    shipping_mode: 'Standard Class',
+    order_region: 'Western Europe',
   });
   const [prediction, setPrediction] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
@@ -61,11 +64,15 @@ export default function SupplyDisruptionView() {
 
     try {
       const result = await predictSupplyRisk({
-        days_for_shipping_real: Number(predictionInput.days_for_shipping_real),
-        days_for_shipment_scheduled: Number(predictionInput.days_for_shipment_scheduled),
-        category_id: Number(predictionInput.category_id),
-        shipping_mode: predictionInput.shipping_mode.trim(),
-        order_region: predictionInput.order_region.trim(),
+        product_name: predictionInput.product_name,
+        category_name: predictionInput.category_name,
+        supplier_name: predictionInput.supplier_name,
+        year: parseInt(predictionInput.year, 10) || 2026,
+        month: parseInt(predictionInput.month, 10) || 5,
+        scheduled_shipping_days: 4,
+        expected_delay_days: parseInt(predictionInput.expected_delay_days, 10) || 0,
+        shipping_mode: predictionInput.shipping_mode,
+        order_region: predictionInput.order_region,
       });
       setPrediction(result);
     } catch (error) {
@@ -83,6 +90,12 @@ export default function SupplyDisruptionView() {
   function updatePredictionInput(event) {
     const { name, value } = event.target;
     setPredictionInput((current) => ({ ...current, [name]: value }));
+    setPrediction(null);
+    setPredictionError('');
+  }
+
+  function applyPreset(preset) {
+    setPredictionInput(preset);
     setPrediction(null);
     setPredictionError('');
   }
@@ -132,86 +145,256 @@ export default function SupplyDisruptionView() {
       <section style={styles.predictionPanel} aria-busy={isPredicting}>
         <div style={styles.predictionPanelHeader}>
           <div>
-            <h2 style={styles.predictionTitle}>Shipment risk prediction</h2>
-            <p style={styles.predictionSubtitle}>Enter shipment details to score disruption risk.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>🎯</span>
+              <h2 style={styles.predictionTitle}>Product-Wise &amp; Period-Wise Shipment Risk Predictor</h2>
+            </div>
+            <p style={styles.predictionSubtitle}>
+              Continuous evaluation of supplier reliability, transit variances, and seasonal weather disruptions.
+            </p>
           </div>
           {prediction && (
-            <span style={{ ...styles.riskBadge, ...styles[`risk${prediction.risk_level}`] }}>
-              {prediction.risk_level.toUpperCase()} RISK
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {prediction.seasonal_risk_applied && (
+                <span style={styles.monsoonBadge}>
+                  🌧️ Monsoon Multiplier Active
+                </span>
+              )}
+              <span style={{ ...styles.riskBadge, ...styles[`risk${prediction.risk_level}`] }}>
+                {prediction.risk_level.toUpperCase()} RISK
+              </span>
+            </div>
           )}
         </div>
 
-        <form onSubmit={handlePredictionSubmit} style={styles.predictionForm}>
-          <label style={styles.fieldLabel}>
-            Actual shipping days
-            <input
-              name="days_for_shipping_real"
-              type="number"
-              min="0"
-              step="1"
-              required
-              disabled={isPredicting}
-              value={predictionInput.days_for_shipping_real}
-              onChange={updatePredictionInput}
-              style={styles.fieldInput}
-            />
-          </label>
-          <label style={styles.fieldLabel}>
-            Scheduled shipping days
-            <input
-              name="days_for_shipment_scheduled"
-              type="number"
-              min="0"
-              step="1"
-              required
-              disabled={isPredicting}
-              value={predictionInput.days_for_shipment_scheduled}
-              onChange={updatePredictionInput}
-              style={styles.fieldInput}
-            />
-          </label>
-          <label style={styles.fieldLabel}>
-            Category ID
-            <input
-              name="category_id"
-              type="number"
-              min="0"
-              step="1"
-              required
-              disabled={isPredicting}
-              value={predictionInput.category_id}
-              onChange={updatePredictionInput}
-              style={styles.fieldInput}
-            />
-          </label>
-          <label style={styles.fieldLabel}>
-            Shipping mode
-            <input
-              name="shipping_mode"
-              type="text"
-              required
-              disabled={isPredicting}
-              value={predictionInput.shipping_mode}
-              onChange={updatePredictionInput}
-              style={styles.fieldInput}
-            />
-          </label>
-          <label style={styles.fieldLabel}>
-            Order region
-            <input
-              name="order_region"
-              type="text"
-              required
-              disabled={isPredicting}
-              value={predictionInput.order_region}
-              onChange={updatePredictionInput}
-              style={styles.fieldInput}
-            />
-          </label>
-          <button type="submit" style={styles.predictButton} disabled={isPredicting}>
-            {isPredicting ? 'Scoring shipment…' : 'Predict risk'}
+        {/* Quick Presets for Demo */}
+        <div style={styles.presetsBar}>
+          <span style={styles.presetsLabel}>QUICK SCENARIOS:</span>
+          <button
+            type="button"
+            onClick={() => applyPreset({
+              product_name: 'Organic Cotton Denim Fabric',
+              category_name: 'Knitted Fabric',
+              supplier_name: 'TexLanka Mills',
+              year: '2026',
+              month: '2',
+              expected_delay_days: '0',
+              shipping_mode: 'Standard Class',
+              order_region: 'Western Europe',
+            })}
+            style={styles.presetChip}
+          >
+            🌱 On-Time Denim (Feb / Low Risk)
           </button>
+          <button
+            type="button"
+            onClick={() => applyPreset({
+              product_name: 'Organic Cotton Denim Fabric',
+              category_name: 'Knitted Fabric',
+              supplier_name: 'TexLanka Mills',
+              year: '2026',
+              month: '5',
+              expected_delay_days: '3',
+              shipping_mode: 'Standard Class',
+              order_region: 'Western Europe',
+            })}
+            style={styles.presetChip}
+          >
+            🌧️ Monsoon Delay (May / 3d Delay)
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPreset({
+              product_name: 'Blended Knit Fabric',
+              category_name: 'Woven Fabric',
+              supplier_name: 'South Asia Textiles',
+              year: '2026',
+              month: '11',
+              expected_delay_days: '6',
+              shipping_mode: 'Second Class',
+              order_region: 'South Asia',
+            })}
+            style={styles.presetChip}
+          >
+            ⚠️ High-Risk Peak (Nov / 6d Delay)
+          </button>
+        </div>
+
+        <form onSubmit={handlePredictionSubmit} style={styles.predictionFormContainer}>
+          {/* Row 1: Product Name, Category Name, Supplier Name, Year */}
+          <div style={styles.formRow1}>
+            <label style={styles.fieldLabel}>
+              <span>Product Name <span style={styles.requiredStar}>*</span></span>
+              <select
+                name="product_name"
+                required
+                disabled={isPredicting}
+                value={predictionInput.product_name}
+                onChange={updatePredictionInput}
+                style={styles.fieldSelect}
+              >
+                <option value="Organic Cotton Denim Fabric">Organic Cotton Denim Fabric</option>
+                <option value="Recycled Polyester Yarn">Recycled Polyester Yarn</option>
+                <option value="Blended Knit Fabric">Blended Knit Fabric</option>
+                <option value="Heavyweight Canvas">Heavyweight Canvas</option>
+              </select>
+            </label>
+
+            <label style={styles.fieldLabel}>
+              <span>Category Name <span style={styles.requiredStar}>*</span></span>
+              <select
+                name="category_name"
+                required
+                disabled={isPredicting}
+                value={predictionInput.category_name}
+                onChange={updatePredictionInput}
+                style={styles.fieldSelect}
+              >
+                <option value="Knitted Fabric">Knitted Fabric</option>
+                <option value="Woven Fabric">Woven Fabric</option>
+                <option value="Trims & Accessories">Trims &amp; Accessories</option>
+                <option value="Yarn & Fibers">Yarn &amp; Fibers</option>
+              </select>
+            </label>
+
+            <label style={styles.fieldLabel}>
+              <span>Supplier Name <span style={styles.requiredStar}>*</span></span>
+              <select
+                name="supplier_name"
+                required
+                disabled={isPredicting}
+                value={predictionInput.supplier_name}
+                onChange={updatePredictionInput}
+                style={styles.fieldSelect}
+              >
+                <option value="TexLanka Mills">TexLanka Mills</option>
+                <option value="Pacific Denim Co">Pacific Denim Co</option>
+                <option value="South Asia Textiles">South Asia Textiles</option>
+                <option value="Global Trims Ltd">Global Trims Ltd</option>
+              </select>
+            </label>
+
+            <label style={styles.fieldLabel}>
+              <span>Year <span style={styles.requiredStar}>*</span></span>
+              <input
+                name="year"
+                type="number"
+                min="2020"
+                max="2035"
+                required
+                disabled={isPredicting}
+                value={predictionInput.year}
+                onChange={updatePredictionInput}
+                placeholder="2026"
+                style={styles.fieldInput}
+              />
+            </label>
+          </div>
+
+          {/* Row 2: Est. Delivery Month, Shipping Mode, Order Region, Expected Delay */}
+          <div style={styles.formRow2}>
+            <label style={styles.fieldLabel}>
+              <span>Est. Delivery Month <span style={styles.requiredStar}>*</span></span>
+              <select
+                name="month"
+                required
+                disabled={isPredicting}
+                value={predictionInput.month}
+                onChange={updatePredictionInput}
+                style={styles.fieldSelect}
+              >
+                <option value="1">01 - January</option>
+                <option value="2">02 - February</option>
+                <option value="3">03 - March</option>
+                <option value="4">04 - April</option>
+                <option value="5">05 - May (Monsoon Peak 🌧️)</option>
+                <option value="6">06 - June (Monsoon Season 🌧️)</option>
+                <option value="7">07 - July</option>
+                <option value="8">08 - August</option>
+                <option value="9">09 - September</option>
+                <option value="10">10 - October (Monsoon Season 🌧️)</option>
+                <option value="11">11 - November (Monsoon Peak 🌧️)</option>
+                <option value="12">12 - December</option>
+              </select>
+            </label>
+
+            <label style={styles.fieldLabel}>
+              <span>Shipping Mode <span style={styles.requiredStar}>*</span></span>
+              <select
+                name="shipping_mode"
+                required
+                disabled={isPredicting}
+                value={predictionInput.shipping_mode}
+                onChange={updatePredictionInput}
+                style={styles.fieldSelect}
+              >
+                <option value="Standard Class">Standard Class</option>
+                <option value="Second Class">Second Class</option>
+                <option value="First Class">First Class</option>
+                <option value="Same Day">Same Day</option>
+              </select>
+            </label>
+
+            <label style={styles.fieldLabel}>
+              <span>Order Region <span style={styles.requiredStar}>*</span></span>
+              <select
+                name="order_region"
+                required
+                disabled={isPredicting}
+                value={predictionInput.order_region}
+                onChange={updatePredictionInput}
+                style={styles.fieldSelect}
+              >
+                <option value="Western Europe">Western Europe</option>
+                <option value="South Asia">South Asia</option>
+                <option value="Southeast Asia">Southeast Asia</option>
+                <option value="Eastern Asia">Eastern Asia</option>
+                <option value="Central America">Central America</option>
+                <option value="South America">South America</option>
+                <option value="North Africa">North Africa</option>
+                <option value="East of USA">East of USA</option>
+                <option value="US Center ">US Center</option>
+                <option value="West of USA ">West of USA</option>
+                <option value="Southern Europe">Southern Europe</option>
+                <option value="Northern Europe">Northern Europe</option>
+                <option value="Eastern Europe">Eastern Europe</option>
+              </select>
+            </label>
+
+            <label style={styles.fieldLabel}>
+              <span>Expected Delay (Days) <span style={styles.requiredStar}>*</span></span>
+              <input
+                name="expected_delay_days"
+                type="number"
+                min="0"
+                max="30"
+                step="1"
+                required
+                disabled={isPredicting}
+                value={predictionInput.expected_delay_days}
+                onChange={updatePredictionInput}
+                placeholder="0 = on-time"
+                style={styles.fieldInput}
+              />
+            </label>
+          </div>
+
+          <div style={styles.formActionsRow}>
+            <span style={styles.formHint}>
+              Scheduled: 4 days · Real transit = {4 + Number(predictionInput.expected_delay_days || 0)} days
+              {Number(predictionInput.expected_delay_days) > 0 ? ` (+${predictionInput.expected_delay_days}d delay penalty)` : ' (On-schedule)'}
+              {[5, 6, 10, 11].includes(Number(predictionInput.month)) ? ' · 🌧️ Monsoon multiplier active' : ''}
+            </span>
+            <button type="submit" style={styles.predictButton} disabled={isPredicting}>
+              {isPredicting ? (
+                <>
+                  <span style={styles.spinnerIcon} /> Scoring Shipment Risk…
+                </>
+              ) : (
+                <>⚡ Evaluate Product &amp; Period Risk</>
+              )}
+            </button>
+          </div>
         </form>
 
         {predictionError && (
@@ -220,34 +403,173 @@ export default function SupplyDisruptionView() {
           </div>
         )}
 
+        {/* Prediction Results Banner & Key Metrics */}
         {prediction && (
-          <div style={styles.predictionResults} aria-live="polite">
-            <div style={styles.predictionMetric}>
-              <span style={styles.predictionMetricLabel}>DISRUPTION PROBABILITY</span>
-              <strong style={styles.predictionMetricValue}>
-                {prediction.disruption_probability_percent.toFixed(1)}%
-              </strong>
+          <div style={styles.resultsContainer} aria-live="polite">
+            {/* Identity Banner */}
+            <div style={{
+              ...styles.predictionSummaryBanner,
+              borderLeftColor: prediction.risk_level === 'high' ? '#ef4444' : prediction.risk_level === 'medium' ? '#f59e0b' : '#10b981',
+            }}>
+              <div style={styles.summaryBannerLeft}>
+                <div style={styles.summaryProductTitle}>
+                  📦 <span style={{ fontWeight: 800 }}>{prediction.product_name}</span>
+                  <span style={styles.categoryBadge}>{prediction.category_name || predictionInput.category_name}</span>
+                </div>
+                <div style={styles.summarySupplierText}>
+                  🏭 Supplier: <strong style={{ color: 'var(--text-main)' }}>{prediction.supplier_name}</strong>
+                  <span style={styles.summarySeparator}>•</span>
+                  <span>Period: <strong>{new Date(prediction.year || 2026, (prediction.month || 1) - 1).toLocaleString('default', { month: 'long' })} {prediction.year}</strong></span>
+                  <span style={styles.summarySeparator}>•</span>
+                  <span>Mode: <strong>{predictionInput.shipping_mode} ({predictionInput.order_region})</strong></span>
+                </div>
+              </div>
+              <div style={styles.summaryBannerRight}>
+                {prediction.seasonal_risk_applied ? (
+                  <span style={styles.monsoonAlertBadge}>
+                    🌧️ Monsoon Season Trade Lane Multiplier Applied (+25%)
+                  </span>
+                ) : (
+                  <span style={styles.calmSeasonBadge}>
+                    🌤️ Standard Seasonal Weather Conditions
+                  </span>
+                )}
+              </div>
             </div>
-            <div style={styles.predictionMetric}>
-              <span style={styles.predictionMetricLabel}>SUPPLIER TRUST SCORE</span>
-              <strong style={styles.predictionMetricValue}>
-                {prediction.supplier_trust_score.toFixed(1)} <small>/ 100</small>
-              </strong>
-            </div>
-            <div style={styles.predictionMetric}>
-              <span style={styles.predictionMetricLabel}>EARLY WARNING</span>
-              <strong style={{
-                ...styles.predictionMetricValue,
-                color: prediction.early_warning_alert ? '#f87171' : '#34d399',
-              }}>
-                {prediction.early_warning_alert ? 'ALERT' : 'CLEAR'}
-              </strong>
-            </div>
-            <div style={styles.predictionMetric}>
-              <span style={styles.predictionMetricLabel}>SHIPPING VARIANCE</span>
-              <strong style={styles.predictionMetricValue}>
-                {prediction.shipping_variance} days
-              </strong>
+
+            {/* 4 Cards Grid */}
+            <div style={styles.predictionResults}>
+              {/* Card 1: Risk Score */}
+              <div style={styles.predictionMetricCard}>
+                <div style={styles.metricCardHeader}>
+                  <span style={styles.predictionMetricLabel}>DISRUPTION RISK SCORE</span>
+                  <span style={{
+                    ...styles.metricLevelBadge,
+                    backgroundColor: prediction.risk_level === 'high' ? 'rgba(239, 68, 68, 0.2)' : prediction.risk_level === 'medium' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                    color: prediction.risk_level === 'high' ? '#f87171' : prediction.risk_level === 'medium' ? '#fbbf24' : '#34d399',
+                  }}>
+                    {prediction.risk_level.toUpperCase()}
+                  </span>
+                </div>
+                <div style={{
+                  ...styles.predictionMetricValue,
+                  color: prediction.risk_level === 'high' ? '#f87171' : prediction.risk_level === 'medium' ? '#fbbf24' : '#34d399',
+                }}>
+                  {(prediction.risk_score ?? prediction.disruption_probability_percent).toFixed(1)}%
+                </div>
+                <div style={styles.metricProgressBarTrack}>
+                  <div style={{
+                    ...styles.metricProgressBarFill,
+                    width: `${Math.min(100, Math.max(0, prediction.risk_score ?? prediction.disruption_probability_percent))}%`,
+                    background: prediction.risk_level === 'high'
+                      ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
+                      : prediction.risk_level === 'medium'
+                      ? 'linear-gradient(90deg, #10b981, #f59e0b)'
+                      : 'linear-gradient(90deg, #059669, #10b981)',
+                  }} />
+                </div>
+                <div style={styles.metricCardFooter}>
+                  XGBoost probability adjusted for transit delay and seasonality
+                </div>
+              </div>
+
+              {/* Card 2: Trust Score */}
+              <div style={styles.predictionMetricCard}>
+                <div style={styles.metricCardHeader}>
+                  <span style={styles.predictionMetricLabel}>SUPPLIER TRUST SCORE</span>
+                  <span style={styles.inverseFormulaTag}>100 - Risk Score</span>
+                </div>
+                <div style={{
+                  ...styles.predictionMetricValue,
+                  color: (prediction.trust_score ?? prediction.supplier_trust_score) >= 65 ? '#34d399' : (prediction.trust_score ?? prediction.supplier_trust_score) >= 35 ? '#fbbf24' : '#f87171',
+                }}>
+                  {(prediction.trust_score ?? prediction.supplier_trust_score).toFixed(1)}
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-dim)' }}> / 100</span>
+                </div>
+                <div style={styles.metricProgressBarTrack}>
+                  <div style={{
+                    ...styles.metricProgressBarFill,
+                    width: `${Math.min(100, Math.max(0, prediction.trust_score ?? prediction.supplier_trust_score))}%`,
+                    background: (prediction.trust_score ?? prediction.supplier_trust_score) >= 65
+                      ? 'linear-gradient(90deg, #059669, #10b981)'
+                      : (prediction.trust_score ?? prediction.supplier_trust_score) >= 35
+                      ? 'linear-gradient(90deg, #f59e0b, #eab308)'
+                      : 'linear-gradient(90deg, #ef4444, #f87171)',
+                  }} />
+                </div>
+                <div style={styles.metricCardFooter}>
+                  Strict inverse relationship: higher risk reduces trust score
+                </div>
+              </div>
+
+              {/* Card 3: Delay Impact */}
+              <div style={styles.predictionMetricCard}>
+                <div style={styles.metricCardHeader}>
+                  <span style={styles.predictionMetricLabel}>TRANSIT &amp; DELAY IMPACT</span>
+                  <span style={{
+                    ...styles.metricLevelBadge,
+                    background: (prediction.expected_delay_days || 0) > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                    color: (prediction.expected_delay_days || 0) > 0 ? '#f87171' : '#34d399',
+                  }}>
+                    {(prediction.expected_delay_days || 0) > 0 ? `+${prediction.expected_delay_days}d DELAY` : 'ON-TIME'}
+                  </span>
+                </div>
+                <div style={styles.transitTimelineRow}>
+                  <div style={styles.transitCol}>
+                    <span style={styles.transitSubLabel}>SCHEDULED</span>
+                    <strong style={styles.transitNum}>{prediction.scheduled_shipping_days ?? predictionInput.scheduled_shipping_days}d</strong>
+                  </div>
+                  <div style={styles.transitArrow}>➜</div>
+                  <div style={styles.transitCol}>
+                    <span style={styles.transitSubLabel}>EXPECTED DELAY</span>
+                    <strong style={{ ...styles.transitNum, color: (prediction.expected_delay_days || 0) > 0 ? '#f87171' : '#34d399' }}>
+                      +{(prediction.expected_delay_days ?? prediction.shipping_variance)}d
+                    </strong>
+                  </div>
+                  <div style={styles.transitArrow}>=</div>
+                  <div style={styles.transitCol}>
+                    <span style={styles.transitSubLabel}>TOTAL TRANSIT</span>
+                    <strong style={styles.transitNum}>{prediction.actual_shipping_days ?? (Number(predictionInput.scheduled_shipping_days) + Number(predictionInput.expected_delay_days))}d</strong>
+                  </div>
+                </div>
+                <div style={styles.metricCardFooter}>
+                  {prediction.delay_impact_description || `${prediction.expected_delay_days || 0} days expected delay applied to model input.`}
+                </div>
+              </div>
+
+              {/* Card 4: Early Warning Alert */}
+              <div style={styles.predictionMetricCard}>
+                <div style={styles.metricCardHeader}>
+                  <span style={styles.predictionMetricLabel}>EARLY WARNING STATUS</span>
+                  <span style={{
+                    ...styles.metricLevelBadge,
+                    background: prediction.early_warning_alert ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                    color: prediction.early_warning_alert ? '#f87171' : '#34d399',
+                  }}>
+                    {prediction.early_warning_alert ? 'TRIGGERED' : 'CLEAR'}
+                  </span>
+                </div>
+                <div style={{
+                  ...styles.predictionMetricValue,
+                  fontSize: '20px',
+                  color: prediction.early_warning_alert ? '#f87171' : '#34d399',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}>
+                  <span style={{
+                    ...styles.alertPillIndicator,
+                    background: prediction.early_warning_alert ? '#ef4444' : '#10b981',
+                  }} className={prediction.early_warning_alert ? 'pulse-dot-red' : ''} />
+                  {prediction.early_warning_alert ? 'ACTION REQUIRED' : 'NORMAL PRODUCTION'}
+                </div>
+                <div style={{ ...styles.metricProgressBarTrack, height: '4px', background: 'transparent' }} />
+                <div style={styles.metricCardFooter}>
+                  {prediction.early_warning_alert
+                    ? 'Disruption probability exceeds 50% threshold. Alert sent to Inventory Guardian.'
+                    : 'Shipment risk within standard operating limits. No line stoppage expected.'}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -356,7 +678,7 @@ export default function SupplyDisruptionView() {
                 <div>
                   <div style={styles.chipLabel}>OVERALL TRUST SCORE</div>
                   <div style={styles.chipValue}>
-                    {prediction ? prediction.supplier_trust_score.toFixed(1) : '--'}
+                    {prediction ? (prediction.trust_score ?? prediction.supplier_trust_score).toFixed(1) : '--'}
                     <span style={{ fontSize: '11px', fontWeight: 400 }}> /100</span>
                   </div>
                 </div>
@@ -432,12 +754,12 @@ export default function SupplyDisruptionView() {
                     </div>
                     <div style={styles.warningMeta}>
                       {prediction
-                        ? `RISK: ${prediction.risk_level.toUpperCase()} · PROBABILITY: ${prediction.disruption_probability_percent.toFixed(1)}%`
+                        ? `RISK: ${prediction.risk_level.toUpperCase()} · PROBABILITY: ${(prediction.risk_score ?? prediction.disruption_probability_percent).toFixed(1)}%`
                         : 'PREDICTION STATUS: NOT RUN'}
                     </div>
                     <div style={styles.warningDesc}>
                       {prediction
-                        ? `Supplier trust score: ${prediction.supplier_trust_score.toFixed(1)} / 100.`
+                        ? `Product: ${prediction.product_name} · Supplier trust score: ${(prediction.trust_score ?? prediction.supplier_trust_score).toFixed(1)} / 100.`
                         : 'Submit shipment details above to retrieve the current model assessment.'}
                     </div>
                 </div>
@@ -693,8 +1015,9 @@ const styles = {
   predictionPanel: {
     background: 'var(--bg-card)',
     border: '1px solid var(--border-subtle)',
-    borderRadius: '12px',
-    padding: '20px',
+    borderRadius: '16px',
+    padding: '24px',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
   },
   predictionPanelHeader: {
     display: 'flex',
@@ -702,22 +1025,61 @@ const styles = {
     justifyContent: 'space-between',
     gap: '12px',
     marginBottom: '16px',
+    flexWrap: 'wrap',
   },
   predictionTitle: {
     margin: 0,
-    fontSize: '16px',
+    fontSize: '17px',
     fontWeight: 700,
     color: 'var(--text-main)',
+    fontFamily: 'Outfit, sans-serif',
+    letterSpacing: '-0.01em',
   },
   predictionSubtitle: {
     margin: '4px 0 0',
     fontSize: '12px',
     color: 'var(--text-muted)',
   },
-  predictionForm: {
+  presetsBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap',
+    marginBottom: '18px',
+    padding: '8px 12px',
+    background: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: '8px',
+    border: '1px dashed var(--border-subtle)',
+  },
+  presetsLabel: {
+    fontSize: '10px',
+    fontWeight: 700,
+    letterSpacing: '0.06em',
+    color: 'var(--text-dim)',
+  },
+  presetChip: {
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '6px',
+    padding: '4px 10px',
+    fontSize: '11px',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+  predictionFormContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+  },
+  formRow1: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
-    alignItems: 'end',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+    gap: '12px',
+  },
+  formRow2: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
     gap: '12px',
   },
   fieldLabel: {
@@ -728,62 +1090,267 @@ const styles = {
     fontSize: '11px',
     fontWeight: 600,
   },
+  requiredStar: {
+    color: '#ef4444',
+    marginLeft: '2px',
+  },
   fieldInput: {
     width: '100%',
     boxSizing: 'border-box',
     minHeight: '38px',
-    padding: '8px 10px',
+    padding: '8px 12px',
     border: '1px solid var(--border-subtle)',
-    borderRadius: '6px',
+    borderRadius: '8px',
     background: 'var(--bg-card-hover)',
     color: 'var(--text-main)',
     font: 'inherit',
+    fontSize: '12px',
+  },
+  fieldSelect: {
+    width: '100%',
+    boxSizing: 'border-box',
+    minHeight: '38px',
+    padding: '8px 12px',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '8px',
+    background: 'var(--bg-card-hover)',
+    color: 'var(--text-main)',
+    font: 'inherit',
+    fontSize: '12px',
+    cursor: 'pointer',
+  },
+  formActionsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '12px',
+    marginTop: '6px',
+    paddingTop: '12px',
+    borderTop: '1px solid var(--border-subtle)',
+  },
+  formHint: {
+    fontSize: '11px',
+    color: 'var(--text-dim)',
   },
   predictButton: {
-    minHeight: '38px',
-    padding: '8px 14px',
-    border: '1px solid #38bdf8',
-    borderRadius: '6px',
-    background: '#075985',
-    color: '#f0f9ff',
+    minHeight: '40px',
+    padding: '10px 22px',
+    border: '1px solid #0284c7',
+    borderRadius: '8px',
+    background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+    color: '#ffffff',
     fontSize: '12px',
     fontWeight: 700,
+    letterSpacing: '0.02em',
     cursor: 'pointer',
+    boxShadow: '0 2px 10px rgba(2, 132, 199, 0.3)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    transition: 'all 0.2s ease',
+  },
+  spinnerIcon: {
+    width: '12px',
+    height: '12px',
+    border: '2px solid rgba(255, 255, 255, 0.3)',
+    borderTopColor: '#ffffff',
+    borderRadius: '50%',
+    display: 'inline-block',
+    animation: 'spin 0.8s linear infinite',
   },
   predictionError: {
     marginTop: '14px',
-    padding: '10px 12px',
+    padding: '10px 14px',
     border: '1px solid rgba(248, 113, 113, 0.35)',
-    borderRadius: '6px',
+    borderRadius: '8px',
     background: 'rgba(127, 29, 29, 0.2)',
     color: '#fca5a5',
     fontSize: '12px',
   },
-  predictionResults: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
-    gap: '10px',
-    marginTop: '16px',
-  },
-  predictionMetric: {
+  resultsContainer: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
-    padding: '12px',
+    gap: '14px',
+    marginTop: '20px',
+  },
+  predictionSummaryBanner: {
+    background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%)',
     border: '1px solid var(--border-subtle)',
-    borderRadius: '8px',
+    borderLeftWidth: '4px',
+    borderRadius: '10px',
+    padding: '14px 18px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '12px',
+  },
+  summaryBannerLeft: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  summaryProductTitle: {
+    fontSize: '15px',
+    color: 'var(--text-main)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  categoryBadge: {
+    fontSize: '10px',
+    fontWeight: 700,
+    padding: '2px 8px',
+    borderRadius: '4px',
+    background: 'rgba(56, 189, 248, 0.15)',
+    color: '#38bdf8',
+    border: '1px solid rgba(56, 189, 248, 0.3)',
+  },
+  summarySupplierText: {
+    fontSize: '11px',
+    color: 'var(--text-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '6px',
+  },
+  summarySeparator: {
+    color: 'var(--text-dim)',
+  },
+  summaryBannerRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  monsoonAlertBadge: {
+    fontSize: '10px',
+    fontWeight: 700,
+    padding: '4px 10px',
+    borderRadius: '6px',
+    background: 'rgba(239, 68, 68, 0.14)',
+    color: '#f87171',
+    border: '1px solid rgba(239, 68, 68, 0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  calmSeasonBadge: {
+    fontSize: '10px',
+    fontWeight: 700,
+    padding: '4px 10px',
+    borderRadius: '6px',
+    background: 'rgba(16, 185, 129, 0.14)',
+    color: '#34d399',
+    border: '1px solid rgba(16, 185, 129, 0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  monsoonBadge: {
+    fontSize: '10px',
+    fontWeight: 700,
+    padding: '4px 8px',
+    borderRadius: '6px',
+    background: 'rgba(239, 68, 68, 0.15)',
+    color: '#fca5a5',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+  },
+  predictionResults: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '12px',
+  },
+  predictionMetricCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    gap: '6px',
+    padding: '16px',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '10px',
     background: 'var(--bg-card-subtle)',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+  },
+  metricCardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '6px',
   },
   predictionMetricLabel: {
     color: 'var(--text-dim)',
     fontSize: '9px',
     fontWeight: 700,
+    letterSpacing: '0.06em',
+  },
+  metricLevelBadge: {
+    borderRadius: '4px',
+    padding: '2px 7px',
+    fontSize: '9px',
+    fontWeight: 800,
     letterSpacing: '0.04em',
   },
+  inverseFormulaTag: {
+    fontSize: '9px',
+    fontStyle: 'italic',
+    color: 'var(--text-dim)',
+  },
   predictionMetricValue: {
-    color: 'var(--text-main)',
-    fontSize: '20px',
+    fontSize: '26px',
+    fontWeight: 800,
+    fontFamily: 'Outfit, sans-serif',
+    marginTop: '2px',
+  },
+  metricProgressBarTrack: {
+    width: '100%',
+    height: '6px',
+    borderRadius: '3px',
+    background: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+    margin: '4px 0 2px',
+  },
+  metricProgressBarFill: {
+    height: '100%',
+    borderRadius: '3px',
+    transition: 'width 0.4s ease',
+  },
+  metricCardFooter: {
+    fontSize: '10px',
+    color: 'var(--text-muted)',
+    lineHeight: 1.4,
+  },
+  transitTimelineRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+  },
+  transitCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+  transitSubLabel: {
+    fontSize: '8px',
     fontWeight: 700,
+    color: 'var(--text-dim)',
+    letterSpacing: '0.04em',
+  },
+  transitNum: {
+    fontSize: '15px',
+    fontWeight: 700,
+    color: 'var(--text-main)',
+  },
+  transitArrow: {
+    fontSize: '12px',
+    color: 'var(--text-dim)',
+  },
+  alertPillIndicator: {
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%',
+    flexShrink: 0,
   },
   riskBadge: {
     borderRadius: '6px',

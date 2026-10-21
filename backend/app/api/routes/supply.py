@@ -37,9 +37,9 @@ def supply_predict(
         ) from exc
 
     risk_record = SupplyRiskRecord(
-        supplier_id=None,
-        vendor_id=None,
-        disruption_probability=round(prediction.disruption_probability_percent / 100.0, 4),
+        supplier_id=request.supplier_name,
+        vendor_id=request.product_name,
+        disruption_probability=round(prediction.risk_score / 100.0, 4),
         risk_level=prediction.risk_level,
         model_version="xgboost-v1.0",
     )
@@ -122,7 +122,7 @@ def supply_latest_risk(
             vendor_id=record.vendor_id,
             disruption_probability=prob,
             disruption_probability_percent=prob_percent,
-            supplier_trust_score=round((1.0 - prob) * 100, 2),
+            supplier_trust_score=round(100.0 - prob_percent, 2),
             risk_level=record.risk_level,
             early_warning_alert=prob >= 0.5,
             model_version=record.model_version,
