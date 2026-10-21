@@ -17,6 +17,7 @@ class OptimizationResult:
     product_id: str
     decision_date: date
     forecasted_demand: float
+    forecast_horizon_days: int
     current_inventory: float
     inventory_position: float
     in_transit_qty: float
@@ -66,6 +67,7 @@ class InventoryOptimizer:
         product_id: str,
         current_inventory: float,
         forecasted_demand: float,
+        forecast_horizon_days: int = 1,
         average_lead_time: float = 3.5,
         lead_time_std_dev: float = 1.62,
         demand_std_dev: float = 38.87,
@@ -81,6 +83,7 @@ class InventoryOptimizer:
         decision_date: date | None = None,
         upstream_source: str = "DEMO (Mock Upstream Provider)",
         custom_features: dict[str, float] | None = None,
+        expected_delay_days: float = 0.0,
     ) -> OptimizationResult:
         """
         Executes deterministic optimization pipeline:
@@ -109,6 +112,8 @@ class InventoryOptimizer:
                 "Baseline lead time must be > 0 days. "
                 "A value of 0 is physically impossible for a real supplier."
             )
+        if expected_delay_days < 0:
+            raise ValueError(f"Expected supplier delay cannot be negative ({expected_delay_days}).")
         if supplier_trust_score <= 0:
             raise ValueError(
                 "Supplier trust score must be > 0. "
@@ -121,7 +126,7 @@ class InventoryOptimizer:
         # Step 1-5: Calculate Policy Parameters using PolicyEngine
         policy_res = self.policy_engine.compute_full_policy(
             forecasted_demand=forecasted_demand,
-            average_lead_time=average_lead_time,
+            average_lead_time=average_lead_time + expected_delay_days,
             demand_std_dev=demand_std_dev,
             lead_time_std_dev=lead_time_std_dev,
             disruption_probability=disruption_probability,
@@ -132,10 +137,10 @@ class InventoryOptimizer:
         )
 
         # Step 6: Material Requirement (Section 17)
-        material_requirement = round(forecasted_demand, 2)
+        material_requirement = round(forecasted_demand * forecast_horizon_days, 2)
 
         # Step 7: Material Shortage
-        material_shortage = round(max(0.0, forecasted_demand - current_inventory), 2)
+        material_shortage = round(max(0.0, material_requirement - current_inventory), 2)
 
         # Step 8: Material Availability Flag
         material_availability_flag = bool(material_shortage == 0.0)
@@ -193,6 +198,7 @@ class InventoryOptimizer:
             product_id=product_id,
             decision_date=calc_date,
             forecasted_demand=round(forecasted_demand, 2),
+            forecast_horizon_days=forecast_horizon_days,
             current_inventory=round(current_inventory, 2),
             inventory_position=round(pos, 2),
             in_transit_qty=round(in_transit_qty, 2),

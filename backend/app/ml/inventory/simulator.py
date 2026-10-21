@@ -27,6 +27,8 @@ class ScenarioComparisonEntry:
 class MultiScenarioSimulationResult:
     product_id: str
     forecasted_demand: float
+    forecast_horizon_days: int
+    expected_delay_days: float
     current_inventory: float
     scenarios: dict[str, ScenarioComparisonEntry]
 
@@ -44,6 +46,7 @@ class InventorySimulator:
         product_id: str,
         current_inventory: float,
         forecasted_demand: float,
+        forecast_horizon_days: int = 1,
         average_lead_time: float = 3.5,
         lead_time_std_dev: float = 1.62,
         demand_std_dev: float = 38.87,
@@ -53,6 +56,7 @@ class InventorySimulator:
         service_level: float = 0.95,
         z_value: float = 1.645,
         replenishment_cycle_days: int = 7,
+        expected_delay_days: float = 0.0,
     ) -> MultiScenarioSimulationResult:
         """Runs the optimization engine across NORMAL, MODERATE, and SEVERE disruption scenarios."""
         scenarios_config: list[tuple[DisruptionScenario, float]] = [
@@ -71,6 +75,8 @@ class InventorySimulator:
                 product_id=product_id,
                 current_inventory=current_inventory,
                 forecasted_demand=forecasted_demand,
+                forecast_horizon_days=forecast_horizon_days,
+                expected_delay_days=expected_delay_days,
                 average_lead_time=average_lead_time,
                 lead_time_std_dev=lead_time_std_dev,
                 demand_std_dev=demand_std_dev,
@@ -101,6 +107,8 @@ class InventorySimulator:
         return MultiScenarioSimulationResult(
             product_id=product_id,
             forecasted_demand=forecasted_demand,
+            forecast_horizon_days=forecast_horizon_days,
+            expected_delay_days=expected_delay_days,
             current_inventory=current_inventory,
             scenarios=results,
         )

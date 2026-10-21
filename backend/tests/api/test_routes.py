@@ -57,6 +57,113 @@ def test_inventory_optimize_rejects_zero_stock_and_demand():
     assert "cannot both be zero" in response.text
 
 
+def test_inventory_optimize_preserves_demand_forecast_horizon():
+    response = client.post(
+        "/api/inventory/optimize/detailed",
+        json={
+            "product_id": "LK-APP-001",
+            "current_inventory": 5200,
+            "in_transit_qty": 900,
+            "forecasted_demand": 614,
+            "forecast_horizon_days": 30,
+            "demand_std_dev": 92,
+            "average_lead_time": 14,
+            "expected_delay_days": 2,
+            "lead_time_std_dev": 3,
+            "disruption_probability": 0.18,
+            "supplier_trust_score": 82,
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["forecast_horizon_days"] == 30
+    assert result["expected_delay_days"] == 2
+    assert result["risk_adjusted_lead_time"] == 18.88
+    assert result["material_requirement"] == 18420
+    assert result["material_shortage"] == 13220
+
+
+def test_create_demand_product_persists_csv_fields_and_stock():
+    payload = {
+        "product_id": "LK-APP-997",
+        "product_name": "Demo Training Leggings",
+        "category": "Activewear",
+        "unit": "pcs",
+        "current_inventory": 5200,
+        "in_transit_qty": 900,
+        "forecasted_demand": 614,
+        "demand_std_dev": 92,
+        "average_lead_time": 14,
+        "lead_time_std_dev": 3,
+        "disruption_probability": 0.18,
+        "supplier_trust_score": 82,
+        "is_demand_product": True,
+        "department": "Apparel",
+        "export_markets": "USA, Europe",
+        "unit_price_usd": 49.99,
+        "historical_orders": 24515,
+        "total_historical_units": 73698,
+        "projected_demand_30d": 18420,
+        "fabric_requirement": 11973,
+        "sewing_smv_minutes": 22.8,
+        "planning_status": "Ready for production",
+        "demand_forecast_horizon_days": 30,
+    }
+    response = client.post("/api/inventory/products", json=payload)
+
+    try:
+        assert response.status_code == 201, response.text
+        created = response.json()
+        assert created["product_id"] == payload["product_id"]
+        assert created["in_transit_qty"] == 900
+        assert created["projected_demand_30d"] == 18420
+        assert created["forecasted_demand"] == 614
+        assert created["is_demand_product"] is True
+    finally:
+        if response.status_code == 201:
+            client.delete(f"/api/inventory/products/{payload['product_id']}")
+
+
+def test_inventory_scenario_preserves_demand_forecast_horizon():
+    response = client.post(
+        "/api/inventory/scenario",
+        json={
+            "product_id": "LK-APP-001",
+            "current_inventory": 5200,
+            "in_transit_qty": 900,
+            "forecasted_demand": 614,
+            "forecast_horizon_days": 30,
+            "demand_std_dev": 92,
+            "average_lead_time": 14,
+            "expected_delay_days": 2,
+            "lead_time_std_dev": 3,
+            "base_disruption_prob": 0.18,
+            "supplier_trust_score": 82,
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["forecast_horizon_days"] == 30
+    assert result["expected_delay_days"] == 2
+    assert result["scenarios"]["NORMAL"]["material_shortage"] == 13220
+    assert result["scenarios"]["NORMAL"]["risk_adjusted_lead_time"] == 18.88
+
+
+def test_demo_supplier_risk_endpoint_returns_matched_sku_data():
+    response = client.get("/api/inventory/demo-demand-supplier-risk/LK-APP-001")
+
+    assert response.status_code == 200
+    supplier = response.json()
+    assert supplier["product_id"] == "LK-APP-001"
+    assert supplier["supplier_name"] == "TexLanka Mills"
+    assert supplier["expected_delay_days"] == 2
+    assert supplier["risk_score_pct"] == 98.5
+    assert supplier["supplier_trust_score"] == 1.5
+    assert supplier["risk_level"] == "HIGH"
+
+
 @pytest.mark.parametrize(("updates", "expected_message"), [
     ({"current_inventory": 0, "forecasted_demand": 0}, "cannot both be zero"),
     ({"category": "Dyes & Chemicals"}, "belongs to the 'Fabrics' category"),

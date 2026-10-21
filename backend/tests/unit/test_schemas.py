@@ -8,6 +8,7 @@ from app.schemas.inventory import (
     CreateProductCatalogItem,
     InventoryOptimizationRequest,
     InventoryPolicySchema,
+    ScenarioAnalysisRequest,
     UpdateProductCatalogItem,
 )
 from app.schemas.supply import SupplyRiskSchema
@@ -150,6 +151,56 @@ def test_catalog_item_accepts_canonical_category_sku_prefixes(product_id, catego
     assert item.product_id == product_id
 
 
+def valid_demand_product(**overrides):
+    payload = {
+        "product_id": "LK-APP-001",
+        "product_name": "Active Training Leggings",
+        "category": "Activewear",
+        "unit": "pcs",
+        "current_inventory": 5200,
+        "in_transit_qty": 900,
+        "forecasted_demand": 614,
+        "demand_std_dev": 92,
+        "average_lead_time": 14,
+        "lead_time_std_dev": 3,
+        "disruption_probability": 0.18,
+        "supplier_trust_score": 82,
+        "is_demand_product": True,
+        "department": "Apparel",
+        "export_markets": "USA, Europe, Australia",
+        "unit_price_usd": 49.99,
+        "historical_orders": 24515,
+        "total_historical_units": 73698,
+        "projected_demand_30d": 18420,
+        "fabric_requirement": 11973,
+        "sewing_smv_minutes": 22.8,
+        "planning_status": "Ready for production",
+        "demand_forecast_horizon_days": 30,
+    }
+    return CreateProductCatalogItem(**(payload | overrides))
+
+
+def test_demand_catalog_accepts_demand_sku_and_preserves_30_day_total():
+    item = valid_demand_product()
+
+    assert item.product_id == "LK-APP-001"
+    assert item.projected_demand_30d == 18420
+    assert item.forecasted_demand == 614
+    assert item.demand_forecast_horizon_days == 30
+
+
+@pytest.mark.parametrize("overrides", [
+    {"product_id": "FAB-009"},
+    {"product_id": "LK-APP-A01"},
+    {"forecasted_demand": 18420},
+    {"demand_forecast_horizon_days": 1},
+    {"department": None},
+])
+def test_demand_catalog_rejects_invalid_sku_or_forecast_contract(overrides):
+    with pytest.raises(ValidationError):
+        valid_demand_product(**overrides)
+
+
 def test_catalog_item_rejects_unknown_category_and_malformed_sku():
     with pytest.raises(ValidationError):
         valid_catalog_item(category="Electronics")
@@ -177,3 +228,16 @@ def test_optimization_rejects_zero_stock_and_zero_demand():
             current_inventory=0,
             forecasted_demand=0,
         )
+
+
+def test_scenario_request_accepts_demand_horizon_and_transit_stock():
+    request = ScenarioAnalysisRequest(
+        product_id="LK-APP-001",
+        current_inventory=5200,
+        in_transit_qty=900,
+        forecasted_demand=614,
+        forecast_horizon_days=30,
+    )
+
+    assert request.forecast_horizon_days == 30
+    assert request.in_transit_qty == 900

@@ -78,6 +78,41 @@ def test_inventory_optimizer_pipeline():
     assert "CRITICAL SHORTAGE" in res.reorder_recommendation
 
 
+def test_inventory_optimizer_uses_forecast_horizon_for_material_requirement():
+    res = InventoryOptimizer().optimize(
+        product_id="LK-APP-001",
+        current_inventory=5200,
+        in_transit_qty=900,
+        forecasted_demand=614,
+        forecast_horizon_days=30,
+        average_lead_time=14,
+        demand_std_dev=92,
+        disruption_probability=0.18,
+        supplier_trust_score=82,
+    )
+
+    assert res.forecasted_demand == 614
+    assert res.forecast_horizon_days == 30
+    assert res.material_requirement == 18420
+    assert res.material_shortage == 13220
+
+
+def test_inventory_optimizer_adds_supplier_expected_delay_before_risk_adjustment():
+    res = InventoryOptimizer().optimize(
+        product_id="LK-APP-001",
+        current_inventory=20000,
+        forecasted_demand=614,
+        forecast_horizon_days=30,
+        average_lead_time=14,
+        expected_delay_days=2,
+        demand_std_dev=92,
+        disruption_probability=0.985,
+        supplier_trust_score=1.5,
+    )
+
+    assert res.risk_adjusted_lead_time == 31.76
+
+
 def test_optimizer_negative_inventory_raises():
     optimizer = InventoryOptimizer()
     with pytest.raises(ValueError):

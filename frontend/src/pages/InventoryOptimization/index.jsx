@@ -7,6 +7,7 @@ import {
   getProductionInterface,
   getResearchResults,
   getDemoUpstreamFeeds,
+  getDemoDemandSupplierRisk,
   createInventoryProduct,
   updateInventoryProduct,
   deleteInventoryProduct,
@@ -33,6 +34,13 @@ const MATERIAL_NUMERIC_FIELDS = [
   'disruption_probability',
   'supplier_trust_score',
 ];
+
+function hasProjectedShortage(product) {
+  const requirement = product.is_demand_product
+    ? product.projected_demand_30d ?? product.forecasted_demand * (product.demand_forecast_horizon_days || 30)
+    : product.forecasted_demand;
+  return product.current_inventory < requirement;
+}
 
 function validateMaterialNumericValues(form) {
   const errors = {};
@@ -1389,8 +1397,12 @@ export default function InventoryOptimizationView() {
         ...prev,
         product_id: currentProduct.product_id,
         current_inventory: currentProduct.current_inventory ?? 3400,
-        in_transit_qty: prev.in_transit_qty ?? 1200,
+        in_transit_qty: currentProduct.in_transit_qty ?? prev.in_transit_qty ?? 1200,
         forecasted_demand: currentProduct.forecasted_demand ?? 15200,
+        forecast_horizon_days: currentProduct.is_demand_product
+          ? currentProduct.demand_forecast_horizon_days ?? 30
+          : 1,
+        expected_delay_days: currentProduct.expected_delay_days ?? 0,
         demand_std_dev: currentProduct.demand_std_dev ?? 2280,
         average_lead_time: currentProduct.average_lead_time ?? 3.5,
         lead_time_std_dev: currentProduct.lead_time_std_dev ?? 1.62,
@@ -1407,6 +1419,9 @@ export default function InventoryOptimizationView() {
     runScenarioAnalysis({
       product_id: currentProduct.product_id, current_inventory: currentProduct.current_inventory,
       forecasted_demand: currentProduct.forecasted_demand * (1 + demandSurge / 100),
+      forecast_horizon_days: currentProduct.is_demand_product ? currentProduct.demand_forecast_horizon_days || 30 : 1,
+      in_transit_qty: currentProduct.in_transit_qty || 0,
+      expected_delay_days: currentProduct.expected_delay_days || 0,
       base_disruption_prob: disruptionProb, average_lead_time: currentProduct.average_lead_time,
       lead_time_std_dev: leadTimeVar, demand_std_dev: currentProduct.demand_std_dev, service_level: serviceLevel,
     }).then(r => { if (live && r) setScenarioData(r); }).catch(() => {});
@@ -1416,7 +1431,8 @@ export default function InventoryOptimizationView() {
   // ── Live optimization ─────────────────────────────────────────────────────
   const calc = useCallback((p, dp, ltv, ds, sl) => {
     const demand = p.forecasted_demand * (1 + ds / 100);
-    const leadAdj = p.average_lead_time * (1 + dp);
+    const leadAdj = (p.average_lead_time + (p.expected_delay_days || 0)) * (1 + dp);
+    const requirement = demand * (p.is_demand_product ? p.demand_forecast_horizon_days || 30 : 1);
     const z = sl >= 0.99 ? 2.33 : sl >= 0.95 ? 1.645 : 1.28;
     const variance = leadAdj * Math.pow(p.demand_std_dev, 2) + Math.pow(demand, 2) * Math.pow(ltv, 2);
     const ss = Math.round(z * Math.sqrt(Math.max(0, variance)));
@@ -1424,13 +1440,13 @@ export default function InventoryOptimizationView() {
     const ssHi = Math.round((z + 0.2) * Math.sqrt(Math.max(0, variance)));
     const rop = Math.round(demand * leadAdj) + ss;
     const roq = Math.round(demand * 7 * (1 + dp));
-    const shortage = Math.max(0, Math.round(demand - p.current_inventory));
+    const shortage = Math.max(0, Math.round(requirement - p.current_inventory));
     const avail = shortage === 0;
     let risk = 'LOW';
     if (shortage > 0 || (p.current_inventory < ss && dp >= 0.7)) risk = 'CRITICAL';
     else if (dp >= 0.6 || p.current_inventory < ss) risk = 'HIGH';
     else if (dp >= 0.25) risk = 'MEDIUM';
-    return { demand, leadAdj: parseFloat(leadAdj.toFixed(1)), z, ss, ssLo, ssHi, rop, roq, shortage, avail, risk };
+    return { demand, requirement, leadAdj: parseFloat(leadAdj.toFixed(1)), z, ss, ssLo, ssHi, rop, roq, shortage, avail, risk };
   }, []);
 
   const activeOpt = useMemo(() => calc(currentProduct, disruptionProb, leadTimeVar, demandSurge, serviceLevel),
@@ -1481,6 +1497,34 @@ export default function InventoryOptimizationView() {
 
   // ── Material CRUD State & Handlers ────────────────────────────────────────
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isDemandProductModalOpen, setIsDemandProductModalOpen] = useState(false);
+  const [isSubmittingDemandProduct, setIsSubmittingDemandProduct] = useState(false);
+  const [selectedDemandDemoSku, setSelectedDemandDemoSku] = useState('LK-APP-001');
+  const [demandProductForm, setDemandProductForm] = useState({
+    product_id: '',
+    product_name: '',
+    department: '',
+    category: '',
+    export_markets: '',
+    unit_price_usd: '',
+    historical_orders: '',
+    total_historical_units: '',
+    projected_demand_30d: '',
+    fabric_requirement: '',
+    sewing_smv_minutes: '',
+    planning_status: '',
+    current_inventory: '',
+    in_transit_qty: '0',
+    demand_std_dev: '',
+    average_lead_time: '',
+    lead_time_std_dev: '',
+    expected_delay_days: '',
+    disruption_probability_pct: '',
+    supplier_trust_score: '',
+    supplier_name: '',
+    supplier_report_risk_level: '',
+    is_demo_data: false,
+  });
   const [addMaterialImageIndex, setAddMaterialImageIndex] = useState(0);
   const [addForm, setAddForm] = useState({
     product_id: '',
@@ -1658,6 +1702,225 @@ export default function InventoryOptimizationView() {
     }
   };
 
+  const useDemandProductSample = async () => {
+    const sample = selectedDemandDemoSku === 'LK-APP-002'
+      ? {
+        product_id: 'LK-APP-002',
+        product_name: 'Performance Running Top',
+        department: 'Apparel',
+        category: 'Activewear',
+        export_markets: 'USA, Europe, Australia',
+        unit_price_usd: '34.50',
+        historical_orders: '18640',
+        total_historical_units: '52192',
+        projected_demand_30d: '12600',
+        fabric_requirement: '8190',
+        sewing_smv_minutes: '18.5',
+        planning_status: 'Ready for production',
+        current_inventory: '3400',
+        in_transit_qty: '1200',
+        demand_std_dev: '63',
+        average_lead_time: '10',
+        lead_time_std_dev: '2.4',
+        expected_delay_days: '',
+        disruption_probability_pct: '',
+        supplier_trust_score: '',
+        supplier_name: '',
+        supplier_report_risk_level: '',
+        is_demo_data: true,
+      }
+      : {
+        product_id: 'LK-APP-001',
+        product_name: 'Active Training Leggings',
+        department: 'Apparel',
+        category: 'Activewear',
+        export_markets: 'USA, Europe, Australia',
+        unit_price_usd: '49.99',
+        historical_orders: '24515',
+        total_historical_units: '73698',
+        projected_demand_30d: '18420',
+        fabric_requirement: '11973',
+        sewing_smv_minutes: '22.8',
+        planning_status: 'Ready for production',
+        current_inventory: '5200',
+        in_transit_qty: '900',
+        demand_std_dev: '92',
+        average_lead_time: '14',
+        lead_time_std_dev: '3',
+        expected_delay_days: '',
+        disruption_probability_pct: '',
+        supplier_trust_score: '',
+        supplier_name: '',
+        supplier_report_risk_level: '',
+        is_demo_data: true,
+      };
+    setDemandProductForm(sample);
+    try {
+      const supplier = await getDemoDemandSupplierRisk(sample.product_id);
+      setDemandProductForm(previous => ({
+        ...previous,
+        supplier_name: supplier.supplier_name,
+        expected_delay_days: String(supplier.expected_delay_days),
+        disruption_probability_pct: String(supplier.risk_score_pct),
+        supplier_trust_score: String(supplier.supplier_trust_score),
+        supplier_report_risk_level: supplier.risk_level,
+      }));
+      showToast(`Loaded Demand and supplier-risk demo rows for ${sample.product_id}.`);
+    } catch (err) {
+      showToast(`Could not load matching supplier-risk demo row: ${err.message || 'Error'}`, 'error');
+    }
+  };
+
+  const handleCreateDemandProduct = async (e) => {
+    e.preventDefault();
+    const form = demandProductForm;
+    const projectedDemand = Number(form.projected_demand_30d);
+    const requiredNumericFields = [
+      'unit_price_usd', 'historical_orders', 'total_historical_units',
+      'projected_demand_30d', 'fabric_requirement', 'sewing_smv_minutes',
+      'current_inventory', 'in_transit_qty', 'demand_std_dev',
+      'average_lead_time', 'lead_time_std_dev', 'expected_delay_days', 'disruption_probability_pct',
+      'supplier_trust_score',
+    ];
+    if (!form.product_id.trim() || !/^LK-[A-Z]{2,6}-\d{3,}$/.test(form.product_id.trim().toUpperCase())) {
+      showToast('Use a Demand SKU such as LK-APP-001.', 'error');
+      return;
+    }
+    const existingProduct = productsList.find(product => product.product_id === form.product_id.trim().toUpperCase());
+    if (existingProduct) {
+      showToast(`${existingProduct.product_id} is already saved. Select it in the inventory list or choose the other demo SKU.`, 'error');
+      return;
+    }
+    if (!form.product_name.trim() || !form.department.trim() || !form.category.trim()
+      || !form.export_markets.trim() || !form.planning_status.trim()) {
+      showToast('Complete all Demand module product fields.', 'error');
+      return;
+    }
+    if (requiredNumericFields.some(field => form[field] === '' || !Number.isFinite(Number(form[field])) || Number(form[field]) < 0)
+      || Number(form.average_lead_time) <= 0
+      || Number(form.supplier_trust_score) < 1 || Number(form.supplier_trust_score) > 100
+      || Number(form.disruption_probability_pct) > 100
+      || projectedDemand <= 0) {
+      showToast('Enter valid non-negative values; lead time must be positive, trust 1–100, and risk 0–100%.', 'error');
+      return;
+    }
+    try {
+      setIsSubmittingDemandProduct(true);
+      const created = await createInventoryProduct({
+        product_id: form.product_id.trim().toUpperCase(),
+        product_name: form.product_name.trim(),
+        category: form.category.trim(),
+        unit: 'pcs',
+        current_inventory: Number(form.current_inventory),
+        in_transit_qty: Number(form.in_transit_qty),
+        forecasted_demand: projectedDemand / 30,
+        demand_std_dev: Number(form.demand_std_dev),
+        average_lead_time: Number(form.average_lead_time),
+        lead_time_std_dev: Number(form.lead_time_std_dev),
+        disruption_probability: Number(form.disruption_probability_pct) / 100,
+        supplier_trust_score: Number(form.supplier_trust_score),
+        supplier_name: form.supplier_name.trim() || null,
+        supplier_report_risk_level: form.supplier_report_risk_level || null,
+        expected_delay_days: Number(form.expected_delay_days),
+        is_demand_product: true,
+        department: form.department.trim(),
+        export_markets: form.export_markets.trim(),
+        unit_price_usd: Number(form.unit_price_usd),
+        historical_orders: Number(form.historical_orders),
+        total_historical_units: Number(form.total_historical_units),
+        projected_demand_30d: projectedDemand,
+        fabric_requirement: Number(form.fabric_requirement),
+        sewing_smv_minutes: Number(form.sewing_smv_minutes),
+        planning_status: form.planning_status.trim(),
+        demand_forecast_horizon_days: 30,
+        is_demo_data: form.is_demo_data,
+      });
+      setIsDemandProductModalOpen(false);
+      showToast(`Demand SKU ${created.product_id} added; 30-day demand is retained for inventory planning.`);
+      await fetchAll();
+      setSelectedSku(created.product_id);
+    } catch (err) {
+      showToast(`Demand SKU creation failed: ${err.message || 'Error'}`, 'error');
+    } finally {
+      setIsSubmittingDemandProduct(false);
+    }
+  };
+
+  const demandFormFieldGroups = [
+    {
+      title: 'Demand module data',
+      subtitle: 'Product identity and forecast values from the Demand export.',
+      icon: '📈',
+      fields: [
+        ['product_id','SKU','text','LK-APP-001'],
+        ['product_name','Product Name (Real DataCo CSV)','text','Product name'],
+        ['department','Department','text','Apparel'],
+        ['category','Category','text','Activewear'],
+        ['export_markets','Export Markets','text','USA, Europe'],
+        ['unit_price_usd','Unit Price (USD)','number','0'],
+        ['historical_orders','Historical Orders (CSV)','number','0'],
+        ['total_historical_units','Total Historical Units (CSV)','number','0'],
+        ['projected_demand_30d','Projected Demand (30D)','number','0'],
+        ['fabric_requirement','Fabric Requirement','number','0'],
+        ['sewing_smv_minutes','Sewing SMV (Mins)','number','0'],
+        ['planning_status','Planning Status','text','Ready for production'],
+      ],
+    },
+    {
+      title: 'Inventory position',
+      subtitle: 'Enter current stock and demand variability used by the inventory policy.',
+      icon: '📦',
+      fields: [
+        ['current_inventory','Physical Stock (on hand)','number','0'],
+        ['in_transit_qty','Stock in transit','number','0'],
+        ['demand_std_dev','Daily demand standard deviation','number','0'],
+      ],
+    },
+    {
+      title: 'Supplier risk report',
+      subtitle: 'Risk score, trust, supplier and expected delay are loaded from the matched demo row.',
+      icon: '🛡️',
+      fields: [
+        ['average_lead_time','Supplier average lead time (days)','number','0'],
+        ['lead_time_std_dev','Lead-time standard deviation (days)','number','0'],
+        ['expected_delay_days','Expected extra delay from supplier report (days)','number','0'],
+        ['disruption_probability_pct','Supplier disruption risk (%)','number','0'],
+        ['supplier_trust_score','Supplier trust score (1–100)','number','0'],
+        ['supplier_name','Supplier Name (risk report)','text','Load a demo row'],
+        ['supplier_report_risk_level','Risk Level (risk report)','text','Load a demo row'],
+      ],
+    },
+  ];
+
+  const renderDemandFormFields = (fields) => fields.map(([field,label,type,placeholder]) => (
+    <label key={field} style={{ ...styles.inputField, minWidth:0 }}>
+      <span style={styles.inputLabel}>
+        {label}{['supplier_name','supplier_report_risk_level'].includes(field) ? '' : ' *'}
+      </span>
+      <input
+        required={!['supplier_name','supplier_report_risk_level'].includes(field)}
+        type={type}
+        min={type === 'number' ? '0' : undefined}
+        max={field === 'disruption_probability_pct' ? '100' : field === 'supplier_trust_score' ? '100' : undefined}
+        step={field === 'historical_orders' ? '1' : type === 'number' ? 'any' : undefined}
+        maxLength={type === 'text' ? 200 : undefined}
+        placeholder={placeholder}
+        value={demandProductForm[field]}
+        readOnly={['supplier_name','supplier_report_risk_level'].includes(field)}
+        onChange={event => setDemandProductForm(previous => ({
+          ...previous,
+          [field]: field === 'product_id' ? event.target.value.toUpperCase() : event.target.value,
+        }))}
+        style={{
+          ...styles.textInput,
+          ...(demandProductForm.is_demo_data && ['supplier_name','supplier_report_risk_level','expected_delay_days','disruption_probability_pct','supplier_trust_score'].includes(field)
+            ? { borderColor: isDark ? 'rgba(52,211,153,.5)' : '#86EFAC' }
+            : {}),
+        }}
+      />
+    </label>
+  ));
+
   const openEditModal = (item) => {
     setEditModalItem(item);
     setEditForm({
@@ -1666,7 +1929,7 @@ export default function InventoryOptimizationView() {
       unit: item.unit,
       current_inventory: item.current_inventory,
       forecasted_demand: item.forecasted_demand,
-      demand_std_dev: item.demand_std_dev || Math.round(item.forecasted_demand * 0.15),
+      demand_std_dev: item.demand_std_dev ?? Math.round(item.forecasted_demand * 0.15),
       average_lead_time: item.average_lead_time,
       lead_time_std_dev: item.lead_time_std_dev,
       disruption_probability: item.disruption_probability,
@@ -1680,7 +1943,9 @@ export default function InventoryOptimizationView() {
     const productName = String(editForm.product_name || '').trim();
     const unit = String(editForm.unit || '').trim();
     const productNameChanged = productName !== String(editModalItem.product_name || '').trim();
-    const materialNameError = productNameChanged ? getMaterialNameError(productName) : null;
+    const materialNameError = productNameChanged && !editModalItem.is_demand_product
+      ? getMaterialNameError(productName)
+      : null;
     if (materialNameError) {
       showToast(materialNameError, 'error');
       return;
@@ -1715,6 +1980,7 @@ export default function InventoryOptimizationView() {
         ...(productNameChanged ? { product_name: productName } : {}),
         category: editForm.category,
         unit,
+        is_demand_product: Boolean(editModalItem.is_demand_product),
         ...numericValues,
       });
       showToast(`✓ Material ${editModalItem.product_id} updated`);
@@ -1823,6 +2089,149 @@ export default function InventoryOptimizationView() {
     URL.revokeObjectURL(url);
     showToast('✓ Inventory_to_Production_Scheduling.csv exported successfully');
   }, [productionInterfaceData, simulateExpeditedArrival, releasedGates, showToast]);
+
+  const getDemandProductionHandoff = useCallback(async () => {
+    const demandProducts = productsList.filter(product => product.is_demand_product);
+    if (!demandProducts.length) {
+      showToast('Save at least one Demand SKU before exporting the production handoff.', 'error');
+      return null;
+    }
+    const optimized = await batchOptimizeInventory({});
+    const resultsBySku = new Map(optimized.map(result => [result.product_id, result]));
+    return demandProducts.map(product => {
+      const result = resultsBySku.get(product.product_id);
+      if (!result) throw new Error(`Optimization result missing for ${product.product_id}.`);
+      return { product, result };
+    });
+  }, [productsList, showToast]);
+
+  const downloadDemandProductionCSV = useCallback(async () => {
+    try {
+      const handoff = await getDemandProductionHandoff();
+      if (!handoff) return;
+      const escapeCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      const headers = [
+        'SKU','Product_Name','Department','Category','Planning_Status',
+        'Is_Demo_Data','Projected_Demand_30D','Physical_Stock','Stock_In_Transit','Supplier_Name',
+        'Supplier_Risk_Level','Supplier_Risk_Pct','Supplier_Trust_Score',
+        'Normal_Lead_Time_Days','Expected_Delay_Days','Risk_Adjusted_Lead_Time_Days',
+        'Safety_Stock','Reorder_Point','Recommended_Reorder_Qty','30D_Requirement',
+        '30D_Shortage','Backorder_Risk_Pct','Inventory_Risk','Recommended_Action',
+      ];
+      const rows = handoff.map(({ product, result }) => [
+        product.product_id,
+        product.product_name,
+        product.department,
+        product.category,
+        product.planning_status,
+        product.is_demo_data ? 'YES' : 'NO',
+        product.projected_demand_30d,
+        product.current_inventory,
+        product.in_transit_qty,
+        product.supplier_name,
+        product.supplier_report_risk_level || result.risk_level,
+        Number(product.disruption_probability * 100).toFixed(1),
+        product.supplier_trust_score,
+        product.average_lead_time,
+        product.expected_delay_days,
+        result.risk_adjusted_lead_time,
+        result.safety_stock,
+        result.reorder_point,
+        result.reorder_quantity,
+        result.material_requirement,
+        result.material_shortage,
+        Number(result.backorder_risk * 100).toFixed(2),
+        result.risk_level,
+        result.reorder_recommendation,
+      ].map(escapeCsv).join(','));
+      const date = new Date().toISOString().slice(0, 10);
+      const blob = new Blob(['\uFEFF', [headers.join(','), ...rows].join('\r\n')], { type:'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `OPTICHAIN_Demand_SKU_Production_Handoff_${date}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      showToast(`Production handoff CSV exported for ${handoff.length} Demand SKU${handoff.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      showToast(`Could not export production handoff CSV: ${err.message || 'Error'}`, 'error');
+    }
+  }, [getDemandProductionHandoff, showToast]);
+
+  const printDemandProductionHandoff = useCallback(async () => {
+    const printWindow = window.open('', '_blank', 'width=1440,height=900');
+    if (!printWindow) {
+      showToast('Allow pop-ups to print or save the production handoff as PDF.', 'error');
+      return;
+    }
+    try {
+      const handoff = await getDemandProductionHandoff();
+      if (!handoff) {
+        printWindow.close();
+        return;
+      }
+      const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;',
+      })[character]);
+      const number = value => Number(value || 0).toLocaleString(undefined, { maximumFractionDigits:2 });
+      const rows = handoff.map(({ product, result }) => `
+        <tr>
+          <td><strong>${escapeHtml(product.product_id)}</strong><br>${escapeHtml(product.product_name)}</td>
+          <td>${escapeHtml(product.department || '')} · ${escapeHtml(product.category || '')}</td>
+          <td>${number(product.projected_demand_30d)}</td>
+          <td>${number(product.current_inventory)} on hand<br>${number(product.in_transit_qty)} in transit</td>
+          <td>${escapeHtml(product.supplier_name || '—')}<br>${number(product.disruption_probability * 100)}% risk · ${number(product.expected_delay_days)}d delay</td>
+          <td>${number(result.risk_adjusted_lead_time)}d</td>
+          <td>${number(result.safety_stock)}</td>
+          <td>${number(result.reorder_point)}</td>
+          <td><strong>${number(result.reorder_quantity)}</strong></td>
+          <td>${number(result.material_shortage)}</td>
+          <td><strong class="risk-${escapeHtml(result.risk_level)}">${escapeHtml(result.risk_level)}</strong><br>${escapeHtml(result.reorder_recommendation)}</td>
+        </tr>`).join('');
+      const createdAt = new Date().toLocaleString();
+      const includesDemoData = handoff.some(({ product }) => product.is_demo_data);
+      printWindow.document.write(`<!doctype html>
+        <html><head><meta charset="utf-8"><title>OPTICHAIN Production Handoff</title>
+        <style>
+          @page{size:A4 landscape;margin:12mm}
+          *{box-sizing:border-box}body{font:11px Arial,sans-serif;color:#122033;margin:0}
+          header{padding:18px 22px;color:#fff;background:linear-gradient(120deg,#0b1830,#123d62 62%,#087f74);border-radius:12px;display:flex;justify-content:space-between;align-items:center}
+          h1{font-size:19px;margin:0 0 5px;letter-spacing:.3px}header p{margin:0;color:#dbeafe;font-size:10px}
+          .stamp{text-align:right;font-size:10px;line-height:1.7}.summary{display:flex;gap:10px;margin:12px 0}
+          .tile{flex:1;padding:9px 12px;border:1px solid #dbe4ef;border-radius:8px;background:#f5f8fc}
+          .tile b{display:block;font-size:16px;margin-top:3px;color:#123d62}.tile span{font-size:9px;text-transform:uppercase;color:#64748b;letter-spacing:.5px}
+          table{width:100%;border-collapse:collapse;font-size:8.5px}th{padding:8px 6px;background:#11243c;color:white;text-align:left}
+          td{padding:7px 6px;border-bottom:1px solid #dce5ef;vertical-align:top;line-height:1.4}
+          tr:nth-child(even){background:#f6f9fc}.risk-CRITICAL{color:#b91c1c}.risk-HIGH{color:#b45309}.risk-MEDIUM{color:#1d4ed8}.risk-LOW{color:#047857}
+          footer{margin-top:12px;border-top:1px solid #dce5ef;padding-top:8px;color:#64748b;font-size:9px}
+          .no-print{margin:14px 0;padding:9px 12px;border-radius:7px;background:#eff6ff;color:#1e40af}
+          .demo-warning{margin:10px 0;padding:9px 12px;border:1px solid #f59e0b;border-radius:7px;background:#fffbeb;color:#92400e;font-weight:700}
+          @media print{.no-print{display:none}header{print-color-adjust:exact;-webkit-print-color-adjust:exact}th{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+        </style></head><body>
+        <header><div><h1>OPTICHAIN · DEMAND SKU PRODUCTION HANDOFF</h1><p>Inventory optimization recommendations for production and procurement coordination</p></div><div class="stamp"><b>Generated</b><br>${escapeHtml(createdAt)}<br><b>Items</b>: ${handoff.length}</div></header>
+        ${includesDemoData ? '<div class="demo-warning">DEMO DATA — NOT FOR PRODUCTION PROCUREMENT OR DISPATCH</div>' : ''}
+        <div class="no-print">Use your browser's Print dialog and choose “Save as PDF” to create the handoff document.</div>
+        <div class="summary">
+          <div class="tile"><span>Demand SKUs</span><b>${handoff.length}</b></div>
+          <div class="tile"><span>Reorders required</span><b>${handoff.filter(item => item.result.reorder_required).length}</b></div>
+          <div class="tile"><span>Critical risk</span><b>${handoff.filter(item => item.result.risk_level === 'CRITICAL').length}</b></div>
+          <div class="tile"><span>Forecast basis</span><b>30 days</b></div>
+        </div>
+        <table><thead><tr><th>SKU / Product</th><th>Department / Category</th><th>30D demand</th><th>Stock</th><th>Supplier signal</th><th>Risk lead time</th><th>Safety stock</th><th>Reorder point</th><th>Reorder qty</th><th>30D shortage</th><th>Risk / recommendation</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+        <footer>Generated by OPTICHAIN Inventory Optimization · Confirm recommendations against current ERP, purchase orders, and production plan before dispatch.</footer>
+        </body></html>`);
+      printWindow.document.close();
+      printWindow.focus();
+      window.setTimeout(() => printWindow.print(), 500);
+      showToast('Production handoff opened. Choose “Save as PDF” in the print dialog.');
+    } catch (err) {
+      printWindow.close();
+      showToast(`Could not generate production handoff PDF: ${err.message || 'Error'}`, 'error');
+    }
+  }, [getDemandProductionHandoff, showToast]);
 
   // ── Production Scheduling PDF Export (Module 3 -> Module 4 Handoff) ───────
   const handleExportPolicyPDF = useCallback((policyList = null) => {
@@ -2072,7 +2481,7 @@ export default function InventoryOptimizationView() {
       const catOk = selectedCategory === 'ALL' || item.category === selectedCategory;
       const srchOk = item.product_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
                      item.product_name.toLowerCase().includes(searchQuery.toLowerCase());
-      const hasShortage = item.current_inventory < item.forecasted_demand;
+      const hasShortage = hasProjectedShortage(item);
       const availOk = availabilityFilter === 'ALL'
         || (availabilityFilter === 'SHORTAGE' && hasShortage)
         || (availabilityFilter === 'READY' && !hasShortage);
@@ -2213,7 +2622,13 @@ export default function InventoryOptimizationView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const CATS = ['ALL', 'Fabrics', 'Dyes & Chemicals', 'Trims & Fasteners', 'Yarns & Threads'];
+  const CATS = ['ALL', ...new Set([
+    'Fabrics',
+    'Dyes & Chemicals',
+    'Trims & Fasteners',
+    'Yarns & Threads',
+    ...productsList.map(product => product.category),
+  ])];
   const dispatchedList = Object.values(dispatchedPOs);
 
   const SortIcon = ({ col }) => (
@@ -4593,7 +5008,7 @@ export default function InventoryOptimizationView() {
               <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={styles.cardIconBadge}>📋</div>
                 <div>
-                  <div style={styles.cardTitle}>Monitored Garment Raw Materials</div>
+                  <div style={styles.cardTitle}>Monitored Materials & Demand Products</div>
                   <div style={styles.cardSub}>Click row to select SKU · Sort by column headers · Filter by category</div>
                 </div>
               </div>
@@ -4609,6 +5024,43 @@ export default function InventoryOptimizationView() {
                 {/* Add Material Button */}
                 <button className="btn-hover" onClick={()=>{setAddFormErrors({});setIsAddModalOpen(true);}} style={styles.addBtn}>
                   <span style={{ fontSize:'14px' }}>＋</span> Add Raw Material
+                </button>
+                <button
+                  className="btn-hover"
+                  onClick={() => setIsDemandProductModalOpen(true)}
+                  style={{ ...styles.addBtn, background:'linear-gradient(135deg,#059669,#047857)' }}
+                >
+                  <span style={{ fontSize:'14px' }}>＋</span> Add Demand SKU
+                </button>
+                <button
+                  className="btn-hover"
+                  onClick={downloadDemandProductionCSV}
+                  disabled={!productsList.some(product => product.is_demand_product)}
+                  title="Export saved Demand SKU data and fresh optimization results for production"
+                  style={{
+                    display:'flex', alignItems:'center', gap:'6px', padding:'7px 12px',
+                    borderRadius:'8px', border:'1px solid rgba(14,165,233,.5)',
+                    background:'linear-gradient(135deg,rgba(14,165,233,.16),rgba(2,132,199,.1))',
+                    color:'#38BDF8', fontWeight:700, fontSize:'11px', cursor:'pointer',
+                    whiteSpace:'nowrap', opacity:productsList.some(product => product.is_demand_product)?1:.45,
+                  }}
+                >
+                  📥 Production CSV
+                </button>
+                <button
+                  className="btn-hover"
+                  onClick={printDemandProductionHandoff}
+                  disabled={!productsList.some(product => product.is_demand_product)}
+                  title="Print or save a Demand SKU production handoff as PDF"
+                  style={{
+                    display:'flex', alignItems:'center', gap:'6px', padding:'7px 12px',
+                    borderRadius:'8px', border:'1px solid rgba(139,92,246,.5)',
+                    background:'linear-gradient(135deg,rgba(139,92,246,.16),rgba(109,40,217,.1))',
+                    color:'#A78BFA', fontWeight:700, fontSize:'11px', cursor:'pointer',
+                    whiteSpace:'nowrap', opacity:productsList.some(product => product.is_demand_product)?1:.45,
+                  }}
+                >
+                  📄 Production PDF
                 </button>
                 {/* Export CSV */}
                 <button className="btn-hover" onClick={handleExportCSV} style={{
@@ -4759,7 +5211,7 @@ export default function InventoryOptimizationView() {
               }}>
                 {filteredProducts.map((item) => {
                   const isSelected = item.product_id === selectedSku;
-                  const hasShortage = item.current_inventory < item.forecasted_demand;
+                  const hasShortage = hasProjectedShortage(item);
                   const isDispatched = !!dispatchedPOs[item.product_id];
                   const rp = item.disruption_probability;
                   const skuSS = Math.round(item.forecasted_demand * 0.35);
@@ -5178,7 +5630,7 @@ export default function InventoryOptimizationView() {
                   <tbody>
                     {filteredProducts.map((item, idx) => {
                       const isSelected = item.product_id === selectedSku;
-                      const hasShortage = item.current_inventory < item.forecasted_demand;
+                      const hasShortage = hasProjectedShortage(item);
                       const isDispatched = !!dispatchedPOs[item.product_id];
                       const rp = item.disruption_probability;
                       const skuSS = Math.round(item.forecasted_demand * 0.35);
@@ -7846,6 +8298,85 @@ export default function InventoryOptimizationView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {isDemandProductModalOpen && (
+        <div style={styles.modalOverlay} onClick={() => setIsDemandProductModalOpen(false)}>
+          <div style={{ ...styles.modalBox, maxWidth:'980px', maxHeight:'92vh', overflowY:'auto', padding:0 }} onClick={e => e.stopPropagation()}>
+            <div style={{ position:'relative', minHeight:'190px', overflow:'hidden', borderRadius:'16px 16px 0 0', background:'#11243c' }}>
+              <img
+                src={SKU_CATALOG_MEDIA['FAB-001'].images[0]}
+                alt="Apparel production fabric"
+                style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', opacity:.55 }}
+              />
+              <div style={{ position:'absolute', inset:0, background:'linear-gradient(90deg,rgba(8,20,38,.96) 0%,rgba(8,20,38,.78) 55%,rgba(8,20,38,.2) 100%)' }} />
+              <button type="button" onClick={() => setIsDemandProductModalOpen(false)} aria-label="Close Demand SKU form" style={{ ...styles.closeBtn, position:'absolute', right:16, top:16, color:'#fff', background:'rgba(255,255,255,.15)' }}>✕</button>
+              <div style={{ position:'relative', zIndex:1, padding:'25px 28px 22px', maxWidth:'680px' }}>
+                <div style={{ color:'#7dd3fc', fontSize:'10px', fontWeight:800, letterSpacing:'1.5px', textTransform:'uppercase', marginBottom:'8px' }}>Demand × Inventory planning</div>
+                <h3 style={{ fontSize:'23px', fontWeight:850, color:'#fff', margin:'0 0 7px' }}>Build a production-ready SKU plan</h3>
+                <div style={{ color:'#dbeafe', fontSize:'12px', lineHeight:1.6 }}>Load a matched Demand forecast and supplier-risk example, save it to inventory, then optimize and export a production handoff.</div>
+              </div>
+            </div>
+            <div style={{ padding:'18px 24px 22px' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', flexWrap:'wrap', marginBottom:'14px', padding:'12px 14px', borderRadius:'12px', background:isDark?'rgba(59,130,246,.1)':'#EFF6FF', border:`1px solid ${isDark?'rgba(96,165,250,.2)':'#DBEAFE'}` }}>
+                <div>
+                  <div style={{ color:c.title, fontWeight:800, fontSize:'12px', marginBottom:'3px' }}>Presentation demo data</div>
+                  <div style={{ color:c.sub, fontSize:'11px' }}>Choose a sample SKU; its supplier-risk row is matched by exact SKU.</div>
+                </div>
+                <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
+                  <select
+                    aria-label="Choose demo SKU"
+                    value={selectedDemandDemoSku}
+                    onChange={event => setSelectedDemandDemoSku(event.target.value)}
+                    style={{ ...styles.textInput, minWidth:'155px', padding:'8px 10px' }}
+                  >
+                    <option value="LK-APP-001">LK-APP-001 · Leggings</option>
+                    <option value="LK-APP-002">LK-APP-002 · Running Top</option>
+                  </select>
+                  <button type="button" className="btn-hover" onClick={useDemandProductSample} style={{ ...styles.addBtn, padding:'9px 14px', fontSize:'12px' }}>
+                    Load demo data
+                  </button>
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'15px' }}>
+                {['30-day demand forecast','Physical + in-transit stock','SKU-matched supplier risk'].map(item => (
+                  <span key={item} style={{ border:`1px solid ${isDark?'#334155':'#E2E8F0'}`, borderRadius:'999px', padding:'6px 10px', color:c.sub, fontSize:'10px', fontWeight:700 }}>{item}</span>
+                ))}
+              </div>
+              <form onSubmit={handleCreateDemandProduct} style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+                {demandFormFieldGroups.map((group, index) => (
+                  <section key={group.title} style={{ padding:'15px', borderRadius:'13px', border:`1px solid ${isDark?'#334155':'#E5EAF1'}`, background:isDark?'rgba(15,23,42,.52)':'#fff', boxShadow:isDark?'none':'0 5px 18px rgba(15,23,42,.035)' }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', gap:'10px', marginBottom:'13px' }}>
+                      <span style={{ width:'33px', height:'33px', display:'grid', placeItems:'center', flex:'0 0 33px', borderRadius:'10px', background:index===0?'#E0F2FE':index===1?'#ECFDF5':'#FFF7ED', fontSize:'16px' }}>{group.icon}</span>
+                      <div>
+                        <h4 style={{ margin:0, color:c.title, fontSize:'13px', fontWeight:800 }}>{group.title}</h4>
+                        <p style={{ margin:'4px 0 0', color:c.sub, fontSize:'10px', lineHeight:1.45 }}>{group.subtitle}</p>
+                      </div>
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'10px 12px' }}>
+                      {renderDemandFormFields(group.fields)}
+                    </div>
+                  </section>
+                ))}
+                <div style={{ display:'flex', alignItems:'center', gap:'9px', padding:'10px 12px', borderRadius:'9px', color:isDark?'#CBD5E1':'#475569', background:isDark?'rgba(30,41,59,.7)':'#F8FAFC', fontSize:'10px', lineHeight:1.5 }}>
+                  <span style={{ fontSize:'16px' }}>ℹ️</span>
+                  Projected Demand (30D) remains a 30-day total. Supplier risk and trust are imported from the matched risk report; reported delay is added to normal lead time.
+                </div>
+                <div style={{ display:'flex', gap:'10px', color:c.sub, fontSize:'10px', flexWrap:'wrap' }}>
+                  <span>Supplier: <strong style={{ color:c.title }}>{demandProductForm.supplier_name || 'not loaded'}</strong></span>
+                  <span>Report risk: <strong style={{ color:c.title }}>{demandProductForm.supplier_report_risk_level || 'not loaded'}</strong></span>
+                  <span>Demo data is synthetic and clearly marked when saved.</span>
+                </div>
+                <div style={{ display:'flex', justifyContent:'flex-end', gap:'9px', paddingTop:'4px' }}>
+                  <button type="button" className="btn-hover" onClick={() => setIsDemandProductModalOpen(false)} style={styles.cancelBtn}>Cancel</button>
+                  <button type="submit" className="btn-hover" disabled={isSubmittingDemandProduct} style={styles.addBtn}>
+                    {isSubmittingDemandProduct ? 'Saving SKU…' : 'Save Demand SKU'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

@@ -102,6 +102,13 @@ export async function getDemoUpstreamFeeds() {
 }
 
 /**
+ * Fetches the newest demo supplier-risk report row linked to a Demand SKU.
+ */
+export async function getDemoDemandSupplierRisk(productId) {
+  return apiRequest(`/api/inventory/demo-demand-supplier-risk/${encodeURIComponent(productId)}`);
+}
+
+/**
  * Fetches real upstream feeds from Module 1 (Demand) and Module 2 (Supply Risk).
  */
 export async function fetchLiveUpstream() {

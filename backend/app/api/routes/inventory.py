@@ -6,12 +6,14 @@ from app.integration.mock_upstream import (
     UPSTREAM_DATA_MODE,
     CombinedUpstreamRecord,
     get_combined_upstream_signal,
+    get_mock_demand_supplier_risk,
     list_all_mock_products,
 )
 from app.integration.upstream_adapter import list_all_upstream_products
 
 from app.schemas.inventory import (
     CreateProductCatalogItem,
+    DemoDemandSupplierRiskRecord,
     InventoryOptimizationRequest,
     InventoryOptimizationResponse,
     InventoryPolicySchema,
@@ -66,6 +68,20 @@ def list_demo_upstream_feeds() -> list[CombinedUpstreamRecord]:
     """
     try:
         return list_all_mock_products()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/demo-demand-supplier-risk/{product_id}", response_model=DemoDemandSupplierRiskRecord)
+def get_demo_demand_supplier_risk(product_id: str) -> DemoDemandSupplierRiskRecord:
+    """Returns the newest demo supplier-report row linked to the requested Demand SKU."""
+    try:
+        record = get_mock_demand_supplier_risk(product_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"No demo supplier-risk row found for SKU '{product_id}'.")
+        return DemoDemandSupplierRiskRecord(**record)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -87,7 +87,9 @@ def optimize_inventory(request: InventoryOptimizationRequest) -> InventoryOptimi
         product_id=request.product_id,
         current_inventory=request.current_inventory,
         forecasted_demand=request.forecasted_demand,
+        forecast_horizon_days=request.forecast_horizon_days,
         average_lead_time=request.average_lead_time,
+        expected_delay_days=request.expected_delay_days,
         lead_time_std_dev=request.lead_time_std_dev,
         demand_std_dev=request.demand_std_dev,
         disruption_probability=request.disruption_probability,
@@ -108,9 +110,11 @@ def optimize_inventory(request: InventoryOptimizationRequest) -> InventoryOptimi
         product_id=res.product_id,
         decision_date=res.decision_date,
         forecasted_demand=res.forecasted_demand,
+        forecast_horizon_days=res.forecast_horizon_days,
         current_inventory=res.current_inventory,
         inventory_position=res.inventory_position,
         in_transit_qty=res.in_transit_qty,
+        expected_delay_days=request.expected_delay_days,
         disruption_probability=res.disruption_probability,
         supplier_trust_score=res.supplier_trust_score,
         risk_level=res.risk_level,
@@ -164,9 +168,12 @@ def run_scenario_analysis(request: ScenarioAnalysisRequest) -> ScenarioAnalysisR
         product_id=request.product_id,
         current_inventory=request.current_inventory,
         forecasted_demand=request.forecasted_demand,
+        forecast_horizon_days=request.forecast_horizon_days,
+        expected_delay_days=request.expected_delay_days,
         average_lead_time=request.average_lead_time,
         lead_time_std_dev=request.lead_time_std_dev,
         demand_std_dev=request.demand_std_dev,
+        in_transit_qty=request.in_transit_qty,
         base_disruption_prob=request.base_disruption_prob,
         supplier_trust_score=request.supplier_trust_score,
         service_level=request.service_level,
@@ -193,6 +200,8 @@ def run_scenario_analysis(request: ScenarioAnalysisRequest) -> ScenarioAnalysisR
     return ScenarioAnalysisResponse(
         product_id=sim_res.product_id,
         forecasted_demand=sim_res.forecasted_demand,
+        forecast_horizon_days=sim_res.forecast_horizon_days,
+        expected_delay_days=sim_res.expected_delay_days,
         current_inventory=sim_res.current_inventory,
         scenarios=scenarios_dict,
     )
@@ -204,6 +213,31 @@ def _ensure_catalog_initialized() -> dict[str, ProductCatalogItem]:
     from CSV data if the database table is empty.
     """
     Base.metadata.create_all(bind=engine)
+    demand_columns = {
+        "is_demand_product": "BOOLEAN NOT NULL DEFAULT 0",
+        "department": "VARCHAR(100)",
+        "export_markets": "VARCHAR(500)",
+        "unit_price_usd": "FLOAT",
+        "historical_orders": "INTEGER",
+        "total_historical_units": "FLOAT",
+        "projected_demand_30d": "FLOAT",
+        "fabric_requirement": "FLOAT",
+        "sewing_smv_minutes": "FLOAT",
+        "planning_status": "VARCHAR(100)",
+        "demand_forecast_horizon_days": "INTEGER NOT NULL DEFAULT 1",
+        "supplier_name": "VARCHAR(200)",
+        "supplier_report_risk_level": "VARCHAR(20)",
+        "expected_delay_days": "FLOAT NOT NULL DEFAULT 0",
+    }
+    with engine.begin() as connection:
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(inventory_products)")
+        }
+        for column, sql_type in demand_columns.items():
+            if column not in existing_columns:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE inventory_products ADD COLUMN {column} {sql_type}"
+                )
     with SessionLocal() as session:
         count = session.query(ProductModel).count()
         if count == 0:
@@ -240,6 +274,7 @@ def _ensure_catalog_initialized() -> dict[str, ProductCatalogItem]:
                 category=r.category,
                 unit=r.unit,
                 current_inventory=float(r.current_inventory),
+                in_transit_qty=float(r.in_transit_qty or 0),
                 forecasted_demand=float(r.forecasted_demand),
                 demand_std_dev=float(r.demand_std_dev),
                 average_lead_time=float(r.average_lead_time),
@@ -248,6 +283,20 @@ def _ensure_catalog_initialized() -> dict[str, ProductCatalogItem]:
                 supplier_trust_score=float(r.supplier_trust_score),
                 risk_level=r.risk_level,
                 is_demo_data=bool(r.is_demo_data),
+                is_demand_product=bool(r.is_demand_product),
+                department=r.department,
+                export_markets=r.export_markets,
+                unit_price_usd=r.unit_price_usd,
+                historical_orders=r.historical_orders,
+                total_historical_units=r.total_historical_units,
+                projected_demand_30d=r.projected_demand_30d,
+                fabric_requirement=r.fabric_requirement,
+                sewing_smv_minutes=r.sewing_smv_minutes,
+                planning_status=r.planning_status,
+                demand_forecast_horizon_days=r.demand_forecast_horizon_days or 1,
+                supplier_name=r.supplier_name,
+                supplier_report_risk_level=r.supplier_report_risk_level,
+                expected_delay_days=float(r.expected_delay_days or 0),
             )
         return store
 
@@ -279,7 +328,11 @@ def create_product_catalog_item(item: CreateProductCatalogItem) -> ProductCatalo
             else:
                 risk_level = "LOW"
 
-        demand_std_dev = item.demand_std_dev if item.demand_std_dev > 0 else round(item.forecasted_demand * 0.15, 2)
+        demand_std_dev = (
+            item.demand_std_dev
+            if item.is_demand_product or item.demand_std_dev > 0
+            else round(item.forecasted_demand * 0.15, 2)
+        )
 
         new_row = ProductModel(
             product_id=pid,
@@ -294,8 +347,22 @@ def create_product_catalog_item(item: CreateProductCatalogItem) -> ProductCatalo
             disruption_probability=float(item.disruption_probability),
             supplier_trust_score=float(item.supplier_trust_score),
             risk_level=risk_level,
-            in_transit_qty=0.0,
+            in_transit_qty=float(item.in_transit_qty),
             is_demo_data=item.is_demo_data,
+            is_demand_product=item.is_demand_product,
+            department=item.department,
+            export_markets=item.export_markets,
+            unit_price_usd=item.unit_price_usd,
+            historical_orders=item.historical_orders,
+            total_historical_units=item.total_historical_units,
+            projected_demand_30d=item.projected_demand_30d,
+            fabric_requirement=item.fabric_requirement,
+            sewing_smv_minutes=item.sewing_smv_minutes,
+            planning_status=item.planning_status,
+            demand_forecast_horizon_days=item.demand_forecast_horizon_days,
+            supplier_name=item.supplier_name,
+            supplier_report_risk_level=item.supplier_report_risk_level,
+            expected_delay_days=item.expected_delay_days,
         )
         session.add(new_row)
         session.commit()
@@ -303,7 +370,7 @@ def create_product_catalog_item(item: CreateProductCatalogItem) -> ProductCatalo
 
         MATERIAL_SEEDS[pid] = {
             "current_inventory": new_row.current_inventory,
-            "in_transit_qty": 0.0,
+            "in_transit_qty": new_row.in_transit_qty,
             "unit": new_row.unit,
         }
         logger.info(f"Persisted new SKU to SQLite database: {pid} ({new_row.product_name})")
@@ -314,6 +381,7 @@ def create_product_catalog_item(item: CreateProductCatalogItem) -> ProductCatalo
             category=new_row.category,
             unit=new_row.unit,
             current_inventory=new_row.current_inventory,
+            in_transit_qty=new_row.in_transit_qty,
             forecasted_demand=new_row.forecasted_demand,
             demand_std_dev=new_row.demand_std_dev,
             average_lead_time=new_row.average_lead_time,
@@ -322,6 +390,20 @@ def create_product_catalog_item(item: CreateProductCatalogItem) -> ProductCatalo
             supplier_trust_score=new_row.supplier_trust_score,
             risk_level=new_row.risk_level,
             is_demo_data=False,
+            is_demand_product=new_row.is_demand_product,
+            department=new_row.department,
+            export_markets=new_row.export_markets,
+            unit_price_usd=new_row.unit_price_usd,
+            historical_orders=new_row.historical_orders,
+            total_historical_units=new_row.total_historical_units,
+            projected_demand_30d=new_row.projected_demand_30d,
+            fabric_requirement=new_row.fabric_requirement,
+            sewing_smv_minutes=new_row.sewing_smv_minutes,
+            planning_status=new_row.planning_status,
+            demand_forecast_horizon_days=new_row.demand_forecast_horizon_days or 1,
+            supplier_name=new_row.supplier_name,
+            supplier_report_risk_level=new_row.supplier_report_risk_level,
+            expected_delay_days=float(new_row.expected_delay_days or 0),
         )
 
 
@@ -367,7 +449,7 @@ def update_product_catalog_item(product_id: str, updates: UpdateProductCatalogIt
 
         MATERIAL_SEEDS[pid] = {
             "current_inventory": row.current_inventory,
-            "in_transit_qty": MATERIAL_SEEDS.get(pid, {}).get("in_transit_qty", 0.0),
+            "in_transit_qty": row.in_transit_qty,
             "unit": row.unit,
         }
         logger.info(f"Updated material SKU in SQLite: {pid}")
@@ -378,6 +460,7 @@ def update_product_catalog_item(product_id: str, updates: UpdateProductCatalogIt
             category=row.category,
             unit=row.unit,
             current_inventory=row.current_inventory,
+            in_transit_qty=row.in_transit_qty,
             forecasted_demand=row.forecasted_demand,
             demand_std_dev=row.demand_std_dev,
             average_lead_time=row.average_lead_time,
@@ -386,6 +469,20 @@ def update_product_catalog_item(product_id: str, updates: UpdateProductCatalogIt
             supplier_trust_score=row.supplier_trust_score,
             risk_level=row.risk_level,
             is_demo_data=bool(row.is_demo_data),
+            is_demand_product=bool(row.is_demand_product),
+            department=row.department,
+            export_markets=row.export_markets,
+            unit_price_usd=row.unit_price_usd,
+            historical_orders=row.historical_orders,
+            total_historical_units=row.total_historical_units,
+            projected_demand_30d=row.projected_demand_30d,
+            fabric_requirement=row.fabric_requirement,
+            sewing_smv_minutes=row.sewing_smv_minutes,
+            planning_status=row.planning_status,
+            demand_forecast_horizon_days=row.demand_forecast_horizon_days or 1,
+            supplier_name=row.supplier_name,
+            supplier_report_risk_level=row.supplier_report_risk_level,
+            expected_delay_days=float(row.expected_delay_days or 0),
         )
 
 
@@ -473,16 +570,17 @@ def get_inventory_summary() -> InventorySummaryResponse:
     reorder_count = 0
 
     for item in catalog:
-        seed = MATERIAL_SEEDS.get(item.product_id, {"in_transit_qty": 0.0})
         opt = _optimizer.optimize(
             product_id=item.product_id,
             current_inventory=item.current_inventory,
             forecasted_demand=item.forecasted_demand,
+            forecast_horizon_days=item.demand_forecast_horizon_days if item.is_demand_product else 1,
+            expected_delay_days=item.expected_delay_days,
             average_lead_time=item.average_lead_time,
             lead_time_std_dev=item.lead_time_std_dev,
             demand_std_dev=item.demand_std_dev,
             disruption_probability=item.disruption_probability,
-            in_transit_qty=seed["in_transit_qty"],
+            in_transit_qty=item.in_transit_qty,
         )
         if opt.material_shortage > 0 or opt.risk_level == "CRITICAL":
             critical_count += 1
@@ -511,16 +609,17 @@ def get_production_interface() -> list[ProductionInterfaceItem]:
     interface_items: list[ProductionInterfaceItem] = []
 
     for item in catalog:
-        seed = MATERIAL_SEEDS.get(item.product_id, {"in_transit_qty": 0.0})
         opt = _optimizer.optimize(
             product_id=item.product_id,
             current_inventory=item.current_inventory,
             forecasted_demand=item.forecasted_demand,
+            forecast_horizon_days=item.demand_forecast_horizon_days if item.is_demand_product else 1,
+            expected_delay_days=item.expected_delay_days,
             average_lead_time=item.average_lead_time,
             lead_time_std_dev=item.lead_time_std_dev,
             demand_std_dev=item.demand_std_dev,
             disruption_probability=item.disruption_probability,
-            in_transit_qty=seed["in_transit_qty"],
+            in_transit_qty=item.in_transit_qty,
         )
         interface_items.append(
             ProductionInterfaceItem(
@@ -536,7 +635,7 @@ def get_production_interface() -> list[ProductionInterfaceItem]:
                 selected_reorder_quantity=opt.reorder_quantity,
                 inventory_risk_level=opt.risk_level,
                 reorder_recommendation=opt.reorder_recommendation,
-                is_demo_data=True,
+                is_demo_data=item.is_demo_data,
             )
         )
     return interface_items
@@ -632,7 +731,6 @@ def batch_optimize_inventory(request: BatchOptimizationRequest) -> list[Inventor
     catalog = get_product_catalog()
     results: list[InventoryOptimizationResponse] = []
     for item in catalog:
-        seed = MATERIAL_SEEDS.get(item.product_id, {"in_transit_qty": 0.0})
         dp = request.disruption_probability_override if request.disruption_probability_override is not None else item.disruption_probability
         ltv = request.lead_time_std_dev_override if request.lead_time_std_dev_override is not None else item.lead_time_std_dev
         demand = item.forecasted_demand * (1.0 + request.demand_surge_pct / 100.0)
@@ -641,12 +739,14 @@ def batch_optimize_inventory(request: BatchOptimizationRequest) -> list[Inventor
             product_id=item.product_id,
             current_inventory=item.current_inventory,
             forecasted_demand=demand,
+            forecast_horizon_days=item.demand_forecast_horizon_days if item.is_demand_product else 1,
+            expected_delay_days=item.expected_delay_days,
             demand_std_dev=item.demand_std_dev,
             average_lead_time=item.average_lead_time,
             lead_time_std_dev=ltv,
             disruption_probability=dp,
             supplier_trust_score=item.supplier_trust_score,
-            in_transit_qty=float(seed.get("in_transit_qty", 0.0)),
+            in_transit_qty=item.in_transit_qty,
             service_level=request.service_level,
             scenario=request.scenario,
             policy_type=request.policy_type,

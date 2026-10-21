@@ -1,0 +1,3 @@
+SKU,Timestamp,Product Name,Category Name,Supplier Name,Year,Delivery Month,Expected Delay (Days),Shipping Mode,Order Region,Risk Score (%),Trust Score (%),Risk Level
+LK-APP-001,2026-10-21 11:32:00,Active Training Leggings,Finished Apparel,TexLanka Mills,2026,May,2,Standard Class,Western Europe,98.5,1.5,HIGH
+LK-APP-002,2026-10-21 11:07:00,Performance Running Top,Finished Apparel,Pacific Apparel Co,2026,June,0,Standard Class,North America,3.5,96.5,LOW

@@ -152,6 +152,32 @@ forecast and supplier-risk fields from the CSVs; enter current on-hand stock
 separately because it is not provided by either upstream feed. Then save the SKU
 and run optimization. All values in these files are synthetic presentation data.
 
+Finished products can be added separately with **Add Demand SKU**. Its demo
+sources are `datasets/demo/demand_module_inventory_products.csv` and
+`datasets/demo/demand_sku_supplier_risk.csv`. The supplier report requires a
+`SKU` column so rows join to Demand products by the exact `LK-...` SKU; the
+latest matching timestamp is used. Risk Score (%) maps to disruption
+probability, Trust Score (%) maps to supplier trust, and Expected Delay (Days)
+is added to the normal supplier lead time before the risk adjustment. Supplier
+name and reported risk level are retained with the inventory record.
+
+These separate files leave the existing raw-material demo feeds unchanged.
+Physical stock, in-transit stock, normal supplier lead time, lead-time
+variability, and daily demand standard deviation remain inventory inputs. The
+30-day projected-demand total is stored unchanged and converted to a daily rate
+for lead-time calculations; inventory requirement and shortage use the full
+30-day horizon.
+
+Once Demand SKUs are saved, **Production CSV** exports the saved product,
+inventory, and supplier inputs together with fresh batch-optimization results
+(risk-adjusted lead time, safety stock, reorder point/quantity, 30-day
+requirement/shortage, risk, and recommended action). **Production PDF** opens a
+print-ready handoff; choose **Save as PDF** in the browser print dialog. These
+exports are separate from the generic raw-material ERP CSV and executive PDF.
+The CSV includes `Is_Demo_Data`; the PDF prominently warns when synthetic demo
+records are present so presentation values are not mistaken for live procurement
+instructions.
+
 ### Upstream Integration Mode
 - `UPSTREAM_DATA_MODE="DEMO"` (Default): Feeds deterministic synthetic profiles for 8 MAS factory materials.
 - `UPSTREAM_DATA_MODE="INTEGRATED"`: Directly ingests live REST endpoints from peer microservices.

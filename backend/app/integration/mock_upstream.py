@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import os
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 UPSTREAM_DATA_MODE: Literal["DEMO", "INTEGRATED"] = os.getenv("UPSTREAM_DATA_MODE", "DEMO")
@@ -67,7 +67,7 @@ def _load_csv_records(filename: str) -> list[dict[str, str]]:
     path = os.path.join(DEMO_DATA_DIR, filename)
     if not os.path.exists(path):
         return []
-    with open(path, mode="r", encoding="utf-8") as f:
+    with open(path, mode="r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         return list(reader)
 
@@ -142,6 +142,53 @@ def get_mock_supplier_risk(product_id: str) -> UpstreamSupplierRiskSignal:
         disruption_scenario="Synthetic Standard Disruption",
         is_demo_data=True,
     )
+
+
+def get_mock_demand_supplier_risk(product_id: str) -> dict[str, str | float | int] | None:
+    """Load the newest supplier-report row matching a Demand SKU."""
+    records = [
+        row for row in _load_csv_records("demand_sku_supplier_risk.csv")
+        if row.get("SKU", "").strip().upper() == product_id.strip().upper()
+    ]
+    if not records:
+        return None
+
+    def timestamp_key(row: dict[str, str]) -> datetime:
+        value = row.get("Timestamp", "").strip()
+        for date_format in ("%m/%d/%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, date_format)
+            except ValueError:
+                continue
+        raise ValueError(f"Invalid Timestamp '{value}' in demand_sku_supplier_risk.csv.")
+
+    row = max(records, key=timestamp_key)
+    try:
+        expected_delay = float(row["Expected Delay (Days)"])
+        risk_score = float(row["Risk Score (%)"])
+        trust_score = float(row["Trust Score (%)"])
+        year = int(row["Year"])
+    except (KeyError, ValueError) as exc:
+        raise ValueError(f"Invalid supplier-risk values for SKU '{product_id}'.") from exc
+
+    if not 0 <= expected_delay <= 365 or not 0 <= risk_score <= 100 or not 0 <= trust_score <= 100:
+        raise ValueError(f"Supplier-risk values are out of range for SKU '{product_id}'.")
+
+    return {
+        "product_id": row["SKU"].strip().upper(),
+        "timestamp": row["Timestamp"].strip(),
+        "product_name": row["Product Name"].strip(),
+        "category_name": row["Category Name"].strip(),
+        "supplier_name": row["Supplier Name"].strip(),
+        "year": year,
+        "delivery_month": row["Delivery Month"].strip(),
+        "expected_delay_days": expected_delay,
+        "shipping_mode": row["Shipping Mode"].strip(),
+        "order_region": row["Order Region"].strip(),
+        "risk_score_pct": risk_score,
+        "supplier_trust_score": trust_score,
+        "risk_level": row["Risk Level"].strip().upper(),
+    }
 
 
 def get_combined_upstream_signal(product_id: str) -> CombinedUpstreamRecord:

@@ -1,0 +1,3 @@
+SKU,Product Name (Real DataCo CSV),Department,Category,Export Markets,Unit Price (USD),Historical Orders (CSV),Total Historical Units (CSV),Projected Demand (30D),Fabric Requirement,Sewing SMV (Mins),Planning Status
+LK-APP-001,Active Training Leggings,Apparel,Activewear,"USA, Europe, Australia",49.99,24515,73698,18420,11973,22.8,Ready for production
+LK-APP-002,Performance Running Top,Apparel,Activewear,"USA, Europe, Australia",34.50,18640,52192,12600,8190,18.5,Ready for production
