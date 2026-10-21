@@ -17,8 +17,12 @@ export async function getWeatherRouteRisk() {
   return apiRequest('/api/supply/weather-risk');
 }
 
-export async function downloadSupplyRiskReport() {
-  const response = await fetch(`${API_BASE_URL}/api/supply/export`);
+/**
+ * Download the supplier risk report in the requested format.
+ * @param {'csv'|'pdf'} format - Export format. Defaults to 'csv'.
+ */
+export async function downloadSupplyRiskReport(format = 'csv') {
+  const response = await fetch(`${API_BASE_URL}/api/supply/export?format=${format}`);
   if (!response.ok) {
     throw new Error(`Export failed: ${response.status}`);
   }
@@ -26,10 +30,9 @@ export async function downloadSupplyRiskReport() {
   const downloadUrl = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = downloadUrl;
-  link.setAttribute('download', 'supplier_risk_report.csv');
+  link.setAttribute('download', `supplier_risk_report.${format}`);
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.URL.revokeObjectURL(downloadUrl);
 }
-

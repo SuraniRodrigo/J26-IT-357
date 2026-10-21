@@ -112,12 +112,28 @@ def test_supply_history_endpoint():
 
 
 def test_supply_export_endpoint():
-    response = client.get('/api/supply/export')
+    response = client.get('/api/supply/export?format=csv')
     assert response.status_code == 200
     assert 'text/csv' in response.headers['content-type']
     assert 'supplier_risk_report.csv' in response.headers.get('content-disposition', '')
     content = response.text
-    assert 'id,supplier_id,disruption_probability,risk_level,model_version,created_at' in content
+    # Verify updated product-wise column headers
+    assert 'Timestamp' in content
+    assert 'Product Name' in content
+    assert 'Category Name' in content
+    assert 'Supplier Name' in content
+    assert 'Risk Score (%)' in content
+    assert 'Trust Score (%)' in content
+    assert 'Risk Level' in content
+
+
+def test_supply_export_pdf_endpoint():
+    response = client.get('/api/supply/export?format=pdf')
+    assert response.status_code == 200
+    assert 'application/pdf' in response.headers['content-type']
+    assert 'supplier_risk_report.pdf' in response.headers.get('content-disposition', '')
+    # Verify it's a valid PDF (starts with %PDF)
+    assert response.content[:4] == b'%PDF'
 
 
 def test_supply_latest_risk_endpoint():

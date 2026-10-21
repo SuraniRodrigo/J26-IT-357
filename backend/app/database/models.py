@@ -31,6 +31,18 @@ class SupplyRiskRecord(Base):
         server_default=func.now(),
         nullable=True,
     )
+    # Extended product-wise / period-wise fields (nullable for back-compat)
+    product_name = Column(String, nullable=True, server_default="")
+    category_name = Column(String, nullable=True, server_default="")
+    supplier_name = Column(String, nullable=True, server_default="")
+    year = Column(Integer, nullable=True)
+    month = Column(Integer, nullable=True)
+    expected_delay_days = Column(Integer, nullable=True, server_default="0")
+    shipping_mode = Column(String, nullable=True, server_default="")
+    order_region = Column(String, nullable=True, server_default="")
+    risk_score = Column(Float, nullable=True)
+    trust_score = Column(Float, nullable=True)
+
 
 
 

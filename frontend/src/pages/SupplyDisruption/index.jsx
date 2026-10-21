@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { downloadSupplyRiskReport, getWeatherRouteRisk, predictSupplyRisk } from '../../services/supplyService';
 
 export default function SupplyDisruptionView() {
@@ -19,6 +20,8 @@ export default function SupplyDisruptionView() {
   const [predictionError, setPredictionError] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('pdf');
   const [weatherRisk, setWeatherRisk] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [weatherError, setWeatherError] = useState('');
@@ -41,12 +44,24 @@ export default function SupplyDisruptionView() {
     return () => clearInterval(interval);
   }, []);
 
-  async function handleExportReport() {
+  useEffect(() => {
+    document.body.style.overflow = isExportModalOpen ? 'hidden' : 'unset';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isExportModalOpen]);
+
+  function handleExportReport() {
+    setIsExportModalOpen(true);
+  }
+
+  async function handleModalDownload() {
+    setIsExportModalOpen(false);
     setIsExporting(true);
     setExportStatus('');
     try {
-      await downloadSupplyRiskReport();
-      setExportStatus('Report downloaded successfully');
+      await downloadSupplyRiskReport(exportFormat);
+      setExportStatus(`${exportFormat.toUpperCase()} report downloaded successfully`);
       setTimeout(() => setExportStatus(''), 4000);
     } catch (error) {
       setExportStatus(
@@ -790,7 +805,7 @@ export default function SupplyDisruptionView() {
                 opacity: isExporting ? 0.7 : 1,
                 cursor: isExporting ? 'wait' : 'pointer',
               }}
-              title="Download supplier risk audit report (CSV)"
+              title="Download supplier risk audit report (PDF or CSV)"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -951,6 +966,118 @@ export default function SupplyDisruptionView() {
           </div>
         )}
       </div>
+
+      {/* ── Export Format Selection Modal ── */}
+      {isExportModalOpen &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-modal-title"
+            style={styles.modalOverlay}
+            onClick={(e) => { if (e.target === e.currentTarget) setIsExportModalOpen(false); }}
+          >
+            <div style={styles.modalPanel}>
+              {/* Modal Header */}
+              <div style={styles.modalHeader}>
+                <div>
+                  <div style={styles.modalTitle} id="export-modal-title">
+                    📤 Export Supplier Risk Report
+                  </div>
+                  <div style={styles.modalSubtitle}>
+                    Select your preferred export format below
+                  </div>
+                </div>
+                <button
+                  aria-label="Close export modal"
+                  onClick={() => setIsExportModalOpen(false)}
+                  style={styles.modalClose}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Format Cards */}
+              <div style={styles.formatCardGrid}>
+                {/* PDF Card */}
+                <button
+                  id="export-format-pdf"
+                  type="button"
+                  onClick={() => setExportFormat('pdf')}
+                  style={{
+                    ...styles.formatCard,
+                    ...(exportFormat === 'pdf' ? styles.formatCardActive : {}),
+                  }}
+                >
+                  <div style={styles.formatIcon}>📄</div>
+                  <div style={styles.formatLabel}>PDF Format</div>
+                  <div style={styles.formatDesc}>
+                    Formatted Executive Summary Report with branded header, metric cards, and styled data table.
+                  </div>
+                  <div style={{
+                    ...styles.formatRadioDot,
+                    ...(exportFormat === 'pdf' ? styles.formatRadioDotActive : {}),
+                  }} />
+                </button>
+
+                {/* CSV Card */}
+                <button
+                  id="export-format-csv"
+                  type="button"
+                  onClick={() => setExportFormat('csv')}
+                  style={{
+                    ...styles.formatCard,
+                    ...(exportFormat === 'csv' ? styles.formatCardActive : {}),
+                  }}
+                >
+                  <div style={styles.formatIcon}>📊</div>
+                  <div style={styles.formatLabel}>CSV Format</div>
+                  <div style={styles.formatDesc}>
+                    Raw Data Matrix for Analytics — import into Excel, Google Sheets, or BI tools.
+                  </div>
+                  <div style={{
+                    ...styles.formatRadioDot,
+                    ...(exportFormat === 'csv' ? styles.formatRadioDotActive : {}),
+                  }} />
+                </button>
+              </div>
+
+              {/* Selected format info pill */}
+              <div style={styles.selectedFormatPill}>
+                <span style={styles.selectedFormatPillLabel}>Selected:</span>&nbsp;
+                <strong style={styles.selectedFormatPillValue}>
+                  {exportFormat === 'pdf' ? '📄 PDF — Executive Summary' : '📊 CSV — Raw Data Matrix'}
+                </strong>
+              </div>
+
+              {/* Actions */}
+              <div style={styles.modalActions}>
+                <button
+                  id="export-cancel-btn"
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  style={styles.modalCancelBtn}
+                >
+                  Cancel
+                </button>
+                <button
+                  id="export-download-btn"
+                  type="button"
+                  onClick={handleModalDownload}
+                  style={styles.modalDownloadBtn}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Download {exportFormat.toUpperCase()} Report
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -1864,5 +1991,168 @@ const styles = {
     fontSize: '10px',
     color: 'var(--text-dim)',
     textAlign: 'right',
+  },
+
+  // ── Export Modal ─────────────────────────────────────────────────────
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100vw',
+    height: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 99999,
+    background: 'rgba(5, 8, 15, 0.8)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+  },
+  modalPanel: {
+    background: 'linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.96) 100%)',
+    border: '1px solid rgba(99,102,241,0.3)',
+    borderRadius: '20px',
+    padding: '28px',
+    width: '100%',
+    maxWidth: '560px',
+    boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.1) inset',
+    animation: 'fadeInScale 0.2s ease',
+  },
+  modalHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: '22px',
+  },
+  modalTitle: {
+    fontSize: '18px',
+    fontWeight: 800,
+    fontFamily: 'Outfit, sans-serif',
+    color: 'var(--text-main)',
+    letterSpacing: '-0.01em',
+  },
+  modalSubtitle: {
+    fontSize: '12px',
+    color: 'var(--text-muted)',
+    marginTop: '4px',
+  },
+  modalClose: {
+    background: 'none',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '8px',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '14px',
+    padding: '4px 8px',
+    lineHeight: 1,
+    transition: 'background 0.15s',
+  },
+  formatCardGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '14px',
+    marginBottom: '18px',
+  },
+  formatCard: {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1.5px solid rgba(255,255,255,0.1)',
+    borderRadius: '14px',
+    padding: '18px 16px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    transition: 'border-color 0.2s, background 0.2s, transform 0.15s',
+    position: 'relative',
+  },
+  formatCardActive: {
+    background: 'rgba(99,102,241,0.12)',
+    borderColor: '#6366f1',
+    boxShadow: '0 0 0 3px rgba(99,102,241,0.15)',
+    transform: 'translateY(-1px)',
+  },
+  formatIcon: {
+    fontSize: '28px',
+    lineHeight: 1,
+    marginBottom: '4px',
+  },
+  formatLabel: {
+    fontSize: '14px',
+    fontWeight: 700,
+    color: 'var(--text-main)',
+    fontFamily: 'Outfit, sans-serif',
+  },
+  formatDesc: {
+    fontSize: '11px',
+    color: 'var(--text-muted)',
+    lineHeight: 1.5,
+  },
+  formatRadioDot: {
+    position: 'absolute',
+    top: '14px',
+    right: '14px',
+    width: '14px',
+    height: '14px',
+    borderRadius: '50%',
+    border: '2px solid rgba(255,255,255,0.25)',
+    background: 'transparent',
+    transition: 'border-color 0.2s, background 0.2s',
+  },
+  formatRadioDotActive: {
+    borderColor: '#6366f1',
+    background: '#6366f1',
+    boxShadow: '0 0 0 3px rgba(99,102,241,0.25)',
+  },
+  selectedFormatPill: {
+    display: 'flex',
+    alignItems: 'center',
+    background: 'rgba(99,102,241,0.08)',
+    border: '1px solid rgba(99,102,241,0.2)',
+    borderRadius: '8px',
+    padding: '8px 14px',
+    marginBottom: '20px',
+    fontSize: '12px',
+    color: 'var(--text-muted)',
+  },
+  selectedFormatPillLabel: {
+    fontWeight: 600,
+    color: 'var(--text-dim)',
+  },
+  selectedFormatPillValue: {
+    color: '#a5b4fc',
+    fontWeight: 700,
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'flex-end',
+  },
+  modalCancelBtn: {
+    background: 'none',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '10px',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 600,
+    padding: '10px 20px',
+    transition: 'background 0.15s',
+  },
+  modalDownloadBtn: {
+    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+    border: 'none',
+    borderRadius: '10px',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 700,
+    padding: '10px 22px',
+    display: 'flex',
+    alignItems: 'center',
+    boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
+    transition: 'opacity 0.15s, transform 0.15s',
   },
 };
