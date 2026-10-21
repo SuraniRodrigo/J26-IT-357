@@ -468,6 +468,13 @@ const SKU_CATALOG_MEDIA = {
   },
 };
 
+const ADD_MATERIAL_BACKGROUND_IMAGES = {
+  Fabrics: [...SKU_CATALOG_MEDIA['FAB-001'].images, ...SKU_CATALOG_MEDIA['FAB-002'].images],
+  'Dyes & Chemicals': [...SKU_CATALOG_MEDIA['DYE-008'].images, ...SKU_CATALOG_MEDIA['CHM-005'].images],
+  'Trims & Fasteners': [...SKU_CATALOG_MEDIA['TRM-015'].images, ...SKU_CATALOG_MEDIA['TRM-022'].images],
+  'Yarns & Threads': [...SKU_CATALOG_MEDIA['YRN-042'].images, ...SKU_CATALOG_MEDIA['YRN-018'].images],
+};
+
 const SKU_IMAGES = Object.fromEntries(
   Object.entries(SKU_CATALOG_MEDIA).map(([k, v]) => [k, v.images[0]])
 );
@@ -1224,6 +1231,7 @@ export default function InventoryOptimizationView() {
   const [productsList, setProductsList] = useState([]);
   const [selectedSku, setSelectedSku] = useState('FAB-001');
   const [productionInterfaceData, setProductionInterfaceData] = useState([]);
+  const [dataUpdatedAt, setDataUpdatedAt] = useState(null);
   const [scenarioData, setScenarioData] = useState(null);
 
   // ── Simulator Controls ────────────────────────────────────────────────────
@@ -1337,6 +1345,7 @@ export default function InventoryOptimizationView() {
         setSelectedSku(prev => (prodRes.some(p => p.product_id === prev) ? prev : prodRes[0].product_id));
       }
       if (piRes) setProductionInterfaceData(piRes);
+      if (sumRes || prodRes?.length || piRes?.length) setDataUpdatedAt(new Date());
 
       // Fetch persisted POs from SQLite via unified client
       try {
@@ -1472,6 +1481,7 @@ export default function InventoryOptimizationView() {
 
   // ── Material CRUD State & Handlers ────────────────────────────────────────
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addMaterialImageIndex, setAddMaterialImageIndex] = useState(0);
   const [addForm, setAddForm] = useState({
     product_id: '',
     product_name: '',
@@ -1486,6 +1496,16 @@ export default function InventoryOptimizationView() {
     supplier_trust_score: 75.0,
     is_demo_data: false,
   });
+  useEffect(() => {
+    if (!isAddModalOpen) return undefined;
+    setAddMaterialImageIndex(0);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+    const imageCount = ADD_MATERIAL_BACKGROUND_IMAGES[addForm.category].length;
+    const timer = window.setInterval(() => {
+      setAddMaterialImageIndex(index => (index + 1) % imageCount);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [isAddModalOpen, addForm.category]);
   const [addFormErrors, setAddFormErrors] = useState({});
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
   const [isLoadingDemoFeed, setIsLoadingDemoFeed] = useState(false);
@@ -2208,6 +2228,10 @@ export default function InventoryOptimizationView() {
       <style>{`
         @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.6)} }
         @keyframes slide-up  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes add-material-bg-fade { from{opacity:.45;transform:scale(1.03)} to{opacity:1;transform:scale(1)} }
+        @media (prefers-reduced-motion: reduce) {
+          .add-material-bg { animation:none !important; }
+        }
         @keyframes pipeline-pop {
           0% { opacity:0; transform: scale(0.96) translateY(-8px); filter: blur(3px); }
           60% { transform: scale(1.01) translateY(2px); filter: blur(0px); }
@@ -2256,15 +2280,31 @@ export default function InventoryOptimizationView() {
           box-shadow: 0 20px 40px rgba(0,0,0,0.45) !important;
         }
         .luxury-tab-btn {
-          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease !important;
         }
-        .luxury-tab-btn:hover {
-          transform: translateY(-3px) !important;
+        .luxury-tab-btn:hover:not([aria-pressed="true"]) {
+          border-color: #94A3B8 !important;
+          background-color: rgba(148,163,184,0.08) !important;
         }
-        @keyframes tab-pop-bounce {
-          0% { transform: scale(0.94) translateY(3px); }
-          50% { transform: scale(1.02) translateY(-2px); }
-          100% { transform: scale(1) translateY(0); }
+        .luxury-tab-btn:focus-visible {
+          outline: 3px solid #60A5FA;
+          outline-offset: 2px;
+        }
+        .luxury-tab-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+        @media (max-width: 900px) {
+          .luxury-tab-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 560px) {
+          .luxury-tab-grid { grid-template-columns: minmax(0, 1fr); }
+          .luxury-tab-status { align-items: flex-start !important; flex-direction: column; gap: 5px; }
+          .luxury-tab-status-detail { padding-left: 16px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .luxury-tab-btn { transition: none !important; animation: none !important; }
         }
         @keyframes connector-pulse {
           0%, 100% { opacity: 0.9; transform: translateY(0); }
@@ -3689,54 +3729,71 @@ export default function InventoryOptimizationView() {
 
       {/* ═══ ENTERPRISE MONOLITHIC COCKPIT (Zero-Gap Integrated Tabs & Active Deck) ═══ */}
       {(() => {
+        const criticalShortageCount = Number.isFinite(summaryData?.critical_shortages_count)
+          ? summaryData.critical_shortages_count
+          : productsList.filter(product =>
+            product.disruption_probability >= 0.7
+            && product.current_inventory < product.forecasted_demand * 0.35
+          ).length;
+        const gatedProductionCount = productionInterfaceData.filter(item => {
+          const userPolicy = computedPolicies.find(policy => policy.product_id === item.product_id);
+          const isSim = simulateExpeditedArrival
+            || Boolean(releasedGates[item.product_id])
+            || Boolean(userPolicy && !userPolicy.reorder_required);
+          if (isSim) return false;
+          const requirement = userPolicy
+            ? (userPolicy.material_requirement || userPolicy.forecasted_demand || item.material_requirement || 0)
+            : (item.material_requirement || 0);
+          const available = userPolicy ? userPolicy.current_inventory : (item.available_inventory || 0);
+          const shortage = userPolicy
+            ? (userPolicy.material_shortage ?? Math.max(0, requirement - available))
+            : (item.material_shortage || 0);
+          return shortage > 0 || available < requirement;
+        }).length;
+        const workspaceContext = {
+          operations: `${productsList.length} materials monitored · ${criticalShortageCount} critical shortages`,
+          simulator: 'Scenario stress testing is ready',
+          readiness: productionInterfaceData.length
+            ? `${productionInterfaceData.length - gatedProductionCount} ready · ${gatedProductionCount} gated`
+            : 'No production handoff records',
+          research: '171,962 historical orders · XGBoost benchmarks',
+        };
+        const dataMode = summaryData?.upstream_data_mode;
+        const lastUpdated = dataUpdatedAt
+          ? dataUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : null;
         const tabsConfig = [
           {
             id: 'operations',
             icon: '📊',
             label: 'Operations & Cockpit',
             desc: 'Live telemetry & material inventory',
-            theme: {
-              activeBg: isDark ? 'linear-gradient(135deg, #059669 0%, #047857 100%)' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-              glow: 'rgba(16,185,129,0.35)',
-              border: '#10B981',
-              color: '#10B981',
-            }
+            badge: `${criticalShortageCount} critical`,
+            theme: { color: '#059669' }
           },
           {
             id: 'simulator',
             icon: '⚡',
             label: 'What-If Simulator',
             desc: 'Disruption stress-testing engine',
-            theme: {
-              activeBg: isDark ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-              glow: 'rgba(245,158,11,0.35)',
-              border: '#F59E0B',
-              color: '#F59E0B',
-            }
+            badge: null,
+            theme: { color: '#D97706' }
           },
           {
             id: 'readiness',
             icon: '🏭',
             label: 'Production Readiness',
             desc: 'Module 4 MAS line handoff',
-            theme: {
-              activeBg: isDark ? 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' : 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)',
-              glow: 'rgba(139,92,246,0.35)',
-              border: '#8B5CF6',
-              color: '#8B5CF6',
-            }
+            badge: `${gatedProductionCount} gated`,
+            theme: { color: '#7C3AED' }
           },
           {
             id: 'research',
             icon: '📈',
             label: 'Research & ML Benchmarks',
             desc: '171K DataCo dataset & XGBoost',
-            theme: {
-              activeBg: isDark ? 'linear-gradient(135deg, #BE185D 0%, #9D174D 100%)' : 'linear-gradient(135deg, #EC4899 0%, #DB2777 100%)',
-              glow: 'rgba(236,72,153,0.35)',
-              border: '#EC4899',
-              color: '#EC4899',
-            }
+            badge: null,
+            theme: { color: '#DB2777' }
           },
         ];
 
@@ -3746,12 +3803,9 @@ export default function InventoryOptimizationView() {
           <div
             style={{
               background: isDark ? '#09101F' : '#FFFFFF',
-              border: `2px solid ${curTabConfig.theme.border}`,
-              borderRadius: '24px',
-              boxShadow: isDark
-                ? `0 20px 50px rgba(0,0,0,0.6), 0 0 32px ${curTabConfig.theme.glow}`
-                : `0 12px 36px rgba(15,23,42,0.06), 0 0 24px ${curTabConfig.theme.glow}`,
-              transition: 'border-color 0.35s ease, box-shadow 0.35s ease',
+              border: `1px solid ${isDark ? '#263449' : '#D8E1EC'}`,
+              borderRadius: '18px',
+              boxShadow: isDark ? '0 12px 28px rgba(0,0,0,0.24)' : '0 4px 16px rgba(15,23,42,0.05)',
               position: 'relative',
               overflow: 'hidden',
               marginBottom: '28px',
@@ -3760,83 +3814,123 @@ export default function InventoryOptimizationView() {
             {/* Integrated Top Navigation Deck Bar */}
             <div style={{
               background: isDark ? 'rgba(15,23,42,0.95)' : '#F8FAFC',
-              borderBottom: `1.5px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
-              padding: '12px 14px 10px 14px',
+              borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0'}`,
+              padding: '14px',
             }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                gap: '8px',
-              }}>
+              <div
+                className="luxury-tab-grid"
+                role="tablist"
+                aria-label="Inventory workspaces"
+                onKeyDown={event => {
+                  const tabButtons = Array.from(event.currentTarget.querySelectorAll('[role="tab"]'));
+                  const focusedTab = event.target.closest('[role="tab"]');
+                  const currentIndex = tabButtons.indexOf(focusedTab);
+                  if (currentIndex < 0) return;
+                  let nextIndex = currentIndex;
+                  if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabButtons.length;
+                  else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabButtons.length) % tabButtons.length;
+                  else if (event.key === 'Home') nextIndex = 0;
+                  else if (event.key === 'End') nextIndex = tabButtons.length - 1;
+                  else return;
+                  event.preventDefault();
+                  const nextTab = tabButtons[nextIndex];
+                  nextTab.focus();
+                  nextTab.click();
+                }}
+              >
                 {tabsConfig.map(tab => {
                   const isActive = activeTab === tab.id;
                   return (
                     <button
                       key={tab.id}
                       className="luxury-tab-btn"
+                      type="button"
                       onClick={() => setActiveTab(tab.id)}
+                      role="tab"
+                      id={`inventory-tab-${tab.id}`}
+                      aria-selected={isActive}
+                      aria-controls={`inventory-tabpanel-${tab.id}`}
+                      tabIndex={isActive ? 0 : -1}
                       style={{
                         position: 'relative',
-                        background: isActive ? tab.theme.activeBg : (isDark ? 'rgba(255,255,255,0.02)' : '#FFFFFF'),
-                        border: isActive ? `1.5px solid ${tab.theme.border}` : `1.5px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
-                        borderRadius: '14px',
-                        padding: '10px 16px',
+                        minWidth: 0,
+                        minHeight: '78px',
+                        background: isActive
+                          ? (isDark ? `${tab.theme.color}24` : `${tab.theme.color}0D`)
+                          : (isDark ? 'rgba(255,255,255,0.025)' : '#FFFFFF'),
+                        border: `1px solid ${isActive ? `${tab.theme.color}70` : (isDark ? '#334155' : '#E2E8F0')}`,
+                        borderRadius: '12px',
+                        padding: '12px',
                         cursor: 'pointer',
                         textAlign: 'left',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '12px',
-                        boxShadow: isActive ? `0 6px 20px ${tab.theme.glow}` : 'none',
-                        animation: isActive ? 'tab-pop-bounce 0.32s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
-                        color: isActive ? '#FFFFFF' : (isDark ? '#E2E8F0' : '#1E293B'),
-                        transition: 'all 0.2s ease',
+                        gap: '11px',
+                        boxShadow: isActive ? `inset 3px 0 0 ${tab.theme.color}` : 'none',
+                        color: isDark ? '#E2E8F0' : '#1E293B',
                       }}
                     >
                       <div style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '10px',
-                        background: isActive ? 'rgba(0,0,0,0.22)' : (isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9'),
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '11px',
+                        background: isActive ? `${tab.theme.color}1A` : (isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9'),
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: '18px',
+                        fontSize: '17px',
                         flexShrink: 0,
                       }}>
                         {tab.icon}
                       </div>
-                      <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ minWidth: 0, flex: 1, alignSelf: 'center' }}>
                         <div style={{
-                          fontWeight: 900,
+                          fontWeight: 700,
                           fontSize: '13px',
-                          color: isActive ? '#FFFFFF' : (isDark ? '#F1F5F9' : '#0F172A'),
+                          color: isDark ? '#F1F5F9' : '#0F172A',
                           lineHeight: 1.2,
                         }}>
                           {tab.label}
                         </div>
                         <div style={{
-                          fontSize: '10px',
-                          color: isActive ? 'rgba(255,255,255,0.92)' : (isDark ? '#94A3B8' : '#64748B'),
-                          marginTop: '2px',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          fontWeight: isActive ? 600 : 500,
+                          fontSize: '11px',
+                          color: isDark ? '#94A3B8' : '#64748B',
+                          marginTop: '4px',
+                          lineHeight: 1.35,
+                          fontWeight: 500,
                         }}>
                           {tab.desc}
                         </div>
                       </div>
 
+                      {tab.badge !== null && (
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          background: tab.id === 'operations' && criticalShortageCount > 0
+                            ? (isDark ? 'rgba(239,68,68,.16)' : '#FEF2F2')
+                            : (isDark ? 'rgba(148,163,184,.14)' : '#F1F5F9'),
+                          color: tab.id === 'operations' && criticalShortageCount > 0
+                            ? (isDark ? '#FCA5A5' : '#B91C1C')
+                            : (isDark ? '#CBD5E1' : '#475569'),
+                          padding: '4px 7px',
+                          borderRadius: '8px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}>
+                          {tab.badge}
+                        </span>
+                      )}
                       {isActive && (
                         <span style={{
                           fontSize: '9px',
-                          fontWeight: 900,
-                          background: '#FFFFFF',
-                          color: '#0F172A',
-                          padding: '2px 7px',
+                          fontWeight: 700,
+                          background: isDark ? `${tab.theme.color}2E` : `${tab.theme.color}16`,
+                          color: isDark ? '#E2E8F0' : tab.theme.color,
+                          padding: '4px 7px',
                           borderRadius: '8px',
                           letterSpacing: '.06em',
-                          boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                          flexShrink: 0,
                         }}>
                           ACTIVE
                         </span>
@@ -3851,19 +3945,20 @@ export default function InventoryOptimizationView() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: '8px 12px',
-                background: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.02)',
+                flexWrap: 'wrap',
+                gap: '8px',
+                padding: '11px 2px 1px',
                 fontSize: '11px',
                 color: isDark ? '#94A3B8' : '#64748B',
                 fontWeight: 600,
-                borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0'}`,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: curTabConfig.theme.color }} />
-                  <span>ACTIVE DECK: <strong style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}>{curTabConfig.label.toUpperCase()}</strong></span>
+              }} className="luxury-tab-status">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: curTabConfig.theme.color }} />
+                  <span style={{ color: isDark ? '#E2E8F0' : '#334155' }}>{workspaceContext[curTabConfig.id]}</span>
                 </div>
-                <div style={{ fontSize: '10.5px', color: curTabConfig.theme.color, fontWeight: 700 }}>
-                  {curTabConfig.desc}
+                <div className="luxury-tab-status-detail" style={{ display:'flex', alignItems:'center', gap:'12px', flexWrap:'wrap', fontSize: '11px', color: isDark ? '#94A3B8' : '#64748B', fontWeight: 500 }}>
+                  {dataMode && <span>{String(dataMode).toUpperCase()} DATA</span>}
+                  {lastUpdated && <span>Updated {lastUpdated}</span>}
                 </div>
               </div>
             </div>
@@ -4091,7 +4186,14 @@ export default function InventoryOptimizationView() {
 
       {/* ═══ TAB 1: OPERATIONS & INVENTORY COCKPIT ═══════════════════════════ */}
       {activeTab === 'operations' && (
-        <div className="connected-tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '-18px' }}>
+        <div
+          id="inventory-tabpanel-operations"
+          role="tabpanel"
+          aria-labelledby="inventory-tab-operations"
+          tabIndex={0}
+          className="connected-tab-content"
+          style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '-18px' }}
+        >
 
           {/* ── Data Flow Pipeline Bar (Edge-to-Edge Flush Aesthetic) ── */}
                   <div style={{
@@ -5234,7 +5336,13 @@ export default function InventoryOptimizationView() {
 
       {/* ═══ TAB 2: WHAT-IF SIMULATOR ════════════════════════════════════════ */}
       {activeTab === 'simulator' && (
-        <div style={{ ...styles.tabContent, animation: 'content-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+        <div
+          id="inventory-tabpanel-simulator"
+          role="tabpanel"
+          aria-labelledby="inventory-tab-simulator"
+          tabIndex={0}
+          style={{ ...styles.tabContent, animation: 'content-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}
+        >
 
           {/* Primary Architecture: Adaptive Policy Optimizer (Module 3 Engine) */}
           <div style={{
@@ -6209,7 +6317,14 @@ export default function InventoryOptimizationView() {
         const totalDowntimeRisk = enrichedList.filter(d => !d.isReady).reduce((acc, d) => acc + d.meta.downtimeCost, 0);
 
         return (
-          <div className="connected-tab-content" style={styles.tabContent}>
+          <div
+            id="inventory-tabpanel-readiness"
+            role="tabpanel"
+            aria-labelledby="inventory-tab-readiness"
+            tabIndex={0}
+            className="connected-tab-content"
+            style={styles.tabContent}
+          >
             {/* 1. Module 3 -> Module 4 Handoff Architecture Ribbon */}
             <div style={{
               background: isDark ? 'linear-gradient(135deg,rgba(37,99,235,0.14),rgba(124,58,237,0.08))' : 'linear-gradient(135deg,#EFF6FF,#F5F3FF)',
@@ -6914,7 +7029,14 @@ export default function InventoryOptimizationView() {
 
       {/* ═══ TAB 4: RESEARCH & ML BENCHMARKS ════════════════════════════════ */}
       {activeTab === 'research' && (
-        <div className="connected-tab-content" style={styles.tabContent}>
+        <div
+          id="inventory-tabpanel-research"
+          role="tabpanel"
+          aria-labelledby="inventory-tab-research"
+          tabIndex={0}
+          className="connected-tab-content"
+          style={styles.tabContent}
+        >
           {/* 3-Policy Benchmark */}
           <div style={styles.card}>
             <div style={styles.cardHeader}>
@@ -7423,14 +7545,69 @@ export default function InventoryOptimizationView() {
       {/* ═══ ADD RAW MATERIAL MODAL ══════════════════════════════════════════ */}
       {isAddModalOpen && (
         <div style={styles.modalOverlay} onClick={()=>setIsAddModalOpen(false)}>
-          <div style={styles.modalBox} onClick={e=>e.stopPropagation()}>
-            <div style={styles.modalHead}>
-              <h3 style={{ fontSize:'16px', fontWeight:800, color:c.title, display:'flex', alignItems:'center', gap:'8px' }}>
-                <span>📦</span> Add New Raw Material SKU
-              </h3>
-              <button onClick={()=>setIsAddModalOpen(false)} style={styles.closeBtn}>✕</button>
+          <div style={{ ...styles.modalBox, maxWidth:'680px' }} onClick={e=>e.stopPropagation()}>
+            <div
+              role="group"
+              aria-label={`${addForm.category} material photo background`}
+              style={{ position:'relative', height:'142px', overflow:'hidden', borderRadius:'14px', marginBottom:'16px', background:'#17243a' }}
+            >
+              <div
+                key={`${addForm.category}-${addMaterialImageIndex}`}
+                className="add-material-bg"
+                aria-hidden="true"
+                style={{
+                  position:'absolute',
+                  inset:0,
+                  backgroundImage:`url("${ADD_MATERIAL_BACKGROUND_IMAGES[addForm.category][addMaterialImageIndex]}")`,
+                  backgroundPosition:'center 48%',
+                  backgroundSize:'cover',
+                  animation:'add-material-bg-fade .8s ease both',
+                }}
+              />
+              <div aria-hidden="true" style={{ position:'absolute', inset:0, background:'linear-gradient(90deg,rgba(8,15,30,.92) 0%,rgba(8,15,30,.62) 58%,rgba(8,15,30,.18) 100%)' }} />
+              <div style={{ position:'relative', zIndex:1, height:'100%', boxSizing:'border-box', padding:'22px 20px', display:'flex', flexDirection:'column', justifyContent:'center' }}>
+                <div style={{ color:'#BFDBFE', fontSize:'10px', fontWeight:800, letterSpacing:'1.4px', textTransform:'uppercase', marginBottom:'7px' }}>
+                  {addForm.category} · MATERIAL CATALOG
+                </div>
+                <h3 style={{ fontSize:'20px', fontWeight:850, color:'#FFFFFF', margin:0, textShadow:'0 2px 10px rgba(0,0,0,.35)' }}>
+                  Add New Raw Material SKU
+                </h3>
+                <div style={{ color:'rgba(255,255,255,.82)', fontSize:'11px', marginTop:'5px' }}>
+                  Create a clear, trackable inventory record
+                </div>
+              </div>
+              <div style={{ position:'absolute', zIndex:2, top:'12px', right:'12px' }}>
+                <button
+                  onClick={()=>setIsAddModalOpen(false)}
+                  aria-label="Close add material form"
+                  style={{ ...styles.closeBtn, color:'#FFFFFF', background:'rgba(15,23,42,.58)', border:'1px solid rgba(255,255,255,.3)', backdropFilter:'blur(8px)' }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div style={{ position:'absolute', zIndex:2, bottom:'12px', right:'14px', display:'flex', alignItems:'center', gap:'6px' }}>
+                {ADD_MATERIAL_BACKGROUND_IMAGES[addForm.category].map((_, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    aria-label={`Show ${addForm.category} background image ${index + 1}`}
+                    aria-pressed={addMaterialImageIndex === index}
+                    onClick={()=>setAddMaterialImageIndex(index)}
+                    style={{
+                      width:addMaterialImageIndex === index ? '20px' : '7px',
+                      height:'7px',
+                      padding:0,
+                      border:0,
+                      borderRadius:'10px',
+                      background:addMaterialImageIndex === index ? '#FFFFFF' : 'rgba(255,255,255,.58)',
+                      cursor:'pointer',
+                      transition:'all .2s ease',
+                    }}
+                  />
+                ))}
+              </div>
             </div>
-            <form noValidate onSubmit={handleCreateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px', marginTop:'16px' }}>
+            <form noValidate onSubmit={handleCreateProduct} style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
                 <div style={styles.inputField}>
                   <label style={styles.inputLabel}>Product SKU ID *</label>
