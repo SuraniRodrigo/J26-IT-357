@@ -160,9 +160,20 @@ latest matching timestamp is used. Risk Score (%) maps to disruption
 probability, Trust Score (%) maps to supplier trust, and Expected Delay (Days)
 is added to the normal supplier lead time before the risk adjustment. Supplier
 name and reported risk level are retained with the inventory record.
-The presentation dropdown provides six matched synthetic Demand SKU examples
-(`LK-APP-001` through `LK-APP-006`), each with its own forecast, inventory
-position, and supplier-risk record.
+The presentation dropdown provides six matched synthetic apparel examples
+(`LK-APP-001` through `LK-APP-006`) and a report-based forecast example
+(`LK-FSS-001`).
+
+`LK-FSS-001` uses the supplied April 2026 forecast report's projected demand
+of 1,037.1 units over 30 days. The report did not expose a stable product SKU,
+so this identifier is only a demo placeholder. Its inventory and supplier-risk
+values are synthetic placeholders, not values from that Demand report. The
+report's `±124.5` Sigma is intentionally not mapped to daily demand standard
+deviation because its time basis is unclear; the demo record uses zero for that
+input and visibly warns about this limitation in the form. Confirm the actual
+SKU, current stock, and daily variability before using the record as real
+planning data. This remains a manually loaded demo record, not a live module
+integration.
 
 These separate files leave the existing raw-material demo feeds unchanged.
 Physical stock, in-transit stock, normal supplier lead time, lead-time

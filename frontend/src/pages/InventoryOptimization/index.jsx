@@ -1769,14 +1769,22 @@ export default function InventoryOptimizationView() {
         sewing_smv_minutes:'23.1', current_inventory:'1600', in_transit_qty:'500',
         demand_std_dev:'57', average_lead_time:'11', lead_time_std_dev:'2.6',
       },
+      'LK-FSS-001': {
+        product_name:'Field & Stream Sportsman 16 Gun Fire Safe', department:'Apparel',
+        category:'Apparel Style', export_markets:'Not provided', unit_price_usd:'0',
+        historical_orders:'0', total_historical_units:'0', projected_demand_30d:'1037.1',
+        fabric_requirement:'0', sewing_smv_minutes:'0', planning_status:'Demo forecast - April 2026',
+        current_inventory:'250', in_transit_qty:'0', demand_std_dev:'0',
+        average_lead_time:'14', lead_time_std_dev:'3',
+      },
     };
     const sample = {
       ...demoProducts[selectedDemandDemoSku],
       product_id:selectedDemandDemoSku,
-      department:'Apparel',
-      category:'Activewear',
-      export_markets:'USA, Europe, Australia',
-      planning_status:'Ready for production',
+      department:demoProducts[selectedDemandDemoSku].department || 'Apparel',
+      category:demoProducts[selectedDemandDemoSku].category || 'Activewear',
+      export_markets:demoProducts[selectedDemandDemoSku].export_markets || 'USA, Europe, Australia',
+      planning_status:demoProducts[selectedDemandDemoSku].planning_status || 'Ready for production',
       expected_delay_days:'',
       disruption_probability_pct:'',
       supplier_trust_score:'',
@@ -8366,6 +8374,7 @@ export default function InventoryOptimizationView() {
                     <option value="LK-APP-004">LK-APP-004 · Sports Bra</option>
                     <option value="LK-APP-005">LK-APP-005 · Training Hoodie</option>
                     <option value="LK-APP-006">LK-APP-006 · Yoga Leggings</option>
+                    <option value="LK-FSS-001">LK-FSS-001 · Field &amp; Stream Safe</option>
                   </select>
                   <button type="button" className="btn-hover" onClick={useDemandProductSample} style={{ ...styles.addBtn, padding:'9px 14px', fontSize:'12px' }}>
                     Load demo data
@@ -8377,6 +8386,11 @@ export default function InventoryOptimizationView() {
                   <span key={item} style={{ border:`1px solid ${isDark?'#334155':'#E2E8F0'}`, borderRadius:'999px', padding:'6px 10px', color:c.sub, fontSize:'10px', fontWeight:700 }}>{item}</span>
                 ))}
               </div>
+              {selectedDemandDemoSku === 'LK-FSS-001' && (
+                <div role="note" style={{ marginBottom:'13px', padding:'11px 13px', borderRadius:'10px', border:`1px solid ${isDark?'rgba(251,191,36,.35)':'#FDE68A'}`, background:isDark?'rgba(120,53,15,.18)':'#FFFBEB', color:isDark?'#FDE68A':'#92400E', fontSize:'11px', lineHeight:1.55 }}>
+                  <strong>April 2026 forecast report sample:</strong> the report provides 1,037.1 units for 30 days. The source did not show a product SKU, so LK-FSS-001 is a demo-only ID. Stock, supplier-risk, and lead-time values are placeholders; the reported Sigma is not used as daily demand variability because its time basis is unclear.
+                </div>
+              )}
               <form onSubmit={handleCreateDemandProduct} style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
                 {demandFormFieldGroups.map((group, index) => (
                   <section key={group.title} style={{ padding:'15px', borderRadius:'13px', border:`1px solid ${isDark?'#334155':'#E5EAF1'}`, background:isDark?'rgba(15,23,42,.52)':'#fff', boxShadow:isDark?'none':'0 5px 18px rgba(15,23,42,.035)' }}>
