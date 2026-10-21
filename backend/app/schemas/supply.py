@@ -107,6 +107,14 @@ class LatestSupplyRiskResponse(BaseModel):
         description="Flag indicating an active upstream risk signal for Inventory Guardian",
     )
     created_at: datetime | str | None = Field(default=None, description="Inference timestamp")
+    product_name: str | None = Field(default=None, description="Target product name")
+    category_name: str | None = Field(default=None, description="Product category name")
+    supplier_name: str | None = Field(default=None, description="Observed supplier name")
+    month: int | None = Field(default=None, ge=1, le=12, description="Target delivery month (1-12)")
+    year: int | None = Field(default=None, description="Target year")
+    expected_delay_days: int | None = Field(default=None, description="Expected delay days")
+    risk_score: float | None = Field(default=None, ge=0, le=100, description="Dynamic risk score (%)")
+    trust_score: float | None = Field(default=None, ge=0, le=100, description="Dynamic trust score (0-100)")
 
 
 class PortWeatherRisk(BaseModel):

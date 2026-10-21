@@ -148,5 +148,10 @@ def test_supply_latest_risk_endpoint():
     assert data['model_version'] == 'xgboost-v1.0'
     assert isinstance(data['valid_upstream_risk_signal'], bool)
     assert isinstance(data['early_warning_alert'], bool)
+    assert 'product_name' in data
+    assert 'supplier_name' in data
+    assert 'risk_score' in data
+    assert 'trust_score' in data
+    assert 'expected_delay_days' in data
 
 

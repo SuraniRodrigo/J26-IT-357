@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { getLatestSupplyRisk } from '../../services/inventoryService';
 import { downloadSupplyRiskReport } from '../../services/supplyService';
 
@@ -7,13 +8,27 @@ export default function InventoryOptimizationView() {
   const [loadingRisk, setLoadingRisk] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('pdf');
 
-  async function handleExportReport() {
+  useEffect(() => {
+    document.body.style.overflow = isExportModalOpen ? 'hidden' : 'unset';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isExportModalOpen]);
+
+  function handleExportReport() {
+    setIsExportModalOpen(true);
+  }
+
+  async function handleModalDownload() {
+    setIsExportModalOpen(false);
     setIsExporting(true);
     setExportStatus('');
     try {
-      await downloadSupplyRiskReport();
-      setExportStatus('Report downloaded successfully');
+      await downloadSupplyRiskReport(exportFormat);
+      setExportStatus(`${exportFormat.toUpperCase()} report downloaded successfully`);
       setTimeout(() => setExportStatus(''), 4000);
     } catch (error) {
       setExportStatus(
@@ -46,6 +61,14 @@ export default function InventoryOptimizationView() {
             model_version: 'xgboost-v1.0 (fallback)',
             valid_upstream_risk_signal: false,
             created_at: null,
+            product_name: 'Organic Cotton Denim Fabric',
+            category_name: 'Knitted Fabric',
+            supplier_name: 'TexLanka Mills',
+            month: 5,
+            year: 2026,
+            expected_delay_days: 0,
+            risk_score: 12.0,
+            trust_score: 88.0,
           });
         }
       } finally {
@@ -68,6 +91,26 @@ export default function InventoryOptimizationView() {
       : riskLevel === 'medium'
       ? '#f59e0b'
       : '#10b981';
+
+  const targetProduct = supplyRisk?.product_name || 'Organic Cotton Denim Fabric';
+  const targetSupplier = supplyRisk?.supplier_name || supplyRisk?.supplier_id || 'TexLanka Mills';
+  const targetCategory = supplyRisk?.category_name || 'Knitted Fabric';
+  const delayDays =
+    supplyRisk?.expected_delay_days !== undefined && supplyRisk?.expected_delay_days !== null
+      ? supplyRisk.expected_delay_days
+      : 0;
+  const riskScore =
+    supplyRisk?.risk_score !== undefined
+      ? supplyRisk.risk_score
+      : supplyRisk?.disruption_probability_percent !== undefined
+      ? supplyRisk.disruption_probability_percent
+      : 0;
+  const trustScore =
+    supplyRisk?.trust_score !== undefined
+      ? supplyRisk.trust_score
+      : supplyRisk?.supplier_trust_score !== undefined
+      ? supplyRisk.supplier_trust_score
+      : 100;
   const stockDays = [
     { day: 'D1', val: 78, safe: 45 },
     { day: 'D2', val: 74, safe: 45 },
@@ -472,12 +515,55 @@ export default function InventoryOptimizationView() {
           </div>
         )}
 
-        {/* 3 Metric Summary Grid */}
+        {/* 4-Metric Product & Risk Summary Grid */}
         <div style={styles.upstreamMetricsGrid}>
-          {/* Status Badge & Risk Level */}
+          {/* Target Product & Supplier */}
           <div style={styles.upstreamMetricCard}>
             <div style={styles.upstreamMetricHeader}>
-              <span style={styles.metricLabel}>STATUS / RISK LEVEL</span>
+              <span style={styles.metricLabel}>TARGET PRODUCT &amp; SUPPLIER</span>
+              <span style={styles.metricPill}>
+                {targetCategory}
+              </span>
+            </div>
+            <div style={{ ...styles.metricMainValue, fontSize: '18px', lineHeight: 1.25, marginTop: '2px' }}>
+              {targetProduct}
+            </div>
+            <div style={styles.metricSubtext}>
+              Supplier: <strong style={{ color: 'var(--text-main)' }}>{targetSupplier}</strong>
+              {supplyRisk?.month && (
+                <span> · Est. Delivery: Month {supplyRisk.month}, {supplyRisk.year || 2026}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Expected Delay Days Impact */}
+          <div style={styles.upstreamMetricCard}>
+            <div style={styles.upstreamMetricHeader}>
+              <span style={styles.metricLabel}>EXPECTED DELAY IMPACT</span>
+              <span
+                style={{
+                  ...styles.metricPill,
+                  color: delayDays > 0 ? '#f87171' : '#34d399',
+                  fontWeight: 700,
+                }}
+              >
+                {delayDays > 0 ? 'Lead-Time Variance' : 'On Schedule'}
+              </span>
+            </div>
+            <div style={{ ...styles.metricMainValue, color: delayDays > 0 ? '#f87171' : 'var(--text-main)' }}>
+              {delayDays > 0 ? `+${delayDays} Days` : '0 Days Delay'}
+            </div>
+            <div style={styles.metricSubtext}>
+              {delayDays > 0
+                ? `Buffer expanded: +${Math.min(delayDays * 18, 50)}% safety stock compensating for delivery lag`
+                : 'Zero shipping delay detected — optimal baseline safety buffer maintained'}
+            </div>
+          </div>
+
+          {/* Dynamic Risk Score (%) & Level */}
+          <div style={styles.upstreamMetricCard}>
+            <div style={styles.upstreamMetricHeader}>
+              <span style={styles.metricLabel}>DYNAMIC RISK SCORE</span>
               <span
                 style={{
                   ...styles.statusBadge,
@@ -490,41 +576,23 @@ export default function InventoryOptimizationView() {
               </span>
             </div>
             <div style={{ ...styles.metricMainValue, color: riskLevelColor }}>
-              {supplyRisk ? `${(supplyRisk.risk_level || 'LOW').toUpperCase()} RISK` : '--'}
+              {riskScore !== undefined ? `${Number(riskScore).toFixed(1)}%` : '--%'}
             </div>
             <div style={styles.metricSubtext}>
               {supplyRisk?.early_warning_alert
                 ? 'Elevated disruption likelihood triggers proactive safety stock expansion'
-                : 'Consistent supplier compliance permits lean baseline inventory buffers'}
+                : 'Low transit volatility — baseline buffer ensures lean operations'}
             </div>
           </div>
 
-          {/* Disruption Probability */}
-          <div style={styles.upstreamMetricCard}>
-            <div style={styles.upstreamMetricHeader}>
-              <span style={styles.metricLabel}>DISRUPTION PROBABILITY</span>
-              <span style={styles.metricPill}>XGBoost Model</span>
-            </div>
-            <div style={styles.metricMainValue}>
-              {supplyRisk && supplyRisk.disruption_probability_percent !== undefined
-                ? `${supplyRisk.disruption_probability_percent.toFixed(1)}%`
-                : '--%'}
-            </div>
-            <div style={styles.metricSubtext}>
-              Real-time likelihood of shipment delay affecting scheduled production runs
-            </div>
-          </div>
-
-          {/* Supplier Trust Score */}
+          {/* Supplier Trust Score (/100) */}
           <div style={styles.upstreamMetricCard}>
             <div style={styles.upstreamMetricHeader}>
               <span style={styles.metricLabel}>SUPPLIER TRUST SCORE</span>
               <span style={styles.metricPill}>Reliability Matrix</span>
             </div>
             <div style={{ ...styles.metricMainValue, color: '#38bdf8' }}>
-              {supplyRisk && supplyRisk.supplier_trust_score !== undefined
-                ? `${supplyRisk.supplier_trust_score.toFixed(1)} / 100`
-                : '-- / 100'}
+              {trustScore !== undefined ? `${Number(trustScore).toFixed(1)} / 100` : '-- / 100'}
             </div>
             <div style={styles.metricSubtext}>
               Vendor performance consistency evaluated across historical deliveries
@@ -547,8 +615,10 @@ export default function InventoryOptimizationView() {
           <div style={styles.safetyStockMeta}>
             <span>
               {supplyRisk?.early_warning_alert
-                ? 'Buffer adjustment: Dynamic safety buffer expanded (+35%)'
-                : 'Buffer adjustment: Standard optimal reorder threshold maintained'}
+                ? `Buffer adjustment: Dynamic safety buffer expanded (+35%) due to ${delayDays}d expected delay`
+                : delayDays > 0
+                ? `Buffer adjustment: Moderate lead-time buffer applied (+${delayDays * 5}%) for ${delayDays}d variance`
+                : 'Buffer adjustment: Standard optimal reorder threshold maintained (0d delay)'}
             </span>
             {supplyRisk?.model_version && (
               <span style={{ color: '#64748b' }}>· Model: {supplyRisk.model_version}</span>
@@ -556,6 +626,121 @@ export default function InventoryOptimizationView() {
           </div>
         </div>
       </div>
+
+      {/* ── Export Format Selection Modal ── */}
+      {isExportModalOpen &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-modal-title"
+            style={styles.modalOverlay}
+            onClick={(e) => { if (e.target === e.currentTarget) setIsExportModalOpen(false); }}
+          >
+            <div style={styles.modalPanel}>
+              {/* Modal Header */}
+              <div style={styles.modalHeader}>
+                <div>
+                  <div style={styles.modalTitle} id="export-modal-title">
+                    📤 Export Supplier Risk Report
+                  </div>
+                  <div style={styles.modalSubtitle}>
+                    Select your preferred export format below
+                  </div>
+                </div>
+                <button
+                  aria-label="Close export modal"
+                  onClick={() => setIsExportModalOpen(false)}
+                  style={styles.modalClose}
+                  className="modal-close-btn"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Format Cards */}
+              <div style={styles.formatCardGrid}>
+                {/* PDF Card */}
+                <button
+                  id="export-format-pdf"
+                  type="button"
+                  onClick={() => setExportFormat('pdf')}
+                  style={{
+                    ...styles.formatCard,
+                    ...(exportFormat === 'pdf' ? styles.formatCardActive : {}),
+                  }}
+                >
+                  <div style={styles.formatIcon}>📄</div>
+                  <div style={styles.formatLabel}>PDF Format</div>
+                  <div style={styles.formatDesc}>
+                    Formatted Executive Summary Report with branded header, metric cards, and styled data table.
+                  </div>
+                  <div style={{
+                    ...styles.formatRadioDot,
+                    ...(exportFormat === 'pdf' ? styles.formatRadioDotActive : {}),
+                  }} />
+                </button>
+
+                {/* CSV Card */}
+                <button
+                  id="export-format-csv"
+                  type="button"
+                  onClick={() => setExportFormat('csv')}
+                  style={{
+                    ...styles.formatCard,
+                    ...(exportFormat === 'csv' ? styles.formatCardActive : {}),
+                  }}
+                >
+                  <div style={styles.formatIcon}>📊</div>
+                  <div style={styles.formatLabel}>CSV Format</div>
+                  <div style={styles.formatDesc}>
+                    Raw Data Matrix for Analytics — import into Excel, Google Sheets, or BI tools.
+                  </div>
+                  <div style={{
+                    ...styles.formatRadioDot,
+                    ...(exportFormat === 'csv' ? styles.formatRadioDotActive : {}),
+                  }} />
+                </button>
+              </div>
+
+              {/* Selected format info pill */}
+              <div style={styles.selectedFormatPill}>
+                <span style={styles.selectedFormatPillLabel}>Selected:</span>&nbsp;
+                <strong style={styles.selectedFormatPillValue}>
+                  {exportFormat === 'pdf' ? '📄 PDF — Executive Summary' : '📊 CSV — Raw Data Matrix'}
+                </strong>
+              </div>
+
+              {/* Actions */}
+              <div style={styles.modalActions}>
+                <button
+                  id="export-cancel-btn"
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  style={styles.modalCancelBtn}
+                  className="modal-cancel-btn"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="export-download-btn"
+                  type="button"
+                  onClick={handleModalDownload}
+                  style={styles.modalDownloadBtn}
+                  className="modal-download-btn"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Download {exportFormat.toUpperCase()} Report
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
@@ -1051,6 +1236,169 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     transition: 'all 0.2s',
+  },
+
+  // ── Export Modal ─────────────────────────────────────────────────────
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100vw',
+    height: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 99999,
+    background: 'rgba(5, 8, 15, 0.8)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+  },
+  modalPanel: {
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '20px',
+    padding: '28px',
+    width: '100%',
+    maxWidth: '560px',
+    boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border-subtle)',
+    animation: 'fadeInScale 0.2s ease',
+  },
+  modalHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: '22px',
+  },
+  modalTitle: {
+    fontSize: '18px',
+    fontWeight: 800,
+    fontFamily: 'Outfit, sans-serif',
+    color: 'var(--text-main)',
+    letterSpacing: '-0.01em',
+  },
+  modalSubtitle: {
+    fontSize: '12px',
+    color: 'var(--text-muted)',
+    marginTop: '4px',
+  },
+  modalClose: {
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '8px',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    fontSize: '14px',
+    padding: '4px 8px',
+    lineHeight: 1,
+    transition: 'all 0.15s ease',
+  },
+  formatCardGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '14px',
+    marginBottom: '18px',
+  },
+  formatCard: {
+    background: 'var(--bg-card-hover)',
+    border: '1.5px solid var(--border-subtle)',
+    borderRadius: '14px',
+    padding: '18px 16px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    transition: 'border-color 0.2s, background 0.2s, transform 0.15s, box-shadow 0.2s',
+    position: 'relative',
+  },
+  formatCardActive: {
+    background: 'rgba(59, 130, 246, 0.12)',
+    borderColor: '#3b82f6',
+    boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.2)',
+    transform: 'translateY(-1px)',
+  },
+  formatIcon: {
+    fontSize: '28px',
+    lineHeight: 1,
+    marginBottom: '4px',
+  },
+  formatLabel: {
+    fontSize: '14px',
+    fontWeight: 700,
+    color: 'var(--text-main)',
+    fontFamily: 'Outfit, sans-serif',
+  },
+  formatDesc: {
+    fontSize: '11px',
+    color: 'var(--text-muted)',
+    lineHeight: 1.5,
+  },
+  formatRadioDot: {
+    position: 'absolute',
+    top: '14px',
+    right: '14px',
+    width: '14px',
+    height: '14px',
+    borderRadius: '50%',
+    border: '2px solid var(--text-dim)',
+    background: 'transparent',
+    transition: 'border-color 0.2s, background 0.2s',
+  },
+  formatRadioDotActive: {
+    borderColor: '#3b82f6',
+    background: '#3b82f6',
+    boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.25)',
+  },
+  selectedFormatPill: {
+    display: 'flex',
+    alignItems: 'center',
+    background: 'var(--bg-card-subtle)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '8px',
+    padding: '8px 14px',
+    marginBottom: '20px',
+    fontSize: '12px',
+    color: 'var(--text-main)',
+  },
+  selectedFormatPillLabel: {
+    fontWeight: 600,
+    color: 'var(--text-muted)',
+  },
+  selectedFormatPillValue: {
+    color: '#3b82f6',
+    fontWeight: 700,
+  },
+  modalActions: {
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'flex-end',
+  },
+  modalCancelBtn: {
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: '10px',
+    color: 'var(--text-main)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 600,
+    padding: '10px 20px',
+    transition: 'all 0.15s ease',
+  },
+  modalDownloadBtn: {
+    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+    border: 'none',
+    borderRadius: '10px',
+    color: '#ffffff',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 700,
+    padding: '10px 22px',
+    display: 'flex',
+    alignItems: 'center',
+    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+    transition: 'opacity 0.15s, transform 0.15s, filter 0.15s',
   },
 };
 

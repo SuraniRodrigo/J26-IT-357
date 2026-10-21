@@ -383,18 +383,27 @@ def supply_latest_risk(
 
     if record is not None:
         prob = float(record.disruption_probability)
-        prob_percent = round(prob * 100, 2)
+        prob_percent = round((record.risk_score if record.risk_score is not None else prob * 100), 2)
+        trust_percent = round((record.trust_score if record.trust_score is not None else 100.0 - prob_percent), 2)
         return LatestSupplyRiskResponse(
-            supplier_id=record.supplier_id,
-            vendor_id=record.vendor_id,
+            supplier_id=record.supplier_id or record.supplier_name,
+            vendor_id=record.vendor_id or record.product_name,
             disruption_probability=prob,
             disruption_probability_percent=prob_percent,
-            supplier_trust_score=round(100.0 - prob_percent, 2),
+            supplier_trust_score=trust_percent,
             risk_level=record.risk_level,
-            early_warning_alert=prob >= 0.5,
+            early_warning_alert=prob >= 0.5 or prob_percent >= 50.0,
             model_version=record.model_version,
             valid_upstream_risk_signal=True,
             created_at=record.created_at,
+            product_name=record.product_name or record.vendor_id,
+            category_name=record.category_name,
+            supplier_name=record.supplier_name or record.supplier_id,
+            month=record.month,
+            year=record.year,
+            expected_delay_days=record.expected_delay_days if record.expected_delay_days is not None else 0,
+            risk_score=prob_percent,
+            trust_score=trust_percent,
         )
 
     return LatestSupplyRiskResponse(
@@ -408,6 +417,14 @@ def supply_latest_risk(
         model_version="xgboost-v1.0",
         valid_upstream_risk_signal=False,
         created_at=None,
+        product_name=None,
+        category_name=None,
+        supplier_name=None,
+        month=None,
+        year=None,
+        expected_delay_days=0,
+        risk_score=0.0,
+        trust_score=100.0,
     )
 
 
