@@ -319,6 +319,8 @@ export default function DemandForecastingView({ onNavigate }) {
   const [factorBuyerWeight, setFactorBuyerWeight] = useState(1.15); // 1.15x
   const [factorPromoLift, setFactorPromoLift] = useState(10); // +10%
   const [periodForecastResult, setPeriodForecastResult] = useState(null); // null until user clicks calculate
+  const [pieChartActiveTab, setPieChartActiveTab] = useState('factors'); // 'factors' | 'inventory'
+  const [pieHoverIndex, setPieHoverIndex] = useState(null);
   const [isCalculatingPeriod, setIsCalculatingPeriod] = useState(false);
   const [periodTransmitToast, setPeriodTransmitToast] = useState(null);
   const [periodValidationError, setPeriodValidationError] = useState('');
@@ -774,9 +776,385 @@ export default function DemandForecastingView({ onNavigate }) {
     }, 1200);
   };
 
+  // Export User Output: CSV Spreadsheet
+  const handleExportOutputCSV = () => {
+    if (!periodForecastResult) return;
 
+    const res = periodForecastResult;
+    const req = res.material_requirements || {};
+    const handoff = res.inventory_handoff_payload || {};
 
-  // Real Export Markets derived from loaded products
+    const csvLines = [
+      '# ====================================================================',
+      '# OPTICHAIN ENTERPRISE - DEMAND FORECAST & FACTOR ANALYSIS REPORT',
+      `# Generated: ${new Date().toISOString()}`,
+      `# Planning Period: "${res.target_period}"`,
+      `# Garment Silhouette: "${res.product_identifier}"`,
+      '# ====================================================================',
+      '',
+      'SECTION: DEMAND FORECAST EXECUTIVE SUMMARY',
+      'Metric,Value,Unit,Notes',
+      `Target Planning Period,"${res.target_period}",Calendar Horizon,""`,
+      `Garment Silhouette / SKU,"${res.product_identifier}",Apparel Style,""`,
+      `Forecast Horizon,${res.horizon_days},Days,"Planning duration"`,
+      `Forecasted Projected Demand,${res.forecasted_demand},Units,"Factor-adjusted total demand"`,
+      `Daily Run-Rate,${res.daily_run_rate},Units/Day,"Required daily production tempo"`,
+      `Baseline Monthly Demand,${res.baseline_demand},Units,"Order book baseline"`,
+      `Composite Multiplier,${res.factor_multiplier_composite},Multiplier,"Compound 5-driver velocity"`,
+      `Demand Uncertainty (Sigma),±${res.demand_uncertainty},Units,"Forecast volatility buffer"`,
+      `Confidence Interval (95% Lower),${res.confidence_interval_lower},Units,"P10 downside bound"`,
+      `Confidence Interval (95% Upper),${res.confidence_interval_upper},Units,"P90 upside surge bound"`,
+      '',
+      'SECTION: MULTI-DRIVER DEMAND FACTOR CONTRIBUTION',
+      'Factor Name,Impact Percentage,Status,Impact Description',
+      ...(res.factor_breakdown || []).map((fb) =>
+        `"${fb.factor_name}",${fb.impact_pct}%,${fb.status},"${(fb.description || '').replace(/"/g, '""')}"`
+      ),
+      '',
+      'SECTION: INVENTORY OPTIMIZATION & MATERIAL REQUIREMENTS',
+      'Parameter,Value,Unit,Supply Chain Function',
+      `Current Factory Stock,${handoff.current_inventory ?? periodCurrentStock ?? 4200},Units,"Current authentic warehouse inventory"`,
+      `Supplier Lead Time,${handoff.lead_time_days ?? 14},Days,"Replenishment lead time buffer"`,
+      `Dynamic Safety Stock (SS),${req.safety_stock_units ?? 0},Units,"Buffer against lead time and demand variability"`,
+      `Reorder Point (ROP),${req.reorder_point_units ?? 0},Units,"Threshold to trigger replenishment purchase order"`,
+      `Recommended Order Qty (EOQ),${req.recommended_reorder_qty_eoq ?? 0},Units,"Economic Order Quantity minimizing holding and setup costs"`,
+      `Net Units to Order,${req.units_to_order ?? 0},Units,"Recommended purchase order quantity"`,
+      `Stock Planning Status,"${req.stock_status ?? 'HEALTHY'}",Status,"${req.stock_status === 'REORDER_TRIGGERED' ? 'Inventory at or below ROP - Reorder required' : 'Inventory adequate'}"`,
+      `Fabric BOM Requirement,${req.fabric_bom_meters ?? 0},Meters,"Standard consumption per garment (1.85m/unit)"`,
+      `Standard Minute Values (SMV),${req.standard_minute_hours ?? 0},Hours,"Total factory sewing labor hours (14.2 min/pc)"`,
+      `Modular Sewing Lines Needed,${req.modular_sewing_lines_needed ?? 1},Lines,"Lines required at 54 standard hours/line"`,
+    ];
+
+    const csvContent = '\uFEFF' + csvLines.join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const cleanPeriod = (res.target_period || 'Period').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanProduct = (res.product_identifier || 'Product').substring(0, 20).replace(/[^a-zA-Z0-9_-]/g, '_');
+    link.href = url;
+    link.download = `OptiChain_Demand_Forecast_${cleanPeriod}_${cleanProduct}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export User Output: PDF Printable Document
+  const handleExportOutputPDF = () => {
+    if (!periodForecastResult) return;
+
+    const res = periodForecastResult;
+    const req = res.material_requirements || {};
+    const handoff = res.inventory_handoff_payload || {};
+    const cleanPeriod = res.target_period || 'Planning Period';
+    const cleanProduct = res.product_identifier || 'Apparel Silhouette';
+
+    let printWindow = window.open('', '_blank', 'width=920,height=800');
+    if (!printWindow) {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+      printWindow = iframe.contentWindow;
+    }
+
+    const reportHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>OptiChain Demand Forecast Report - ${cleanPeriod}</title>
+        <style>
+          @page { size: A4; margin: 16mm; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            margin: 0;
+            padding: 24px;
+            font-size: 13px;
+            line-height: 1.5;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #0284c7;
+            padding-bottom: 14px;
+            margin-bottom: 20px;
+          }
+          .logo-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .logo-badge {
+            background: #0284c7;
+            color: #ffffff;
+            font-weight: 900;
+            font-size: 16px;
+            padding: 6px 12px;
+            border-radius: 6px;
+          }
+          .title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0;
+          }
+          .subtitle {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+          }
+          .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 22px;
+          }
+          .kpi-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+          }
+          .kpi-val {
+            font-size: 22px;
+            font-weight: 800;
+            color: #0284c7;
+            margin-top: 4px;
+          }
+          .kpi-lbl {
+            font-size: 10px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          .section-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #0f172a;
+            border-left: 3px solid #0284c7;
+            padding-left: 8px;
+            margin: 20px 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 18px;
+            font-size: 12px;
+          }
+          th {
+            background: #f1f5f9;
+            color: #334155;
+            text-align: left;
+            padding: 8px 12px;
+            font-weight: 700;
+            border-bottom: 1px solid #cbd5e1;
+            font-size: 11px;
+          }
+          td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #1e293b;
+          }
+          .status-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #ecfdf5;
+            color: #059669;
+          }
+          .footer {
+            margin-top: 30px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #94a3b8;
+          }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print" style="background: #e0f2fe; border: 1px solid #38bdf8; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: 600; color: #0369a1;">📄 PDF Print Preview — Save as PDF or Print:</span>
+          <button onclick="window.print()" style="background: #0284c7; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 700; cursor: pointer;">🖨️ Print / Save as PDF</button>
+        </div>
+
+        <div class="header">
+          <div class="logo-title">
+            <div class="logo-badge">OptiChain</div>
+            <div>
+              <h1 class="title">Demand Forecast & Factor Analysis Report</h1>
+              <div class="subtitle">AI Hierarchical Forecasting & Multi-Driver Apparel Reconciliation</div>
+            </div>
+          </div>
+          <div style="text-align: right; font-size: 11px; color: #64748b;">
+            <div><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
+            <div><strong>Report Ref:</strong> OC-FC-${Date.now().toString().slice(-6)}</div>
+          </div>
+        </div>
+
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px;">
+          <div>
+            <div style="font-size: 10px; color: #64748b; font-weight: 700;">GARMENT SILHOUETTE / SKU</div>
+            <div style="font-size: 14px; font-weight: 800; color: #0f172a;">${cleanProduct}</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; color: #64748b; font-weight: 700;">PLANNING HORIZON / PERIOD</div>
+            <div style="font-size: 14px; font-weight: 800; color: #0284c7;">${cleanPeriod}</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; color: #64748b; font-weight: 700;">HORIZON DURATION</div>
+            <div style="font-size: 14px; font-weight: 800; color: #059669;">${res.horizon_days} Days</div>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-box">
+            <div class="kpi-lbl">Projected Demand</div>
+            <div class="kpi-val">${res.forecasted_demand.toLocaleString()}</div>
+            <div style="font-size: 10px; color: #64748b;">Total Units</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-lbl">Daily Run-Rate</div>
+            <div class="kpi-val" style="color: #0f172a;">${res.daily_run_rate.toLocaleString()}</div>
+            <div style="font-size: 10px; color: #64748b;">pcs/day</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-lbl">Composite Multiplier</div>
+            <div class="kpi-val" style="color: #059669;">${res.factor_multiplier_composite}x</div>
+            <div style="font-size: 10px; color: #64748b;">Multi-Driver Lift</div>
+          </div>
+          <div class="kpi-box">
+            <div class="kpi-lbl">95% Confidence Band</div>
+            <div class="kpi-val" style="font-size: 16px; color: #475569; margin-top: 8px;">
+              ${res.confidence_interval_lower.toLocaleString()} – ${res.confidence_interval_upper.toLocaleString()}
+            </div>
+            <div style="font-size: 10px; color: #64748b;">Units Range (P10–P90)</div>
+          </div>
+        </div>
+
+        <div class="section-title">1. Multi-Driver Factor Impact Decomposition</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Factor Driver</th>
+              <th>Impact %</th>
+              <th>Operational Status</th>
+              <th>Impact Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(res.factor_breakdown || []).map((fb) => `
+              <tr>
+                <td><strong>${fb.factor_name}</strong></td>
+                <td style="font-weight: 700; color: ${fb.impact_pct >= 0 ? '#059669' : '#dc2626'};">${fb.impact_pct >= 0 ? '+' : ''}${fb.impact_pct}%</td>
+                <td><span class="status-badge">${fb.status}</span></td>
+                <td>${fb.description}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="section-title">2. Inventory Optimization & Downstream MRP Handoff</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Supply Chain Metric</th>
+              <th>Value</th>
+              <th>Unit</th>
+              <th>Operational Function & Planning Protocol</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Current Factory Floor Stock</td>
+              <td><strong>${Number(handoff.current_inventory ?? periodCurrentStock ?? 4200).toLocaleString()}</strong></td>
+              <td>Units</td>
+              <td>Synchronized authentic floor stock from order book records</td>
+            </tr>
+            <tr>
+              <td>Dynamic Safety Stock (SS)</td>
+              <td><strong>${Number(req.safety_stock_units ?? 0).toLocaleString()}</strong></td>
+              <td>Units</td>
+              <td>Buffer calculated using 95% service factor and lead-time demand volatility</td>
+            </tr>
+            <tr>
+              <td>Reorder Point (ROP)</td>
+              <td><strong>${Number(req.reorder_point_units ?? 0).toLocaleString()}</strong></td>
+              <td>Units</td>
+              <td>Stock trigger threshold: (Lead Time Demand) + Safety Stock</td>
+            </tr>
+            <tr>
+              <td>Economic Order Quantity (EOQ)</td>
+              <td><strong>${Number(req.recommended_reorder_qty_eoq ?? 0).toLocaleString()}</strong></td>
+              <td>Units</td>
+              <td>Cost-optimal batch size balancing setup costs and holding costs</td>
+            </tr>
+            <tr>
+              <td>Net Recommended Production</td>
+              <td><strong style="color: #0284c7;">${Number(req.units_to_order ?? 0).toLocaleString()}</strong></td>
+              <td>Units</td>
+              <td>Recommended cutting run after subtracting current warehouse inventory</td>
+            </tr>
+            <tr>
+              <td>Fabric BOM Requirement</td>
+              <td><strong>${Number(req.fabric_bom_meters ?? 0).toLocaleString()}</strong></td>
+              <td>Meters</td>
+              <td>Raw material yarn/knits consumption at 1.85m per garment</td>
+            </tr>
+            <tr>
+              <td>Sewing Production SMV</td>
+              <td><strong>${Number(req.standard_minute_hours ?? 0).toLocaleString()}</strong></td>
+              <td>Hours</td>
+              <td>Standard minute work hours required across modular sewing lines</td>
+            </tr>
+            <tr>
+              <td>Sewing Lines Required</td>
+              <td><strong>${Number(req.modular_sewing_lines_needed ?? 1)}</strong></td>
+              <td>Lines</td>
+              <td>Plant modular production lines required for the ${res.horizon_days}-day horizon</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <div>Generated by OptiChain AI Demand Forecasting & Inventory Optimization System</div>
+          <div>Page 1 of 1 · Confidential Enterprise Document</div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 400);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(reportHtml);
+    printWindow.document.close();
+  };
   const availableMarkets = useMemo(() => {
     const s = new Set();
     realProducts.forEach((p) => {
@@ -3668,7 +4046,16 @@ export default function DemandForecastingView({ onNavigate }) {
           <div style={styles.periodOutputColumn}>
             {!periodForecastResult ? (
               <div style={styles.awaitingCalculationCard}>
-                <div style={{ fontSize: '42px', marginBottom: '12px' }}>📊</div>
+                <div style={{ position: 'relative', width: '90px', height: '90px', marginBottom: '14px' }}>
+                  <svg width="90" height="90" viewBox="0 0 90 90">
+                    <circle cx="45" cy="45" r="36" fill="none" stroke="rgba(56, 189, 248, 0.2)" strokeWidth="7" strokeDasharray="5,4" />
+                    <circle cx="45" cy="45" r="36" fill="none" stroke="#38bdf8" strokeWidth="7" strokeDasharray="55 180" strokeLinecap="round" opacity="0.85" />
+                    <circle cx="45" cy="45" r="24" fill="none" stroke="rgba(16, 185, 129, 0.3)" strokeWidth="4" strokeDasharray="25 150" strokeLinecap="round" />
+                  </svg>
+                  <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>
+                    🥧
+                  </div>
+                </div>
                 <div style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9' }}>
                   Ready for Factor-Driven Demand Analysis
                 </div>
@@ -3677,10 +4064,10 @@ export default function DemandForecastingView({ onNavigate }) {
                 </p>
                 <div style={{ marginTop: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '4px', background: '#0b1120', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
-                    📅 12 Months & Custom Duration
+                    📅 12 Months & 2-Month Duration
                   </span>
                   <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '4px', background: '#0b1120', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                    ✋ Selectable (No Auto-Fill)
+                    🥧 Interactive Pie Chart Ready
                   </span>
                   <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '4px', background: '#0b1120', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
                     🚀 Direct Inventory Feed
@@ -3703,8 +4090,54 @@ export default function DemandForecastingView({ onNavigate }) {
                         Product: <strong style={{ color: '#e2e8f0' }}>{periodForecastResult.product_identifier}</strong>
                       </div>
                     </div>
-                    <div style={styles.compositeMultiplierPill}>
-                      {periodForecastResult.factor_multiplier_composite}x Composite Multiplier
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                      <div style={styles.compositeMultiplierPill}>
+                        {periodForecastResult.factor_multiplier_composite}x Composite Multiplier
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={handleExportOutputPDF}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: 'rgba(56, 189, 248, 0.15)',
+                            border: '1px solid rgba(56, 189, 248, 0.4)',
+                            color: '#38bdf8',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                          title="Generate PDF Report"
+                        >
+                          <span>📄</span>
+                          <span>PDF</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleExportOutputCSV}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: 'rgba(16, 185, 129, 0.15)',
+                            border: '1px solid rgba(16, 185, 129, 0.4)',
+                            color: '#10b981',
+                            borderRadius: '4px',
+                            padding: '3px 8px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                          title="Download CSV Data"
+                        >
+                          <span>📊</span>
+                          <span>CSV</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -3731,6 +4164,305 @@ export default function DemandForecastingView({ onNavigate }) {
                     </strong>
                   </div>
                 </div>
+
+                {/* Generated Analysis Multi-Driver Pie Chart Card */}
+                {(() => {
+                  const factorRawWeights = [
+                    Math.max(5, 100 + (periodForecastResult.factor_breakdown?.[0]?.impact_pct ?? Number(factorTrendGrowth))),
+                    Math.max(5, 100 + (periodForecastResult.factor_breakdown?.[1]?.impact_pct ?? Math.round((Number(factorSeasonMultiplier) - 1) * 100))),
+                    Math.max(5, 100 + (periodForecastResult.factor_breakdown?.[2]?.impact_pct ?? 7)),
+                    Math.max(5, 100 + (periodForecastResult.factor_breakdown?.[3]?.impact_pct ?? Math.round((Number(factorBuyerWeight) - 1) * 100))),
+                    Math.max(5, 100 + (periodForecastResult.factor_breakdown?.[4]?.impact_pct ?? Number(factorPromoLift))),
+                  ];
+                  const sumWeights = factorRawWeights.reduce((a, b) => a + b, 0);
+
+                  const factorSlices = [
+                    {
+                      name: 'Fashion Trend Velocity',
+                      shortName: 'Trend Velocity',
+                      icon: '✂️',
+                      color: '#38bdf8',
+                      pct: Math.round((factorRawWeights[0] / sumWeights) * 1000) / 10,
+                      units: Math.round((factorRawWeights[0] / sumWeights) * periodForecastResult.forecasted_demand),
+                      badge: `${periodForecastResult.factor_breakdown?.[0]?.impact_pct >= 0 ? '+' : ''}${periodForecastResult.factor_breakdown?.[0]?.impact_pct ?? factorTrendGrowth}%`,
+                    },
+                    {
+                      name: 'Seasonal Cycle Multiplier',
+                      shortName: 'Seasonality',
+                      icon: '🌦️',
+                      color: '#10b981',
+                      pct: Math.round((factorRawWeights[1] / sumWeights) * 1000) / 10,
+                      units: Math.round((factorRawWeights[1] / sumWeights) * periodForecastResult.forecasted_demand),
+                      badge: `${periodForecastResult.factor_breakdown?.[1]?.impact_pct >= 0 ? '+' : ''}${periodForecastResult.factor_breakdown?.[1]?.impact_pct ?? Math.round((Number(factorSeasonMultiplier) - 1) * 100)}%`,
+                    },
+                    {
+                      name: 'Colorway Affinity',
+                      shortName: 'Color Palette',
+                      icon: '🎨',
+                      color: '#a855f7',
+                      pct: Math.round((factorRawWeights[2] / sumWeights) * 1000) / 10,
+                      units: Math.round((factorRawWeights[2] / sumWeights) * periodForecastResult.forecasted_demand),
+                      badge: `${periodForecastResult.factor_breakdown?.[2]?.impact_pct >= 0 ? '+' : ''}${periodForecastResult.factor_breakdown?.[2]?.impact_pct ?? 7}%`,
+                    },
+                    {
+                      name: 'Buyer Purchasing Channel',
+                      shortName: 'Buyer Cadence',
+                      icon: '🛍️',
+                      color: '#f59e0b',
+                      pct: Math.round((factorRawWeights[3] / sumWeights) * 1000) / 10,
+                      units: Math.round((factorRawWeights[3] / sumWeights) * periodForecastResult.forecasted_demand),
+                      badge: `${periodForecastResult.factor_breakdown?.[3]?.impact_pct >= 0 ? '+' : ''}${periodForecastResult.factor_breakdown?.[3]?.impact_pct ?? Math.round((Number(factorBuyerWeight) - 1) * 100)}%`,
+                    },
+                    {
+                      name: 'Promotional Campaign Lift',
+                      shortName: 'Promo Lift',
+                      icon: '📣',
+                      color: '#ec4899',
+                      pct: Math.round((factorRawWeights[4] / sumWeights) * 1000) / 10,
+                      units: Math.round((factorRawWeights[4] / sumWeights) * periodForecastResult.forecasted_demand),
+                      badge: `${periodForecastResult.factor_breakdown?.[4]?.impact_pct >= 0 ? '+' : ''}${periodForecastResult.factor_breakdown?.[4]?.impact_pct ?? factorPromoLift}%`,
+                    },
+                  ];
+
+                  const stockVal = Math.max(0, Number(periodForecastResult.inventory_handoff_payload?.current_inventory || periodCurrentStock || 4200));
+                  const safetyVal = Math.max(0, Number(periodForecastResult.material_requirements?.safety_stock_units || 3850));
+                  const orderVal = Math.max(0, Number(periodForecastResult.material_requirements?.units_to_order || 18500));
+                  const totInv = stockVal + safetyVal + orderVal || 1;
+
+                  const inventorySlices = [
+                    {
+                      name: 'Floor Stock Available',
+                      shortName: 'In-Stock Floor',
+                      icon: '🏭',
+                      color: '#38bdf8',
+                      pct: Math.round((stockVal / totInv) * 1000) / 10,
+                      units: stockVal,
+                      badge: `${stockVal.toLocaleString()} pcs`,
+                    },
+                    {
+                      name: 'Dynamic Safety Stock',
+                      shortName: 'Buffer Stock',
+                      icon: '🛡️',
+                      color: '#818cf8',
+                      pct: Math.round((safetyVal / totInv) * 1000) / 10,
+                      units: safetyVal,
+                      badge: `±${safetyVal.toLocaleString()} pcs`,
+                    },
+                    {
+                      name: 'Net Production Reorder',
+                      shortName: 'Cutting Reorder',
+                      icon: '📦',
+                      color: '#f59e0b',
+                      pct: Math.round((orderVal / totInv) * 1000) / 10,
+                      units: orderVal,
+                      badge: `${orderVal.toLocaleString()} pcs`,
+                    },
+                  ];
+
+                  const activeSlices = pieChartActiveTab === 'factors' ? factorSlices : inventorySlices;
+                  let cumAngle = -Math.PI / 2;
+                  const cx = 100;
+                  const cy = 100;
+                  const defaultOuterR = 80;
+                  const defaultInnerR = 48;
+
+                  const renderedSlices = activeSlices.map((slice, idx) => {
+                    const isHovered = pieHoverIndex === idx;
+                    const outerR = isHovered ? 86 : defaultOuterR;
+                    const innerR = isHovered ? 44 : defaultInnerR;
+                    const angle = (slice.pct / 100) * 2 * Math.PI;
+                    const startA = cumAngle;
+                    const endA = cumAngle + angle;
+                    cumAngle = endA;
+
+                    const x1_o = cx + outerR * Math.cos(startA);
+                    const y1_o = cy + outerR * Math.sin(startA);
+                    const x2_o = cx + outerR * Math.cos(endA);
+                    const y2_o = cy + outerR * Math.sin(endA);
+
+                    const x1_i = cx + innerR * Math.cos(endA);
+                    const y1_i = cy + innerR * Math.sin(endA);
+                    const x2_i = cx + innerR * Math.cos(startA);
+                    const y2_i = cy + innerR * Math.sin(startA);
+
+                    const largeArc = angle > Math.PI ? 1 : 0;
+                    const path = `M ${x1_o} ${y1_o} A ${outerR} ${outerR} 0 ${largeArc} 1 ${x2_o} ${y2_o} L ${x1_i} ${y1_i} A ${innerR} ${innerR} 0 ${largeArc} 0 ${x2_i} ${y2_i} Z`;
+
+                    return { ...slice, path, isHovered };
+                  });
+
+                  return (
+                    <div style={styles.factorDecompCard}>
+                      {/* Pie Card Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '15px' }}>🥧</span>
+                            <span style={{ fontSize: '12px', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.04em' }}>
+                              DEMAND FACTOR CONTRIBUTION PIE CHART
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
+                            Interactive visual decomposition of demand factors for {periodForecastResult.target_period}
+                          </div>
+                        </div>
+
+                        {/* Toggle Tab Pill */}
+                        <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.8)', padding: '2px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                          <button
+                            type="button"
+                            onClick={() => { setPieChartActiveTab('factors'); setPieHoverIndex(null); }}
+                            style={{
+                              background: pieChartActiveTab === 'factors' ? 'rgba(56, 189, 248, 0.22)' : 'transparent',
+                              border: pieChartActiveTab === 'factors' ? '1px solid #38bdf8' : '1px solid transparent',
+                              color: pieChartActiveTab === 'factors' ? '#38bdf8' : '#94a3b8',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '4px 9px',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            🎯 5 Factors Share
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setPieChartActiveTab('inventory'); setPieHoverIndex(null); }}
+                            style={{
+                              background: pieChartActiveTab === 'inventory' ? 'rgba(56, 189, 248, 0.22)' : 'transparent',
+                              border: pieChartActiveTab === 'inventory' ? '1px solid #38bdf8' : '1px solid transparent',
+                              color: pieChartActiveTab === 'inventory' ? '#38bdf8' : '#94a3b8',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '4px 9px',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            📦 Inventory Split
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Pie Chart & Interactive Breakdown Grid */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '14px', alignItems: 'center' }}>
+                        {/* SVG Donut / Pie */}
+                        <div style={{ position: 'relative', width: '200px', height: '200px', margin: '0 auto' }}>
+                          <svg width="200" height="200" viewBox="0 0 200 200" style={{ overflow: 'visible' }}>
+                            <defs>
+                              <filter id="pieSliceGlow" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="3" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                              </filter>
+                            </defs>
+
+                            {renderedSlices.map((slice, idx) => (
+                              <path
+                                key={slice.name}
+                                d={slice.path}
+                                fill={slice.color}
+                                stroke="#0b1120"
+                                strokeWidth="2"
+                                opacity={pieHoverIndex === null || pieHoverIndex === idx ? 1 : 0.45}
+                                filter={slice.isHovered ? 'url(#pieSliceGlow)' : 'none'}
+                                style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+                                onMouseEnter={() => setPieHoverIndex(idx)}
+                                onMouseLeave={() => setPieHoverIndex(null)}
+                              />
+                            ))}
+
+                            {/* Center Donut Hole & Text */}
+                            <circle
+                              cx={cx}
+                              cy={cy}
+                              r={pieHoverIndex !== null ? 44 : 48}
+                              fill="#0d1527"
+                              stroke="rgba(255, 255, 255, 0.08)"
+                              strokeWidth="1.5"
+                            />
+
+                            {pieHoverIndex !== null && renderedSlices[pieHoverIndex] ? (
+                              <g>
+                                <text x={cx} y={cy - 12} textAnchor="middle" fill={renderedSlices[pieHoverIndex].color} fontSize="17" fontWeight="900">
+                                  {renderedSlices[pieHoverIndex].pct}%
+                                </text>
+                                <text x={cx} y={cy + 4} textAnchor="middle" fill="#f8fafc" fontSize="9.5" fontWeight="700">
+                                  {renderedSlices[pieHoverIndex].shortName}
+                                </text>
+                                <text x={cx} y={cy + 18} textAnchor="middle" fill="#94a3b8" fontSize="8.5">
+                                  ~{renderedSlices[pieHoverIndex].units.toLocaleString()} pcs
+                                </text>
+                              </g>
+                            ) : (
+                              <g>
+                                <text x={cx} y={cy - 12} textAnchor="middle" fill="#38bdf8" fontSize="15" fontWeight="900">
+                                  {Math.round(periodForecastResult.forecasted_demand).toLocaleString()}
+                                </text>
+                                <text x={cx} y={cy + 3} textAnchor="middle" fill="#cbd5e1" fontSize="9" fontWeight="700">
+                                  TOTAL UNITS
+                                </text>
+                                <text x={cx} y={cy + 17} textAnchor="middle" fill="#10b981" fontSize="8" fontWeight="700">
+                                  {pieChartActiveTab === 'factors' ? '5 DRIVERS' : 'INVENTORY SPLIT'}
+                                </text>
+                              </g>
+                            )}
+                          </svg>
+                        </div>
+
+                        {/* Legend & Details */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          {renderedSlices.map((slice, idx) => {
+                            const isHovered = pieHoverIndex === idx;
+                            return (
+                              <div
+                                key={slice.name}
+                                onMouseEnter={() => setPieHoverIndex(idx)}
+                                onMouseLeave={() => setPieHoverIndex(null)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  background: isHovered ? 'rgba(56, 189, 248, 0.14)' : 'rgba(15, 23, 42, 0.55)',
+                                  border: isHovered ? `1px solid ${slice.color}` : '1px solid rgba(255, 255, 255, 0.05)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: slice.color, display: 'inline-block' }} />
+                                  <span style={{ fontSize: '10.5px', color: '#e2e8f0', fontWeight: isHovered ? 700 : 500 }}>
+                                    {slice.icon ? `${slice.icon} ` : ''}{slice.name}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '9.5px', color: '#94a3b8' }}>
+                                    ~{slice.units.toLocaleString()} pcs
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: '9.5px',
+                                      fontWeight: 800,
+                                      color: slice.color,
+                                      background: 'rgba(255, 255, 255, 0.06)',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    {slice.pct}%
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Factor Impact Decomposition Bars */}
                 <div style={styles.factorDecompCard}>
@@ -3898,6 +4630,59 @@ export default function DemandForecastingView({ onNavigate }) {
                         {periodForecastResult.material_requirements?.fabric_bom_meters ? periodForecastResult.material_requirements.fabric_bom_meters.toLocaleString() : '...'} <span style={{ fontSize: '10px', color: '#94a3b8' }}>m</span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* PDF & CSV Export Options for User Output */}
+                  <div style={{ marginTop: '14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={handleExportOutputPDF}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.16) 0%, rgba(15, 23, 42, 0.8) 100%)',
+                        border: '1px solid #38bdf8',
+                        color: '#38bdf8',
+                        borderRadius: '8px',
+                        padding: '10px 12px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 2px 10px rgba(56, 189, 248, 0.2)',
+                      }}
+                      title="Generate and download/print formatted PDF report of this forecast output"
+                    >
+                      <span style={{ fontSize: '14px' }}>📄</span>
+                      <span>GENERATE PDF REPORT</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleExportOutputCSV}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(15, 23, 42, 0.8) 100%)',
+                        border: '1px solid #10b981',
+                        color: '#10b981',
+                        borderRadius: '8px',
+                        padding: '10px 12px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 2px 10px rgba(16, 185, 129, 0.2)',
+                      }}
+                      title="Generate and download complete CSV spreadsheet of this forecast output"
+                    >
+                      <span style={{ fontSize: '14px' }}>📊</span>
+                      <span>GENERATE CSV FILE</span>
+                    </button>
                   </div>
 
                   {/* Hand-off Execution Button */}
