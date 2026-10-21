@@ -428,20 +428,20 @@ export default function DemandForecastingView() {
             {filteredSkus.map((item) => (
               <tr key={item.sku} style={styles.tr}>
                 <td style={styles.td}>
-                  <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '13px' }}>{item.sku}</div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>{item.name}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '13px' }}>{item.sku}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.name}</div>
                 </td>
                 <td style={styles.td}>
-                  <span style={{ fontSize: '12px', color: '#cbd5e1' }}>{item.season}</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.season}</span>
                 </td>
                 <td style={styles.td}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.colorDot }} />
-                    <span style={{ fontSize: '12px', color: '#cbd5e1' }}>{item.colorName}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.colorName}</span>
                   </div>
                 </td>
                 <td style={styles.td}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff' }}>{item.vol}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>{item.vol}</span>
                 </td>
                 <td style={styles.td}>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: item.yoyUp ? '#10b981' : '#f87171' }}>
@@ -501,10 +501,10 @@ const styles = {
     maxWidth: '750px',
   },
   secondaryBtn: {
-    background: '#1e293b',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '8px',
-    color: '#e2e8f0',
+    color: 'var(--text-main)',
     padding: '9px 16px',
     fontSize: '12px',
     fontWeight: 600,
@@ -540,7 +540,7 @@ const styles = {
     fontSize: '10px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#64748b',
+    color: 'var(--text-dim)',
   },
   kpiMainRow: {
     display: 'flex',
@@ -556,7 +556,7 @@ const styles = {
   },
   unitLabel: {
     fontSize: '12px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
   },
   greenBadge: {
     fontSize: '10px',
@@ -568,7 +568,7 @@ const styles = {
   },
   kpiSub: {
     fontSize: '11px',
-    color: '#64748b',
+    color: 'var(--text-dim)',
   },
   trajectoryGrid: {
     display: 'grid',
@@ -600,16 +600,17 @@ const styles = {
   timePills: {
     display: 'flex',
     gap: '4px',
-    background: '#0a0e17',
+    background: 'var(--bg-main)',
     padding: '3px',
     borderRadius: '6px',
+    border: '1px solid var(--border-subtle)',
   },
   timePill: {
     padding: '3px 8px',
     borderRadius: '4px',
     fontSize: '11px',
     fontWeight: 600,
-    color: '#64748b',
+    color: 'var(--text-dim)',
     cursor: 'pointer',
   },
   chartViewport: {
@@ -621,21 +622,21 @@ const styles = {
     gap: '16px',
     marginTop: '12px',
     paddingTop: '12px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.04)',
+    borderTop: '1px solid var(--border-subtle)',
   },
   legendPill: {
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
     fontSize: '11px',
-    color: '#94a3b8',
-    background: 'rgba(15, 22, 38, 0.6)',
+    color: 'var(--text-muted)',
+    background: 'var(--bg-card-hover)',
     padding: '4px 10px',
     borderRadius: '20px',
   },
   anomaliesCard: {
     background: 'var(--bg-card)',
-    border: '1px solid rgba(239, 68, 68, 0.2)',
+    border: '1px solid rgba(239, 68, 68, 0.25)',
     borderRadius: '16px',
     padding: '20px',
     display: 'flex',
@@ -677,7 +678,7 @@ const styles = {
   },
   anomalyDesc: {
     fontSize: '11px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     lineHeight: 1.5,
   },
   intelGrid: {
@@ -712,7 +713,7 @@ const styles = {
     fontSize: '16px',
     fontWeight: 700,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
   },
   tagWrap: {
     display: 'flex',
@@ -721,15 +722,15 @@ const styles = {
     marginBottom: '16px',
   },
   driverTag: {
-    background: '#1e293b',
-    color: '#94a3b8',
+    background: 'var(--bg-card-hover)',
+    color: 'var(--text-muted)',
     borderRadius: '4px',
     padding: '3px 8px',
     fontSize: '10px',
     fontWeight: 500,
   },
   regionalSection: {
-    borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+    borderTop: '1px solid var(--border-subtle)',
     paddingTop: '12px',
     display: 'flex',
     flexDirection: 'column',
@@ -739,14 +740,14 @@ const styles = {
     fontSize: '9px',
     fontWeight: 700,
     letterSpacing: '0.08em',
-    color: '#64748b',
+    color: 'var(--text-dim)',
     marginBottom: '4px',
   },
   regRow: {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '11px',
-    color: '#cbd5e1',
+    color: 'var(--text-muted)',
   },
   colorCardsList: {
     display: 'flex',
@@ -773,7 +774,7 @@ const styles = {
     fontSize: '9px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
   },
   swatchName: {
     fontSize: '12px',
@@ -794,12 +795,12 @@ const styles = {
     fontWeight: 700,
   },
   aiInsightBox: {
-    background: '#090e1a',
-    border: '1px solid rgba(56, 189, 248, 0.15)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '8px',
     padding: '12px',
     fontSize: '11px',
-    color: '#cbd5e1',
+    color: 'var(--text-main)',
     lineHeight: 1.5,
     marginTop: '12px',
     display: 'flex',
@@ -809,7 +810,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '11px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     marginBottom: '6px',
   },
   tableCard: {
@@ -822,11 +823,11 @@ const styles = {
     width: '220px',
   },
   searchInputMini: {
-    background: '#0a0e17',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '6px',
     padding: '6px 12px',
-    color: '#ffffff',
+    color: 'var(--text-main)',
     fontSize: '12px',
     width: '100%',
     outline: 'none',
@@ -837,18 +838,18 @@ const styles = {
     marginTop: '10px',
   },
   thRow: {
-    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+    borderBottom: '1px solid var(--border-subtle)',
   },
   th: {
     textAlign: 'left',
     fontSize: '10px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#64748b',
+    color: 'var(--text-dim)',
     padding: '10px 8px',
   },
   tr: {
-    borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+    borderBottom: '1px solid var(--border-subtle)',
   },
   td: {
     padding: '12px 8px',

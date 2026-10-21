@@ -318,16 +318,16 @@ export default function InventoryOptimizationView() {
               {reorderPlan.map((item) => (
                 <tr key={item.sku} style={styles.tr}>
                   <td style={styles.td}>
-                    <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '13px' }}>{item.sku}</div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>{item.name}</div>
+                    <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '13px' }}>{item.sku}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{item.name}</div>
                   </td>
                   <td style={styles.td}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: '#94a3b8', width: '32px' }}>{item.pct}%</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', width: '32px' }}>{item.pct}%</span>
                       <div style={styles.progressBarBg}>
                         <div style={{ ...styles.progressBarFill, width: `${item.pct}%`, backgroundColor: item.riskTone }} />
                       </div>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>{item.curr}</span>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)' }}>{item.curr}</span>
                     </div>
                   </td>
                   <td style={styles.td}>
@@ -425,7 +425,7 @@ export default function InventoryOptimizationView() {
                 }}
                 className={supplyRisk?.early_warning_alert ? 'pulse-dot-red' : ''}
               />
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#e2e8f0', letterSpacing: '0.04em' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-main)', letterSpacing: '0.04em' }}>
                 {loadingRisk
                   ? 'SYNCING LIVE FEED…'
                   : supplyRisk?.early_warning_alert
@@ -569,13 +569,14 @@ const styles = {
     gap: '24px',
     maxWidth: '1600px',
     margin: '0 auto',
+    color: 'var(--text-main)',
   },
   heroCard: {
-    background: 'linear-gradient(180deg, #10192e 0%, #0c1220 100%)',
-    border: '1px solid rgba(59, 130, 246, 0.25)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '24px',
-    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.4)',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
   },
   heroBadge: {
     display: 'inline-flex',
@@ -600,11 +601,11 @@ const styles = {
     fontSize: '24px',
     fontWeight: 700,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
   },
   heroSubtitle: {
     fontSize: '12px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     marginTop: '6px',
     maxWidth: '900px',
     lineHeight: 1.6,
@@ -616,8 +617,8 @@ const styles = {
     marginTop: '20px',
   },
   kpiItem: {
-    background: '#090e1a',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '10px',
     padding: '14px 16px',
   },
@@ -625,7 +626,7 @@ const styles = {
     fontSize: '10px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#64748b',
+    color: 'var(--text-dim)',
   },
   kpiValRow: {
     display: 'flex',
@@ -637,7 +638,7 @@ const styles = {
     fontSize: '24px',
     fontWeight: 800,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
   },
   kpiTagGreen: {
     fontSize: '10px',
@@ -660,7 +661,7 @@ const styles = {
     fontWeight: 700,
     color: '#f87171',
     background: 'rgba(239, 68, 68, 0.15)',
-    padding: '2px 6px',
+    padding: '2px 8px',
     borderRadius: '4px',
     textTransform: 'uppercase',
   },
@@ -670,8 +671,8 @@ const styles = {
     gap: '20px',
   },
   chartCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '20px',
   },
@@ -684,7 +685,7 @@ const styles = {
   cardTitle: {
     fontSize: '15px',
     fontWeight: 600,
-    color: '#f1f5f9',
+    color: 'var(--text-main)',
     display: 'flex',
     alignItems: 'center',
   },
@@ -692,7 +693,7 @@ const styles = {
     display: 'flex',
     gap: '14px',
     fontSize: '11px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
   },
   legendItem: {
     display: 'flex',
@@ -704,7 +705,7 @@ const styles = {
     marginTop: '10px',
   },
   alertsCard: {
-    background: '#0d1322',
+    background: 'var(--bg-card)',
     border: '1px solid rgba(239, 68, 68, 0.25)',
     borderRadius: '16px',
     padding: '20px',
@@ -723,8 +724,8 @@ const styles = {
     gap: '12px',
   },
   alertBox: {
-    background: '#090e1a',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '10px',
     padding: '12px 14px',
   },
@@ -748,11 +749,11 @@ const styles = {
   },
   alertTime: {
     fontSize: '10px',
-    color: '#64748b',
+    color: 'var(--text-dim)',
   },
   alertText: {
     fontSize: '11px',
-    color: '#cbd5e1',
+    color: 'var(--text-muted)',
     lineHeight: 1.5,
   },
   alertAction: {
@@ -767,16 +768,16 @@ const styles = {
     gap: '20px',
   },
   tableCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '20px',
   },
   iconButton: {
-    background: '#1e293b',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '6px',
-    color: '#cbd5e1',
+    color: 'var(--text-muted)',
     padding: '4px 8px',
     fontSize: '11px',
     cursor: 'pointer',
@@ -787,18 +788,18 @@ const styles = {
     marginTop: '8px',
   },
   thRow: {
-    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+    borderBottom: '1px solid var(--border-subtle)',
   },
   th: {
     textAlign: 'left',
     fontSize: '10px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#64748b',
+    color: 'var(--text-dim)',
     padding: '10px 8px',
   },
   tr: {
-    borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+    borderBottom: '1px solid var(--border-subtle)',
   },
   td: {
     padding: '12px 8px',
@@ -807,7 +808,7 @@ const styles = {
   progressBarBg: {
     width: '70px',
     height: '6px',
-    background: '#1e293b',
+    background: 'var(--border-subtle)',
     borderRadius: '4px',
     overflow: 'hidden',
   },
@@ -824,8 +825,8 @@ const styles = {
     fontWeight: 700,
   },
   healthCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '20px',
     display: 'flex',
@@ -848,11 +849,11 @@ const styles = {
     justifyContent: 'space-between',
     fontSize: '11px',
     fontWeight: 600,
-    color: '#cbd5e1',
+    color: 'var(--text-main)',
   },
   healthBarBg: {
     height: '7px',
-    background: '#1e293b',
+    background: 'var(--border-subtle)',
     borderRadius: '4px',
     overflow: 'hidden',
   },
@@ -861,8 +862,8 @@ const styles = {
     borderRadius: '4px',
   },
   aiAdvisorBox: {
-    background: '#090e1a',
-    border: '1px solid rgba(56, 189, 248, 0.15)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid rgba(56, 189, 248, 0.2)',
     borderRadius: '10px',
     padding: '12px',
     display: 'flex',
@@ -871,14 +872,14 @@ const styles = {
     marginTop: '10px',
   },
   upstreamRiskCard: {
-    background: 'linear-gradient(180deg, #0d1526 0%, #0a0f1d 100%)',
-    border: '1px solid rgba(56, 189, 248, 0.22)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '24px',
     display: 'flex',
     flexDirection: 'column',
     gap: '20px',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
   },
   upstreamHeader: {
     display: 'flex',
@@ -887,7 +888,7 @@ const styles = {
     flexWrap: 'wrap',
     gap: '16px',
     paddingBottom: '16px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+    borderBottom: '1px solid var(--border-subtle)',
   },
   upstreamTitleGroup: {
     display: 'flex',
@@ -915,7 +916,7 @@ const styles = {
     fontSize: '17px',
     fontWeight: 700,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
     margin: 0,
   },
   moduleTag: {
@@ -931,7 +932,7 @@ const styles = {
   },
   upstreamCardSubtitle: {
     fontSize: '12px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     margin: '4px 0 0',
   },
   feedStatusBadge: {
@@ -940,8 +941,8 @@ const styles = {
     gap: '8px',
     padding: '8px 14px',
     borderRadius: '8px',
-    background: 'rgba(15, 23, 42, 0.8)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
   },
   liveDot: {
     width: '8px',
@@ -954,8 +955,8 @@ const styles = {
     gap: '16px',
   },
   upstreamMetricCard: {
-    background: 'rgba(15, 23, 42, 0.65)',
-    border: '1px solid rgba(255, 255, 255, 0.07)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '12px',
     padding: '18px',
     display: 'flex',
@@ -971,12 +972,12 @@ const styles = {
     fontSize: '10px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#94a3b8',
+    color: 'var(--text-dim)',
     textTransform: 'uppercase',
   },
   metricPill: {
     fontSize: '10px',
-    color: '#64748b',
+    color: 'var(--text-dim)',
     fontFamily: 'monospace',
   },
   statusBadge: {
@@ -991,11 +992,11 @@ const styles = {
     fontSize: '26px',
     fontWeight: 800,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
   },
   metricSubtext: {
     fontSize: '11px',
-    color: '#64748b',
+    color: 'var(--text-muted)',
     lineHeight: 1.4,
   },
   safetyStockNotice: {
@@ -1027,7 +1028,7 @@ const styles = {
   },
   safetyStockMeta: {
     fontSize: '11px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
@@ -1039,10 +1040,10 @@ const styles = {
     flexWrap: 'wrap',
   },
   exportBtn: {
-    background: '#1e293b',
-    border: '1px solid rgba(56, 189, 248, 0.28)',
+    background: 'var(--bg-card-hover)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '8px',
-    color: '#f0f9ff',
+    color: 'var(--text-main)',
     padding: '7px 14px',
     fontSize: '12px',
     fontWeight: 600,
