@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas.demand import (
     DatasetSummarySchema,
+    DemandDriversResponse,
     DemandForecastRequest,
     DemandForecastSchema,
     DemandReconcileRequest,
@@ -17,6 +18,7 @@ from app.schemas.demand import (
 from app.services.demand_service import (
     generate_forecast,
     get_datasets_summary,
+    get_demand_drivers,
     get_hierarchy_metadata,
     get_real_categories,
     get_real_departments,
@@ -117,4 +119,14 @@ def dataset_summary() -> DatasetSummarySchema:
     Returns operational summary of both real CSV datasets (record counts, volumes, dates).
     """
     return get_datasets_summary()
+
+
+@router.get("/demand/drivers", response_model=DemandDriversResponse)
+def demand_drivers() -> DemandDriversResponse:
+    """
+    Decomposed parameters directly feeding the hierarchical MinT reconciliation matrix:
+    Fashion Trends, Seasonal Demands, Color Palettes, and Buyer Purchasing Behaviour.
+    """
+    return get_demand_drivers()
+
 

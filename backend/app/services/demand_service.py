@@ -7,6 +7,7 @@ from app.ml.demand.model import DemandModelService
 from app.repositories.demand_repository import DemandRepository
 from app.schemas.demand import (
     DatasetSummarySchema,
+    DemandDriversResponse,
     DemandForecastRequest,
     DemandForecastSchema,
     DemandReconcileNodeResult,
@@ -200,3 +201,14 @@ def get_datasets_summary() -> DatasetSummarySchema:
     repo = DemandRepository.get_instance()
     data = repo.get_datasets_summary()
     return DatasetSummarySchema(**data)
+
+
+def get_demand_drivers() -> DemandDriversResponse:
+    """
+    Decompose multi-driver demand parameters feeding the MinT hierarchy:
+    Fashion Trends, Seasonal Demands, Color Palettes, Buyer Purchasing Behaviour.
+    """
+    repo = DemandRepository.get_instance()
+    data = repo.get_demand_drivers()
+    return DemandDriversResponse(**data)
+

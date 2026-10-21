@@ -43,3 +43,8 @@ export async function fetchHistoricalObservations(identifier, days = 90, source 
 export async function fetchDatasetSummary() {
   return apiRequest('/api/demand/dataset-summary');
 }
+
+export async function fetchDemandDrivers() {
+  return apiRequest('/api/demand/drivers');
+}
+

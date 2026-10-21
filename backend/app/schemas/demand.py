@@ -119,3 +119,71 @@ class DatasetSummarySchema(BaseModel):
     dataco: dict[str, Any]
     m5: dict[str, Any]
     active_sources: list[str]
+
+
+class FashionTrendItemSchema(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    silhouette_name: str
+    product_name: str
+    specs: str
+    badge: str
+    orders: int
+    sales_display: str
+    sales_amount: float
+    velocity: int
+
+
+class SeasonalDemandItemSchema(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    season_name: str
+    code: str
+    multiplier: str
+    period_desc: str
+    line_capacity_locked: int
+    transit: str
+    port_status: str
+    buffer_desc: str | None = None
+    line_status: str | None = None
+    orders: int
+    sales_display: str
+
+
+class ColorPreferenceItemSchema(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    name: str
+    hex: str
+    border_color: str
+    share_pct: int
+    pieces: int
+    chemical_recipe: str
+    dye_lot_kg: int
+    wash_fastness: str
+    target_application: str
+
+
+class BuyerBehaviourItemSchema(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    buyer_name: str
+    tier: str
+    repeat_rate: str
+    cadence: str
+    avg_po_size: str
+    extra_metric_label: str
+    extra_metric_value: str
+    details: str
+    segment_ref: str
+
+
+class DemandDriversResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    fashion_trends: list[FashionTrendItemSchema]
+    seasonal_demands: list[SeasonalDemandItemSchema]
+    color_preferences: list[ColorPreferenceItemSchema]
+    buyer_behaviour: list[BuyerBehaviourItemSchema]
+    meta: dict[str, Any]
+
