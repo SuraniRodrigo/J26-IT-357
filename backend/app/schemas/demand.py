@@ -188,3 +188,53 @@ class DemandDriversResponse(BaseModel):
     buyer_behaviour: list[BuyerBehaviourItemSchema]
     meta: dict[str, Any]
 
+
+class FactorAnalysisInput(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    fashion_trend_growth_pct: float = Field(default=25.0, description="Projected fashion trend growth percentage (e.g. +25%)")
+    seasonal_multiplier: float = Field(default=1.20, description="Seasonal surge multiplier (e.g. 1.20 for peak, 0.85 for off-season)")
+    color_preference_score: float = Field(default=85.0, description="Color palette affinity score (0-100)")
+    buyer_behaviour_weight: float = Field(default=1.15, description="Buyer order volume factor (e.g. 1.15 for corporate bulk)")
+    promotion_lift_pct: float = Field(default=10.0, description="Promotional campaign demand lift percentage")
+
+
+class PeriodDemandForecastRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    target_period: str = Field(..., description="Target month or period name, e.g., 'November 2026', 'December 2026'")
+    horizon_days: int = Field(default=30, ge=7, le=365, description="Forecast horizon in days")
+    product_identifier: str = Field(default="Seamless Athleisure & Active Bralettes", description="Product, silhouette, or category identifier")
+    base_monthly_demand: float | None = Field(default=None, description="Optional baseline monthly demand override")
+    factors: FactorAnalysisInput = Field(default_factory=FactorAnalysisInput)
+    lead_time_days: int = Field(default=14, ge=1, le=120)
+    current_inventory: float = Field(default=3500.0, ge=0)
+
+
+class FactorImpactItem(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    factor_name: str
+    impact_pct: float
+    description: str
+    status: str
+
+
+class PeriodDemandForecastResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    target_period: str
+    product_identifier: str
+    horizon_days: int
+    baseline_demand: float
+    forecasted_demand: float
+    daily_run_rate: float
+    demand_uncertainty: float
+    confidence_interval_lower: float
+    confidence_interval_upper: float
+    factor_multiplier_composite: float
+    factor_breakdown: list[FactorImpactItem]
+    inventory_handoff_payload: dict[str, Any]
+    material_requirements: dict[str, Any]
+
+

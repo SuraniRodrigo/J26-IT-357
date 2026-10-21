@@ -1,6 +1,39 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function InventoryOptimizationView() {
+  const [inboundDemandFeed, setInboundDemandFeed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('optichain_demand_to_inventory');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const checkFeed = () => {
+      try {
+        const saved = localStorage.getItem('optichain_demand_to_inventory');
+        if (saved) {
+          setInboundDemandFeed(JSON.parse(saved));
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('storage', checkFeed);
+    window.addEventListener('focus', checkFeed);
+    return () => {
+      window.removeEventListener('storage', checkFeed);
+      window.removeEventListener('focus', checkFeed);
+    };
+  }, []);
+
+  const handleClearInbound = () => {
+    try {
+      localStorage.removeItem('optichain_demand_to_inventory');
+      setInboundDemandFeed(null);
+    } catch (e) {}
+  };
+
   const stockDays = [
     { day: 'D1', val: 78, safe: 45 },
     { day: 'D2', val: 74, safe: 45 },
@@ -18,7 +51,7 @@ export default function InventoryOptimizationView() {
     { day: 'D14', val: 51, safe: 45 },
   ];
 
-  const reorderPlan = [
+  const baseReorderPlan = [
     {
       sku: 'ORG-COT-001',
       name: 'Organic Cotton Premium',
@@ -60,6 +93,22 @@ export default function InventoryOptimizationView() {
       recom: '2,500 kg',
     },
   ];
+
+  const reorderPlan = inboundDemandFeed ? [
+    {
+      sku: 'INB-DEMAND-01',
+      name: `${inboundDemandFeed.product_identifier} (${inboundDemandFeed.target_period})`,
+      pct: inboundDemandFeed.material_requirements?.stock_status === 'REORDER_TRIGGERED' ? 24 : 72,
+      curr: `${Number(inboundDemandFeed.current_inventory || 0).toLocaleString()} pcs`,
+      riskLevel: inboundDemandFeed.material_requirements?.stock_status === 'REORDER_TRIGGERED' ? 'HIGH DEMAND' : 'BALANCED',
+      riskScore: '0.84',
+      riskTone: '#38bdf8',
+      recom: `${Number(inboundDemandFeed.material_requirements?.recommended_reorder_qty_eoq || 0).toLocaleString()} pcs (EOQ)`,
+      isInbound: true,
+    },
+    ...baseReorderPlan,
+  ] : baseReorderPlan;
+
 
   return (
     <div style={styles.container} className="animate-fade-in">
@@ -109,6 +158,87 @@ export default function InventoryOptimizationView() {
           </div>
         </div>
       </div>
+
+      {/* Dynamic Inbound Feed from Demand Forecasting Module */}
+      {inboundDemandFeed && (
+        <div style={styles.inboundFeedBanner} className="animate-fade-in">
+          <div style={styles.inboundFeedHeader}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '22px' }}>⚡</span>
+              <div>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.08em' }}>
+                  ACTIVE INBOUND DEMAND FEED · FROM DEMAND FORECASTING MODULE
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', marginTop: '2px' }}>
+                  {inboundDemandFeed.product_identifier} ({inboundDemandFeed.target_period})
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid #38bdf8' }}>
+                Synced via Multi-Driver Analysis
+              </span>
+              <button
+                onClick={handleClearInbound}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  color: '#94a3b8',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                }}
+                title="Dismiss inbound feed"
+              >
+                ✕ Clear
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.inboundKpiGrid}>
+            <div style={styles.inboundKpiBox}>
+              <div style={styles.inboundKpiLabel}>FORECASTED DEMAND</div>
+              <div style={{ ...styles.inboundKpiValue, color: '#38bdf8' }}>
+                {Number(inboundDemandFeed.forecasted_demand || 0).toLocaleString()} <span style={{ fontSize: '11px', color: '#94a3b8' }}>units</span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b' }}>Projected run for {inboundDemandFeed.target_period}</div>
+            </div>
+
+            <div style={styles.inboundKpiBox}>
+              <div style={styles.inboundKpiLabel}>DYNAMIC SAFETY STOCK (SS)</div>
+              <div style={{ ...styles.inboundKpiValue, color: '#818cf8' }}>
+                {Number(inboundDemandFeed.material_requirements?.safety_stock_units || 0).toLocaleString()} <span style={{ fontSize: '11px', color: '#94a3b8' }}>units</span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b' }}>Buffer at 95% service level</div>
+            </div>
+
+            <div style={styles.inboundKpiBox}>
+              <div style={styles.inboundKpiLabel}>DYNAMIC REORDER POINT (ROP)</div>
+              <div style={{ ...styles.inboundKpiValue, color: '#f59e0b' }}>
+                {Number(inboundDemandFeed.material_requirements?.reorder_point_units || 0).toLocaleString()} <span style={{ fontSize: '11px', color: '#94a3b8' }}>units</span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b' }}>Lead-time demand + Safety Stock</div>
+            </div>
+
+            <div style={styles.inboundKpiBox}>
+              <div style={styles.inboundKpiLabel}>RECOMMENDED EOQ REORDER</div>
+              <div style={{ ...styles.inboundKpiValue, color: '#10b981' }}>
+                {Number(inboundDemandFeed.material_requirements?.recommended_reorder_qty_eoq || 0).toLocaleString()} <span style={{ fontSize: '11px', color: '#94a3b8' }}>units</span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b' }}>Optimized lot size order</div>
+            </div>
+
+            <div style={styles.inboundKpiBox}>
+              <div style={styles.inboundKpiLabel}>FABRIC BOM REQUIREMENT</div>
+              <div style={{ ...styles.inboundKpiValue, color: '#ec4899' }}>
+                {Number(inboundDemandFeed.material_requirements?.fabric_bom_meters || 0).toLocaleString()} <span style={{ fontSize: '11px', color: '#94a3b8' }}>m</span>
+              </div>
+              <div style={{ fontSize: '10px', color: '#64748b' }}>Garment cutting floor requirement</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Grid: Bar Chart vs Critical Alerts */}
       <div style={styles.middleGrid}>
@@ -639,5 +769,46 @@ const styles = {
     alignItems: 'center',
     gap: '12px',
     marginTop: '10px',
+  },
+  inboundFeedBanner: {
+    background: 'linear-gradient(135deg, rgba(13, 22, 40, 0.95) 0%, rgba(15, 23, 42, 0.9) 100%)',
+    border: '1px solid rgba(56, 189, 248, 0.35)',
+    boxShadow: '0 8px 32px rgba(56, 189, 248, 0.12)',
+    borderRadius: '16px',
+    padding: '18px 22px',
+    marginBottom: '20px',
+  },
+  inboundFeedHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+    paddingBottom: '12px',
+    marginBottom: '16px',
+    flexWrap: 'wrap',
+    gap: '12px',
+  },
+  inboundKpiGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '14px',
+  },
+  inboundKpiBox: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '10px',
+    padding: '12px 14px',
+  },
+  inboundKpiLabel: {
+    fontSize: '10px',
+    fontWeight: 700,
+    color: '#94a3b8',
+    letterSpacing: '0.05em',
+    marginBottom: '4px',
+  },
+  inboundKpiValue: {
+    fontSize: '18px',
+    fontWeight: 800,
+    marginBottom: '2px',
   },
 };

@@ -10,12 +10,15 @@ from app.schemas.demand import (
     DemandForecastSchema,
     DemandReconcileRequest,
     DemandReconcileResponse,
+    PeriodDemandForecastRequest,
+    PeriodDemandForecastResponse,
     RealCategorySchema,
     RealDepartmentSchema,
     RealHistoricalResponse,
     RealProductSchema,
 )
 from app.services.demand_service import (
+    forecast_demand_by_period,
     generate_forecast,
     get_datasets_summary,
     get_demand_drivers,
@@ -38,6 +41,18 @@ def demand_forecast(request: DemandForecastRequest) -> list[DemandForecastSchema
     """
     try:
         return generate_forecast(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/demand/forecast-period", response_model=PeriodDemandForecastResponse)
+def demand_forecast_period(request: PeriodDemandForecastRequest) -> PeriodDemandForecastResponse:
+    """
+    Analyze multi-driver demand factors for a given planning period/month,
+    compute projected demand with confidence intervals, and construct the inventory handoff contract.
+    """
+    try:
+        return forecast_demand_by_period(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

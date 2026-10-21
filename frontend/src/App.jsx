@@ -43,7 +43,7 @@ export default function App() {
       case 'dashboard':
         return <DashboardView onNavigate={setActiveTab} />;
       case 'demand':
-        return <DemandForecastingView />;
+        return <DemandForecastingView onNavigate={setActiveTab} />;
       case 'supply':
         return <SupplyDisruptionView />;
       case 'production':

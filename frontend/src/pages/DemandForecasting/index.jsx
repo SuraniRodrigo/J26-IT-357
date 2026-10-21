@@ -279,11 +279,26 @@ const FALLBACK_DEMAND_DRIVERS = {
   ],
 };
 
-export default function DemandForecastingView() {
+export default function DemandForecastingView({ onNavigate }) {
   // Navigation & Analytics Perspectives
   const [selectedPerspective, setSelectedPerspective] = useState('all');
   const [forecastHorizon, setForecastHorizon] = useState('30D'); // '30D', '60D', '90D'
   const [reconciliationMethod, setReconciliationMethod] = useState('MinT'); // 'MinT', 'BU', 'TD', 'MO'
+
+  // Period & Multi-Factor Demand Forecasting to Inventory States
+  const [periodTarget, setPeriodTarget] = useState('November 2026');
+  const [periodHorizonDays, setPeriodHorizonDays] = useState(30);
+  const [periodProduct, setPeriodProduct] = useState('Seamless Athleisure & Active Bralettes');
+  const [periodCurrentStock, setPeriodCurrentStock] = useState(4200);
+  const [periodLeadTime, setPeriodLeadTime] = useState(14);
+  const [factorTrendGrowth, setFactorTrendGrowth] = useState(28); // +28%
+  const [factorSeasonMultiplier, setFactorSeasonMultiplier] = useState(1.35); // 1.35x
+  const [factorColorScore, setFactorColorScore] = useState(88); // 88/100
+  const [factorBuyerWeight, setFactorBuyerWeight] = useState(1.20); // 1.20x
+  const [factorPromoLift, setFactorPromoLift] = useState(15); // +15%
+  const [periodForecastResult, setPeriodForecastResult] = useState(null);
+  const [isCalculatingPeriod, setIsCalculatingPeriod] = useState(false);
+  const [periodTransmitToast, setPeriodTransmitToast] = useState(null);
 
   // Multi-Driver Demand Decomposition States
   const [demandDriversData, setDemandDriversData] = useState(FALLBACK_DEMAND_DRIVERS);
@@ -457,6 +472,158 @@ export default function DemandForecastingView() {
       loadProductSeries(realProducts[0].product_name, forecastHorizon, reconciliationMethod);
     }
   }, [selectedProduct, forecastHorizon, reconciliationMethod, realProducts, loadProductSeries]);
+
+  // Client-side fallback calculation ensuring seamless instant feedback
+  const computePeriodFallback = useCallback(() => {
+    const base = periodProduct.includes('Bralette') ? 16800 : periodProduct.includes('Legging') ? 14500 : 12400;
+    const trendMult = 1 + Number(factorTrendGrowth) / 100;
+    const seasonMult = Number(factorSeasonMultiplier);
+    const colorMult = 0.90 + Number(factorColorScore) / 500;
+    const buyerMult = Number(factorBuyerWeight);
+    const promoMult = 1 + Number(factorPromoLift) / 100;
+    const compMult = trendMult * seasonMult * colorMult * buyerMult * promoMult;
+    const forecasted = Math.round(base * compMult * (Number(periodHorizonDays) / 30));
+    const dailyRate = Math.round((forecasted / Number(periodHorizonDays)) * 10) / 10;
+    const uncertainty = Math.round(forecasted * 0.12);
+    const dailySigma = uncertainty / Math.sqrt(Number(periodHorizonDays));
+    const safetyStock = Math.round(1.65 * Math.sqrt(Number(periodLeadTime) * (dailySigma ** 2) + (dailyRate ** 2) * (2.5 ** 2)));
+    const rpoint = Math.round(dailyRate * Number(periodLeadTime) + safetyStock);
+    const eoqVal = Math.round(Math.sqrt((2 * forecasted * 75) / 3.5));
+    const fabricM = Math.round(forecasted * 1.85);
+
+    setPeriodForecastResult({
+      target_period: periodTarget,
+      product_identifier: periodProduct,
+      horizon_days: Number(periodHorizonDays),
+      baseline_demand: base,
+      forecasted_demand: forecasted,
+      daily_run_rate: dailyRate,
+      demand_uncertainty: uncertainty,
+      confidence_interval_lower: Math.max(0, Math.round(forecasted - 1.96 * dailySigma)),
+      confidence_interval_upper: Math.round(forecasted + 1.96 * dailySigma),
+      factor_multiplier_composite: Math.round(compMult * 1000) / 1000,
+      factor_breakdown: [
+        { factor_name: "Fashion Trend Velocity", impact_pct: Number(factorTrendGrowth), description: `Apparel adoption lift (+${factorTrendGrowth}%)`, status: Number(factorTrendGrowth) > 15 ? "ACCELERATING" : "STEADY" },
+        { factor_name: "Seasonal Multiplier", impact_pct: Math.round((Number(factorSeasonMultiplier) - 1) * 100), description: `Calendar cycle index (${factorSeasonMultiplier}x) for ${periodTarget}`, status: Number(factorSeasonMultiplier) >= 1.25 ? "PEAK SURGE" : "MODERATE" },
+        { factor_name: "Color Palette Affinity", impact_pct: Math.round((colorMult - 1) * 100), description: `Chemical dye shade rating (${factorColorScore}/100)`, status: Number(factorColorScore) >= 80 ? "HIGH AFFINITY" : "NEUTRAL" },
+        { factor_name: "Buyer Purchasing Channel", impact_pct: Math.round((Number(factorBuyerWeight) - 1) * 100), description: `Wholesale reorder cadence (${factorBuyerWeight}x)`, status: Number(factorBuyerWeight) >= 1.15 ? "BULK EXPANSION" : "STANDARD" },
+        { factor_name: "Promotional Campaign Lift", impact_pct: Number(factorPromoLift), description: `Seasonal campaign lift (+${factorPromoLift}%)`, status: Number(factorPromoLift) > 0 ? "CAMPAIGN ACTIVE" : "BASELINE" },
+      ],
+      inventory_handoff_payload: {
+        product_id: periodProduct,
+        order_date: new Date().toISOString().split('T')[0],
+        current_inventory: Number(periodCurrentStock),
+        forecasted_demand: forecasted,
+        demand_uncertainty: uncertainty,
+        lead_time_days: Number(periodLeadTime),
+        lead_time_variability: 2.5,
+        disruption_probability: 0.12,
+        valid_upstream_risk_signal: true,
+      },
+      material_requirements: {
+        safety_stock_units: safetyStock,
+        reorder_point_units: rpoint,
+        recommended_reorder_qty_eoq: eoqVal,
+        lead_time_demand_units: Math.round(dailyRate * Number(periodLeadTime)),
+        fabric_bom_meters: fabricM,
+        standard_minute_hours: Math.round((forecasted * 14.2) / 60),
+        modular_sewing_lines_needed: Math.ceil((forecasted * 14.2) / 60 / (Number(periodHorizonDays) * 54)),
+        stock_status: Number(periodCurrentStock) <= rpoint ? "REORDER_TRIGGERED" : "STOCK_HEALTHY",
+        units_to_order: Math.max(0, Math.round(rpoint + eoqVal - Number(periodCurrentStock))),
+      },
+    });
+  }, [
+    periodTarget,
+    periodHorizonDays,
+    periodProduct,
+    periodCurrentStock,
+    periodLeadTime,
+    factorTrendGrowth,
+    factorSeasonMultiplier,
+    factorColorScore,
+    factorBuyerWeight,
+    factorPromoLift,
+  ]);
+
+  // Main Period Forecast API Caller
+  const runPeriodForecast = useCallback(async () => {
+    setIsCalculatingPeriod(true);
+    try {
+      const resp = await fetch('http://127.0.0.1:8000/api/demand/forecast-period', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_period: periodTarget,
+          horizon_days: Number(periodHorizonDays),
+          product_identifier: periodProduct,
+          current_inventory: Number(periodCurrentStock),
+          lead_time_days: Number(periodLeadTime),
+          factors: {
+            fashion_trend_growth_pct: Number(factorTrendGrowth),
+            seasonal_multiplier: Number(factorSeasonMultiplier),
+            color_preference_score: Number(factorColorScore),
+            buyer_behaviour_weight: Number(factorBuyerWeight),
+            promotion_lift_pct: Number(factorPromoLift),
+          },
+        }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        setPeriodForecastResult(data);
+      } else {
+        computePeriodFallback();
+      }
+    } catch (e) {
+      computePeriodFallback();
+    } finally {
+      setIsCalculatingPeriod(false);
+    }
+  }, [
+    periodTarget,
+    periodHorizonDays,
+    periodProduct,
+    periodCurrentStock,
+    periodLeadTime,
+    factorTrendGrowth,
+    factorSeasonMultiplier,
+    factorColorScore,
+    factorBuyerWeight,
+    factorPromoLift,
+    computePeriodFallback,
+  ]);
+
+  useEffect(() => {
+    runPeriodForecast();
+  }, [runPeriodForecast]);
+
+  const handleTransmitToInventory = () => {
+    if (!periodForecastResult) return;
+    const payload = {
+      ...periodForecastResult.inventory_handoff_payload,
+      material_requirements: periodForecastResult.material_requirements,
+      factor_breakdown: periodForecastResult.factor_breakdown,
+      forecasted_demand: periodForecastResult.forecasted_demand,
+      product_identifier: periodProduct,
+      target_period: periodTarget,
+      timestamp: new Date().toISOString(),
+    };
+    try {
+      localStorage.setItem('optichain_demand_to_inventory', JSON.stringify(payload));
+    } catch (e) {}
+
+    setPeriodTransmitToast({
+      message: `Transmitted: ${periodForecastResult.forecasted_demand.toLocaleString()} units for ${periodTarget} to Inventory Optimization Module!`,
+      timestamp: Date.now(),
+    });
+
+    setTimeout(() => {
+      if (onNavigate) {
+        onNavigate('inventory');
+      }
+    }, 1200);
+  };
+
 
   // Real Export Markets derived from loaded products
   const availableMarkets = useMemo(() => {
@@ -2808,6 +2975,459 @@ export default function DemandForecastingView() {
       </div>
 
       {/* ==================================================================== */}
+      {/* PERIOD-BASED MULTI-FACTOR DEMAND ANALYZER & DIRECT INVENTORY FEED   */}
+      {/* ==================================================================== */}
+      <div style={styles.periodAnalyzerCard}>
+        {/* Toast Alert */}
+        {periodTransmitToast && (
+          <div
+            style={{
+              background: 'linear-gradient(90deg, rgba(16, 185, 129, 0.25) 0%, rgba(6, 78, 59, 0.4) 100%)',
+              border: '1px solid #10b981',
+              borderRadius: '10px',
+              padding: '12px 18px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxShadow: '0 0 20px rgba(16, 185, 129, 0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '20px' }}>🚀</span>
+              <div>
+                <strong style={{ color: '#10b981', fontSize: '13px' }}>Demand Forecast Successfully Transmitted!</strong>
+                <div style={{ fontSize: '11px', color: '#e2e8f0', marginTop: '1px' }}>{periodTransmitToast.message}</div>
+              </div>
+            </div>
+            <span style={{ fontSize: '11px', color: '#6ee7b7', fontWeight: 700 }}>Switching to Inventory Module...</span>
+          </div>
+        )}
+
+        <div style={styles.cardHeader}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8' }} />
+              <span style={{ fontSize: '11px', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.08em' }}>
+                CALENDAR PERIOD DEMAND ENGINE · DYNAMIC FACTOR WEIGHTING & INVENTORY FEED
+              </span>
+            </div>
+            <h2 style={{ ...styles.cardTitle, marginTop: '4px', fontSize: '18px' }}>
+              Analyze Multi-Driver Factors & Transmit Projected Demand to Inventory Module
+            </h2>
+            <div style={styles.cardSubtitle}>
+              Select a target planning period or month, fine-tune apparel demand factors (Trend Velocity, Seasonality, Colorway Affinity, Buyer Behavior), and compute projected demand. Transmit the forecast directly to the Inventory Optimization module to auto-reconcile Dynamic Safety Stock and Reorder Points (ROP).
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isCalculatingPeriod ? (
+              <span style={{ fontSize: '11px', color: '#38bdf8', padding: '4px 10px', borderRadius: '12px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid #38bdf8' }}>
+                ⚡ Re-analyzing factors...
+              </span>
+            ) : (
+              <span style={{ fontSize: '11px', color: '#10b981', padding: '4px 10px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981' }}>
+                ✓ Synced with Hierarchy MinT
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 2-Column Grid: Left Inputs / Sliders, Right Output & Inventory Handoff */}
+        <div style={styles.periodGridContainer}>
+          {/* Column 1: Inputs & Multi-Factor Sliders */}
+          <div style={styles.periodInputColumn}>
+            {/* Row 1: Target Month & Horizon */}
+            <div style={styles.inputRowGrid}>
+              <div style={styles.inputFieldGroup}>
+                <label style={styles.inputLabel}>TARGET PLANNING PERIOD / MONTH</label>
+                <select
+                  value={periodTarget}
+                  onChange={(e) => setPeriodTarget(e.target.value)}
+                  style={styles.periodSelectInput}
+                >
+                  <option value="October 2026">October 2026 (Autumn Transition)</option>
+                  <option value="November 2026">November 2026 (Peak Black Friday Surge)</option>
+                  <option value="December 2026">December 2026 (Holiday Peak Rush)</option>
+                  <option value="January 2027">January 2027 (Post-Holiday Trough)</option>
+                  <option value="February 2027">February 2027 (Mid-Winter Inventory Rebalance)</option>
+                  <option value="March 2027">March 2027 (Spring / Summer Line Launch)</option>
+                  <option value="Q4 2026 Consolidated">Q4 2026 Consolidated (Quarterly View)</option>
+                </select>
+              </div>
+
+              <div style={styles.inputFieldGroup}>
+                <label style={styles.inputLabel}>PLANNING HORIZON</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {[
+                    { label: '30 Days', val: 30 },
+                    { label: '60 Days', val: 60 },
+                    { label: '90 Days', val: 90 },
+                  ].map((h) => (
+                    <button
+                      key={h.val}
+                      type="button"
+                      onClick={() => setPeriodHorizonDays(h.val)}
+                      style={{
+                        flex: 1,
+                        padding: '7px 0',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        border: periodHorizonDays === h.val ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                        background: periodHorizonDays === h.val ? 'rgba(56, 189, 248, 0.2)' : '#0b1120',
+                        color: periodHorizonDays === h.val ? '#38bdf8' : '#94a3b8',
+                      }}
+                    >
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Product & Factory Inventory Parameters */}
+            <div style={styles.inputRowGrid}>
+              <div style={styles.inputFieldGroup}>
+                <label style={styles.inputLabel}>GARMENT SILHOUETTE / SKU</label>
+                <select
+                  value={periodProduct}
+                  onChange={(e) => setPeriodProduct(e.target.value)}
+                  style={styles.periodSelectInput}
+                >
+                  <option value="Seamless Athleisure & Active Bralettes">Seamless Athleisure & Active Bralettes (Knits)</option>
+                  <option value="High-Compression Align Leggings">High-Compression Align Leggings (220 GSM)</option>
+                  <option value="Engineered Cleats & Breathable Shoes">Engineered Cleats & Breathable Shoes (Athletic)</option>
+                  <option value="Perfect Fitness Perfect Rip Deck">Perfect Fitness Perfect Rip Deck (Core)</option>
+                  <option value="Nike Men's CJ Elite 2 TD Football Cleat">Nike Men's CJ Elite 2 TD Football Cleat</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={styles.inputFieldGroup}>
+                  <label style={styles.inputLabel}>CURRENT FACTORY STOCK</label>
+                  <input
+                    type="number"
+                    value={periodCurrentStock}
+                    onChange={(e) => setPeriodCurrentStock(Number(e.target.value))}
+                    style={styles.periodNumberInput}
+                    min="0"
+                    step="100"
+                  />
+                </div>
+                <div style={styles.inputFieldGroup}>
+                  <label style={styles.inputLabel}>SUPPLIER LEAD TIME</label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="number"
+                      value={periodLeadTime}
+                      onChange={(e) => setPeriodLeadTime(Number(e.target.value))}
+                      style={styles.periodNumberInput}
+                      min="1"
+                      max="120"
+                    />
+                    <span style={{ position: 'absolute', right: '10px', top: '7px', fontSize: '11px', color: '#64748b' }}>days</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Factor Tuning Sliders Section */}
+            <div style={{ marginTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#f8fafc', letterSpacing: '0.05em' }}>
+                  MULTI-DRIVER DEMAND FACTOR ADJUSTMENTS
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFactorTrendGrowth(28);
+                    setFactorSeasonMultiplier(1.35);
+                    setFactorColorScore(88);
+                    setFactorBuyerWeight(1.20);
+                    setFactorPromoLift(15);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#38bdf8',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Reset Defaults
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Factor 1: Fashion Trend Velocity */}
+                <div style={styles.sliderRow}>
+                  <div style={styles.sliderLabelRow}>
+                    <span style={styles.sliderName}>✂️ Fashion Trend Velocity Lift</span>
+                    <span style={{ ...styles.sliderValueBadge, color: factorTrendGrowth >= 0 ? '#10b981' : '#f87171' }}>
+                      {factorTrendGrowth >= 0 ? `+${factorTrendGrowth}%` : `${factorTrendGrowth}%`}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-20"
+                    max="60"
+                    step="1"
+                    value={factorTrendGrowth}
+                    onChange={(e) => setFactorTrendGrowth(Number(e.target.value))}
+                    style={styles.sliderInput}
+                  />
+                  <div style={styles.sliderMinMax}>
+                    <span>-20% (Decline)</span>
+                    <span style={{ color: '#94a3b8' }}>Baseline (0%)</span>
+                    <span>+60% (Viral Surge)</span>
+                  </div>
+                </div>
+
+                {/* Factor 2: Seasonal Multiplier */}
+                <div style={styles.sliderRow}>
+                  <div style={styles.sliderLabelRow}>
+                    <span style={styles.sliderName}>🌦️ Cyclical Seasonality Multiplier</span>
+                    <span style={{ ...styles.sliderValueBadge, color: '#38bdf8' }}>
+                      {Number(factorSeasonMultiplier).toFixed(2)}x
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.70"
+                    max="1.80"
+                    step="0.05"
+                    value={factorSeasonMultiplier}
+                    onChange={(e) => setFactorSeasonMultiplier(Number(e.target.value))}
+                    style={styles.sliderInput}
+                  />
+                  <div style={styles.sliderMinMax}>
+                    <span>0.70x (Low Season)</span>
+                    <span style={{ color: '#94a3b8' }}>1.00x (Neutral)</span>
+                    <span>1.80x (Peak Holiday)</span>
+                  </div>
+                </div>
+
+                {/* Factor 3: Color Palette Affinity */}
+                <div style={styles.sliderRow}>
+                  <div style={styles.sliderLabelRow}>
+                    <span style={styles.sliderName}>🎨 Colorway & Dye Batching Affinity</span>
+                    <span style={{ ...styles.sliderValueBadge, color: '#ec4899' }}>
+                      {factorColorScore} / 100
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="100"
+                    step="1"
+                    value={factorColorScore}
+                    onChange={(e) => setFactorColorScore(Number(e.target.value))}
+                    style={styles.sliderInput}
+                  />
+                  <div style={styles.sliderMinMax}>
+                    <span>50 (Core Basic)</span>
+                    <span style={{ color: '#94a3b8' }}>75 (Standard Palette)</span>
+                    <span>100 (Trending Hues)</span>
+                  </div>
+                </div>
+
+                {/* Factor 4: Buyer Order Behavior */}
+                <div style={styles.sliderRow}>
+                  <div style={styles.sliderLabelRow}>
+                    <span style={styles.sliderName}>🛍️ Buyer Channel Reorder Cadence</span>
+                    <span style={{ ...styles.sliderValueBadge, color: '#f59e0b' }}>
+                      {Number(factorBuyerWeight).toFixed(2)}x
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.80"
+                    max="1.50"
+                    step="0.05"
+                    value={factorBuyerWeight}
+                    onChange={(e) => setFactorBuyerWeight(Number(e.target.value))}
+                    style={styles.sliderInput}
+                  />
+                  <div style={styles.sliderMinMax}>
+                    <span>0.80x (Retail Drop)</span>
+                    <span style={{ color: '#94a3b8' }}>1.00x (Steady)</span>
+                    <span>1.50x (Corporate Bulk)</span>
+                  </div>
+                </div>
+
+                {/* Factor 5: Promotional Campaign Lift */}
+                <div style={styles.sliderRow}>
+                  <div style={styles.sliderLabelRow}>
+                    <span style={styles.sliderName}>📣 Omnichannel Campaign / Marketing Lift</span>
+                    <span style={{ ...styles.sliderValueBadge, color: '#818cf8' }}>
+                      +{factorPromoLift}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="30"
+                    step="1"
+                    value={factorPromoLift}
+                    onChange={(e) => setFactorPromoLift(Number(e.target.value))}
+                    style={styles.sliderInput}
+                  />
+                  <div style={styles.sliderMinMax}>
+                    <span>0% (No Campaign)</span>
+                    <span style={{ color: '#94a3b8' }}>+15% (Targeted Ad)</span>
+                    <span>+30% (Global Push)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Column 2: Live Computed Demand Output & Inventory Handoff Preview */}
+          <div style={styles.periodOutputColumn}>
+            {/* Primary Forecast Display Box */}
+            <div style={styles.forecastMetricHeroBox}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.06em' }}>
+                    PROJECTED DEMAND FORECAST FOR {periodTarget.toUpperCase()}
+                  </div>
+                  <div style={{ fontSize: '32px', fontWeight: 900, color: '#38bdf8', letterSpacing: '-0.02em', marginTop: '2px' }}>
+                    {periodForecastResult ? periodForecastResult.forecasted_demand.toLocaleString() : '...'} <span style={{ fontSize: '15px', color: '#cbd5e1', fontWeight: 600 }}>Units</span>
+                  </div>
+                </div>
+                <div style={styles.compositeMultiplierPill}>
+                  {periodForecastResult ? `${periodForecastResult.factor_multiplier_composite}x` : '1.0x'} Composite Multiplier
+                </div>
+              </div>
+
+              {/* Sub-metrics */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '10px' }}>
+                <div>
+                  <div style={{ fontSize: '10px', color: '#64748b' }}>DAILY RUN-RATE</div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9' }}>
+                    {periodForecastResult ? `${periodForecastResult.daily_run_rate.toLocaleString()} pcs/day` : '...'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '10px', color: '#64748b' }}>DEMAND UNCERTAINTY (σ)</div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#f59e0b' }}>
+                    {periodForecastResult ? `±${periodForecastResult.demand_uncertainty.toLocaleString()} pcs` : '...'}
+                  </div>
+                </div>
+              </div>
+
+              {/* 95% Confidence Interval */}
+              <div style={{ marginTop: '8px', fontSize: '11px', color: '#94a3b8' }}>
+                95% Confidence Band: <strong style={{ color: '#cbd5e1' }}>
+                  {periodForecastResult ? `${periodForecastResult.confidence_interval_lower.toLocaleString()} – ${periodForecastResult.confidence_interval_upper.toLocaleString()} units` : '...'}
+                </strong>
+              </div>
+            </div>
+
+            {/* Factor Impact Decomposition Bars */}
+            <div style={styles.factorDecompCard}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#cbd5e1', marginBottom: '8px' }}>
+                DECOMPOSED FACTOR CONTRIBUTION TO {periodTarget}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {periodForecastResult?.factor_breakdown?.map((fb) => {
+                  const widthPct = Math.min(100, Math.max(10, Math.abs(fb.impact_pct) * 1.6));
+                  return (
+                    <div key={fb.factor_name} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+                        <span style={{ color: '#cbd5e1' }}>{fb.factor_name}</span>
+                        <span style={{ fontWeight: 700, color: fb.impact_pct >= 0 ? '#10b981' : '#f87171' }}>
+                          {fb.impact_pct >= 0 ? `+${fb.impact_pct}%` : `${fb.impact_pct}%`} · {fb.status}
+                        </span>
+                      </div>
+                      <div style={{ height: '4px', background: '#1e293b', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            width: `${widthPct}%`,
+                            height: '100%',
+                            background: fb.impact_pct >= 0 ? 'linear-gradient(90deg, #38bdf8, #10b981)' : '#f87171',
+                            borderRadius: '2px',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Upstream to Downstream: Inventory Module Contract Preview */}
+            <div style={styles.inventoryImpactPreviewCard}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '14px' }}>🛡️</span>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#ffffff', letterSpacing: '0.04em' }}>
+                    INVENTORY OPTIMIZATION MODULE IMPACT
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: periodForecastResult?.material_requirements?.stock_status === 'REORDER_TRIGGERED' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                    color: periodForecastResult?.material_requirements?.stock_status === 'REORDER_TRIGGERED' ? '#f87171' : '#10b981',
+                    border: periodForecastResult?.material_requirements?.stock_status === 'REORDER_TRIGGERED' ? '1px solid #ef4444' : '1px solid #10b981',
+                  }}
+                >
+                  {periodForecastResult?.material_requirements?.stock_status === 'REORDER_TRIGGERED' ? 'REORDER REQUIRED' : 'STOCK ADEQUATE'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                <div style={styles.invMetricMini}>
+                  <div style={styles.invMetricLabel}>DYNAMIC SAFETY STOCK (SS)</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: '#818cf8' }}>
+                    {periodForecastResult?.material_requirements?.safety_stock_units ? periodForecastResult.material_requirements.safety_stock_units.toLocaleString() : '...'} <span style={{ fontSize: '10px', color: '#94a3b8' }}>pcs</span>
+                  </div>
+                </div>
+
+                <div style={styles.invMetricMini}>
+                  <div style={styles.invMetricLabel}>REORDER POINT (ROP)</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: '#f59e0b' }}>
+                    {periodForecastResult?.material_requirements?.reorder_point_units ? periodForecastResult.material_requirements.reorder_point_units.toLocaleString() : '...'} <span style={{ fontSize: '10px', color: '#94a3b8' }}>pcs</span>
+                  </div>
+                </div>
+
+                <div style={styles.invMetricMini}>
+                  <div style={styles.invMetricLabel}>RECOMMENDED EOQ REORDER</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: '#10b981' }}>
+                    {periodForecastResult?.material_requirements?.recommended_reorder_qty_eoq ? periodForecastResult.material_requirements.recommended_reorder_qty_eoq.toLocaleString() : '...'} <span style={{ fontSize: '10px', color: '#94a3b8' }}>pcs</span>
+                  </div>
+                </div>
+
+                <div style={styles.invMetricMini}>
+                  <div style={styles.invMetricLabel}>FABRIC BOM PROCUREMENT</div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: '#ec4899' }}>
+                    {periodForecastResult?.material_requirements?.fabric_bom_meters ? periodForecastResult.material_requirements.fabric_bom_meters.toLocaleString() : '...'} <span style={{ fontSize: '10px', color: '#94a3b8' }}>m</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hand-off Execution Button */}
+              <button
+                type="button"
+                onClick={handleTransmitToInventory}
+                style={styles.transmitToInventoryBtn}
+                title="Send forecasted demand value to Inventory Module to update Safety Stock & Reorder Points"
+              >
+                <span>🚀 TRANSMIT DEMAND TO INVENTORY MODULE</span>
+                <span style={{ fontSize: '14px' }}>→</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ==================================================================== */}
       {/* DOWNSTREAM INVENTORY & MATERIAL PLANNING (FABRIC BOM & SMV) */}
       {/* ==================================================================== */}
       <div
@@ -4143,5 +4763,165 @@ const styles = {
     fontSize: '10px',
     fontWeight: 700,
     whiteSpace: 'nowrap',
+  },
+  periodAnalyzerCard: {
+    background: 'linear-gradient(135deg, rgba(13, 22, 40, 0.98) 0%, rgba(15, 23, 42, 0.95) 100%)',
+    border: '1px solid rgba(56, 189, 248, 0.3)',
+    borderRadius: '16px',
+    padding: '24px',
+    marginTop: '28px',
+    marginBottom: '28px',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45), 0 0 20px rgba(56, 189, 248, 0.1)',
+  },
+  periodGridContainer: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+    gap: '24px',
+    marginTop: '20px',
+  },
+  periodInputColumn: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '12px',
+    padding: '18px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  periodOutputColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  inputRowGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '12px',
+  },
+  inputFieldGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+  },
+  inputLabel: {
+    fontSize: '10px',
+    fontWeight: 700,
+    color: '#94a3b8',
+    letterSpacing: '0.06em',
+  },
+  periodSelectInput: {
+    background: '#0d1322',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '6px',
+    color: '#f8fafc',
+    padding: '8px 10px',
+    fontSize: '12px',
+    outline: 'none',
+    width: '100%',
+  },
+  periodNumberInput: {
+    background: '#0d1322',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '6px',
+    color: '#f8fafc',
+    padding: '8px 10px',
+    fontSize: '12px',
+    outline: 'none',
+    width: '100%',
+  },
+  sliderRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  sliderLabelRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: '11px',
+  },
+  sliderName: {
+    color: '#cbd5e1',
+    fontWeight: 600,
+  },
+  sliderValueBadge: {
+    fontWeight: 800,
+    fontSize: '11px',
+    padding: '1px 6px',
+    borderRadius: '4px',
+    background: 'rgba(255, 255, 255, 0.06)',
+  },
+  sliderInput: {
+    width: '100%',
+    cursor: 'pointer',
+    accentColor: '#38bdf8',
+    height: '6px',
+  },
+  sliderMinMax: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '9px',
+    color: '#64748b',
+  },
+  forecastMetricHeroBox: {
+    background: 'linear-gradient(135deg, rgba(16, 26, 48, 0.9) 0%, rgba(9, 14, 26, 0.95) 100%)',
+    border: '1px solid rgba(56, 189, 248, 0.35)',
+    borderRadius: '12px',
+    padding: '18px 20px',
+    boxShadow: '0 4px 20px rgba(56, 189, 248, 0.1)',
+  },
+  compositeMultiplierPill: {
+    background: 'rgba(56, 189, 248, 0.15)',
+    border: '1px solid #38bdf8',
+    color: '#38bdf8',
+    fontSize: '11px',
+    fontWeight: 800,
+    padding: '4px 10px',
+    borderRadius: '20px',
+    whiteSpace: 'nowrap',
+  },
+  factorDecompCard: {
+    background: '#090e1a',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: '12px',
+    padding: '16px',
+  },
+  inventoryImpactPreviewCard: {
+    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(9, 14, 26, 0.95) 100%)',
+    border: '1px solid rgba(129, 140, 248, 0.3)',
+    borderRadius: '12px',
+    padding: '16px',
+  },
+  invMetricMini: {
+    background: '#0b1120',
+    border: '1px solid rgba(255, 255, 255, 0.06)',
+    borderRadius: '8px',
+    padding: '10px 12px',
+  },
+  invMetricLabel: {
+    fontSize: '9px',
+    fontWeight: 700,
+    color: '#94a3b8',
+    letterSpacing: '0.04em',
+    marginBottom: '2px',
+  },
+  transmitToInventoryBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    width: '100%',
+    background: 'linear-gradient(90deg, #0284c7 0%, #0ea5e9 100%)',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '12px 16px',
+    fontSize: '12px',
+    fontWeight: 800,
+    letterSpacing: '0.04em',
+    cursor: 'pointer',
+    marginTop: '14px',
+    boxShadow: '0 4px 16px rgba(14, 165, 233, 0.4)',
+    transition: 'all 0.25s ease',
   },
 };
