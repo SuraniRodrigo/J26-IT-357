@@ -76,7 +76,6 @@ export default function Sidebar({ activeTab, setActiveTab }) {
         </div>
         <div>
           <div style={styles.brandTitle}>OPTICHAIN</div>
-          <div style={styles.brandSubtitle}>CDAI RESEARCH PROJECT</div>
         </div>
       </div>
 
