@@ -1,6 +1,16 @@
-import React from 'react';
+﻿import React, { useState } from 'react';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
+  const { isDark, toggleTheme } = useTheme();
+  const [iconAnimating, setIconAnimating] = useState(false);
+
+  const handleToggle = () => {
+    setIconAnimating(true);
+    toggleTheme();
+    setTimeout(() => setIconAnimating(false), 400);
+  };
+
   const navItems = [
     {
       id: 'dashboard',
@@ -64,9 +74,16 @@ export default function Sidebar({ activeTab, setActiveTab }) {
   ];
 
   return (
-    <aside style={styles.sidebar}>
+    <aside style={{
+      ...styles.sidebar,
+      backgroundColor: isDark ? '#070a12' : '#ffffff',
+      borderRight: `1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(15,23,42,0.1)'}`,
+    }}>
       {/* Brand Logo Header */}
-      <div style={styles.brandContainer}>
+      <div style={{
+        ...styles.brandContainer,
+        borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.08)'}`,
+      }}>
         <div style={styles.logoIcon}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.2">
             <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
@@ -90,12 +107,16 @@ export default function Sidebar({ activeTab, setActiveTab }) {
               onClick={() => setActiveTab(item.id)}
               style={{
                 ...styles.navBtn,
-                backgroundColor: isActive ? 'rgba(59, 130, 246, 0.16)' : 'transparent',
+                backgroundColor: isActive
+                  ? isDark ? 'rgba(59,130,246,0.16)' : 'rgba(37,99,235,0.09)'
+                  : 'transparent',
                 borderColor: isActive ? '#3b82f6' : 'transparent',
-                color: isActive ? '#60a5fa' : '#94a3b8',
+                color: isActive
+                  ? '#60a5fa'
+                  : isDark ? '#94a3b8' : '#475569',
               }}
             >
-              <span style={{ ...styles.iconWrap, color: isActive ? '#60a5fa' : '#64748b' }}>
+              <span style={{ ...styles.iconWrap, color: isActive ? '#60a5fa' : isDark ? '#64748b' : '#64748b' }}>
                 {item.icon}
               </span>
               <span style={styles.navLabel}>{item.label}</span>
@@ -105,11 +126,87 @@ export default function Sidebar({ activeTab, setActiveTab }) {
         })}
       </nav>
 
-      {/* Sidebar Footer */}
-      <div style={styles.footerContainer}>
-        <div style={styles.systemReadyBadge}>
+      {/* Sidebar Footer: System Ready + Theme Toggle */}
+      <div style={{
+        ...styles.footerContainer,
+        borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.08)'}`,
+      }}>
+        {/* System Ready Badge */}
+        <div style={{
+          ...styles.systemReadyBadge,
+          background: isDark ? 'rgba(16,185,129,0.06)' : 'rgba(16,185,129,0.08)',
+          border: `1px solid ${isDark ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.3)'}`,
+          marginBottom: '10px',
+        }}>
           <span style={styles.pulsingDot} className="pulse-dot" />
-          <span style={styles.readyText}>SYSTEM READY</span>
+          <span style={{
+            ...styles.readyText,
+            color: isDark ? '#34d399' : '#059669',
+          }}>SYSTEM READY</span>
+        </div>
+
+        {/* Theme Toggle Row */}
+        <div style={styles.toggleRow}>
+          {/* Sun icon */}
+          <svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke={!isDark ? '#f59e0b' : '#64748b'}
+            strokeWidth="2"
+            style={{ flexShrink: 0, transition: 'stroke 0.2s' }}
+          >
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+
+          {/* Toggle Switch */}
+          <button
+            onClick={handleToggle}
+            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            aria-label="Toggle theme"
+            style={{
+              ...styles.toggleTrack,
+              background: isDark
+                ? 'linear-gradient(135deg,#1e293b,#0f172a)'
+                : 'linear-gradient(135deg,#bfdbfe,#93c5fd)',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(37,99,235,0.25)'}`,
+            }}
+          >
+            <span
+              style={{
+                ...styles.toggleThumb,
+                transform: isDark ? 'translateX(0)' : 'translateX(20px)',
+                background: isDark ? '#334155' : '#ffffff',
+                boxShadow: isDark
+                  ? '0 1px 4px rgba(0,0,0,0.5)'
+                  : '0 1px 6px rgba(37,99,235,0.3)',
+              }}
+              className={iconAnimating ? 'theme-toggle-pop' : ''}
+            />
+          </button>
+
+          {/* Moon icon */}
+          <svg
+            width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke={isDark ? '#818cf8' : '#64748b'}
+            strokeWidth="2"
+            style={{ flexShrink: 0, transition: 'stroke 0.2s' }}
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+
+          <span style={{
+            ...styles.toggleLabel,
+            color: isDark ? '#475569' : '#94a3b8',
+          }}>
+            {isDark ? 'DARK' : 'LIGHT'}
+          </span>
         </div>
       </div>
     </aside>
@@ -119,8 +216,6 @@ export default function Sidebar({ activeTab, setActiveTab }) {
 const styles = {
   sidebar: {
     width: '260px',
-    backgroundColor: '#070a12',
-    borderRight: '1px solid rgba(255, 255, 255, 0.07)',
     display: 'flex',
     flexDirection: 'column',
     height: '100vh',
@@ -133,7 +228,6 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
   },
   logoIcon: {
     width: '36px',
@@ -144,13 +238,14 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     boxShadow: '0 0 15px rgba(37, 99, 235, 0.4)',
+    flexShrink: 0,
   },
   brandTitle: {
     fontSize: '18px',
     fontWeight: 800,
     fontFamily: 'Outfit, sans-serif',
     letterSpacing: '0.05em',
-    color: '#ffffff',
+    color: '#3b82f6',
   },
   brandSubtitle: {
     fontSize: '9px',
@@ -179,6 +274,7 @@ const styles = {
     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
     position: 'relative',
     overflow: 'hidden',
+    width: '100%',
   },
   iconWrap: {
     display: 'flex',
@@ -201,8 +297,7 @@ const styles = {
     boxShadow: '0 0 10px #3b82f6',
   },
   footerContainer: {
-    padding: '20px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+    padding: '16px 16px 18px',
   },
   systemReadyBadge: {
     display: 'flex',
@@ -210,20 +305,50 @@ const styles = {
     gap: '10px',
     padding: '10px 14px',
     borderRadius: '8px',
-    background: 'rgba(16, 185, 129, 0.06)',
-    border: '1px solid rgba(16, 185, 129, 0.2)',
   },
   pulsingDot: {
     width: '8px',
     height: '8px',
     borderRadius: '50%',
     backgroundColor: '#10b981',
+    flexShrink: 0,
   },
   readyText: {
     fontSize: '11px',
     fontWeight: 700,
     letterSpacing: '0.12em',
-    color: '#34d399',
     textTransform: 'uppercase',
+  },
+  toggleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '4px 4px',
+  },
+  toggleTrack: {
+    width: '44px',
+    height: '24px',
+    borderRadius: '12px',
+    position: 'relative',
+    cursor: 'pointer',
+    padding: 0,
+    flexShrink: 0,
+    transition: 'background 0.3s ease, border 0.3s ease',
+  },
+  toggleThumb: {
+    display: 'block',
+    width: '18px',
+    height: '18px',
+    borderRadius: '50%',
+    position: 'absolute',
+    top: '2px',
+    left: '2px',
+    transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.3s ease',
+  },
+  toggleLabel: {
+    fontSize: '9px',
+    fontWeight: 700,
+    letterSpacing: '0.1em',
+    fontFamily: 'monospace',
   },
 };

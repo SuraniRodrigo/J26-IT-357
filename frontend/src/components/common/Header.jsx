@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch }) {
+  const { isDark } = useTheme();
   const [searchValue, setSearchValue] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -11,11 +13,86 @@ export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch
     { id: 3, title: 'Organic Cotton Buffer Depleting', time: '2h ago', urgent: true, desc: '15,200 kg dynamic reorder recommendation active.' },
   ];
 
+  const th = {
+    header: {
+      height: '68px',
+      backgroundColor: isDark ? 'rgba(10,14,23,0.9)' : 'rgba(255,255,255,0.95)',
+      borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.1)'}`,
+      color: isDark ? '#f1f5f9' : '#0f172a',
+    },
+    searchContainer: {
+      background: isDark ? '#0f1626' : '#f8fafc',
+      border: `1px solid ${isDark ? 'rgba(255,255,255,0.09)' : 'rgba(15,23,42,0.12)'}`,
+    },
+    searchInput: {
+      color: isDark ? '#e2e8f0' : '#0f172a',
+    },
+    factoryNodeBadge: {
+      background: isDark ? 'rgba(15,22,38,0.7)' : 'rgba(241,245,249,0.9)',
+      border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.1)'}`,
+    },
+    iconBtn: {
+      background: isDark ? '#0f1626' : '#f8fafc',
+      border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.1)'}`,
+      color: isDark ? '#94a3b8' : '#64748b',
+    },
+    notifDropdown: {
+      background: isDark ? '#0f1626' : '#ffffff',
+      border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.12)'}`,
+      boxShadow: isDark ? '0 12px 35px rgba(0,0,0,0.6)' : '0 12px 35px rgba(15,23,42,0.12)',
+    },
+    notifHeader: {
+      borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)'}`,
+    },
+    notifTitle: {
+      color: isDark ? '#f1f5f9' : '#0f172a',
+    },
+    notifDesc: {
+      color: isDark ? '#94a3b8' : '#64748b',
+    },
+    profileBadge: {
+      background: isDark ? '#0f1626' : '#f8fafc',
+      border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.1)'}`,
+    },
+    avatarStatusBorder: {
+      border: `2px solid ${isDark ? '#0f1626' : '#f8fafc'}`,
+    },
+    userDropdown: {
+      background: isDark ? '#0f1626' : '#ffffff',
+      border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.12)'}`,
+      boxShadow: isDark ? '0 12px 35px rgba(0,0,0,0.6)' : '0 12px 35px rgba(15,23,42,0.12)',
+    },
+    dropdownDivider: {
+      background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
+    },
+    signInBtn: {
+      background: isDark ? '#0f1626' : '#f8fafc',
+      border: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.12)'}`,
+      color: isDark ? '#e2e8f0' : '#0f172a',
+    },
+    clockValue: {
+      background: isDark ? 'rgba(15,22,38,0.8)' : 'rgba(241,245,249,0.9)',
+      border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.1)'}`,
+    },
+    dropdownItem: {
+      color: isDark ? '#cbd5e1' : '#334155',
+    },
+    headerText: {
+      color: isDark ? '#f1f5f9' : '#0f172a',
+      fontWeight: 700,
+      fontSize: '12px',
+    },
+    userEmail: {
+      fontSize: '10px',
+      color: '#38bdf8',
+    },
+  };
+
   return (
-    <header style={styles.header}>
+    <header style={{ ...styles.header, ...th.header }}>
       {/* Search Bar & Factory Node Identifier */}
       <div style={styles.leftSection}>
-        <div style={styles.searchContainer}>
+        <div style={{ ...styles.searchContainer, ...th.searchContainer }}>
           <svg style={styles.searchIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -28,14 +105,14 @@ export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch
               setSearchValue(e.target.value);
               if (onSearch) onSearch(e.target.value);
             }}
-            style={styles.searchInput}
+            style={{ ...styles.searchInput, ...th.searchInput }}
           />
         </div>
 
         {/* Live Factory Node Badge */}
-        <div style={styles.factoryNodeBadge}>
+        <div style={{ ...styles.factoryNodeBadge, ...th.factoryNodeBadge }}>
           <span style={styles.pingDot} className="pulse-dot" />
-          <span style={styles.nodeText}>SL-FACTORY-NODE-01</span>
+          <span style={{ ...styles.nodeText, color: isDark ? '#94a3b8' : '#64748b' }}>SL-FACTORY-NODE-01</span>
           <span style={styles.onlineBadge}>LIVE :8000</span>
         </div>
       </div>
@@ -46,7 +123,7 @@ export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            style={styles.iconBtn}
+            style={{ ...styles.iconBtn, ...th.iconBtn }}
             title="System Alert Stream"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -57,21 +134,21 @@ export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch
           </button>
 
           {showNotifications && (
-            <div style={styles.notifDropdown}>
-              <div style={styles.notifHeader}>
-                <span style={{ fontWeight: 700, fontSize: '12px', letterSpacing: '0.04em' }}>ACTIVE TELEMETRY ALERTS</span>
+            <div style={{ ...styles.notifDropdown, ...th.notifDropdown }}>
+              <div style={{ ...styles.notifHeader, ...th.notifHeader }}>
+                <span style={{ fontWeight: 700, fontSize: '12px', letterSpacing: '0.04em', color: isDark ? '#f1f5f9' : '#0f172a' }}>ACTIVE TELEMETRY ALERTS</span>
                 <span style={styles.urgentBadge}>3 Critical</span>
               </div>
               {notifications.map((n) => (
                 <div key={n.id} style={styles.notifItem}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: n.urgent ? '#ef4444' : '#10b981' }} />
-                      <span style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: 600 }}>{n.title}</span>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: n.urgent ? '#ef4444' : '#10b981', flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', fontWeight: 600, ...th.notifTitle }}>{n.title}</span>
                     </div>
                     <span style={{ fontSize: '10px', color: '#64748b' }}>{n.time}</span>
                   </div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', paddingLeft: '14px' }}>
+                  <div style={{ fontSize: '11px', marginTop: '4px', paddingLeft: '14px', ...th.notifDesc }}>
                     {n.desc}
                   </div>
                 </div>
@@ -84,15 +161,15 @@ export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch
         {user ? (
           <div style={{ position: 'relative' }}>
             <div
-              style={styles.profileBadge}
+              style={{ ...styles.profileBadge, ...th.profileBadge }}
               onClick={() => setShowUserMenu(!showUserMenu)}
             >
               <div style={styles.avatar}>
                 <span>{user.avatarText || 'CE'}</span>
-                <span style={styles.avatarStatusDot} />
+                <span style={{ ...styles.avatarStatusDot, ...th.avatarStatusBorder }} />
               </div>
               <div style={styles.userInfo}>
-                <span style={styles.userName}>{user.name || 'Chief Engineer'}</span>
+                <span style={{ ...styles.userName, color: isDark ? '#f1f5f9' : '#0f172a' }}>{user.name || 'Chief Engineer'}</span>
                 <span style={styles.userRole}>{user.role || 'Shift A-1 · Active'}</span>
               </div>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" style={{ marginLeft: '4px' }}>
@@ -102,15 +179,15 @@ export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch
 
             {/* Profile Dropdown Menu */}
             {showUserMenu && (
-              <div style={styles.userDropdown}>
+              <div style={{ ...styles.userDropdown, ...th.userDropdown }}>
                 <div style={styles.dropdownHeader}>
-                  <strong style={{ fontSize: '12px', color: '#ffffff' }}>{user.name}</strong>
-                  <span style={{ fontSize: '10px', color: '#38bdf8' }}>{user.email || 'engineer@optichain.lk'}</span>
+                  <strong style={th.headerText}>{user.name}</strong>
+                  <span style={th.userEmail}>{user.email || 'engineer@optichain.lk'}</span>
                 </div>
-                <div style={styles.dropdownDivider} />
+                <div style={{ ...styles.dropdownDivider, ...th.dropdownDivider }} />
                 <button
                   onClick={() => { setShowUserMenu(false); onOpenAuth('signup'); }}
-                  style={styles.dropdownItem}
+                  style={{ ...styles.dropdownItem, ...th.dropdownItem }}
                 >
                   <span>+</span> Register New Terminal Clearance
                 </button>
@@ -127,7 +204,7 @@ export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch
           <div style={styles.authBtnGroup}>
             <button
               onClick={() => onOpenAuth('signin')}
-              style={styles.signInBtn}
+              style={{ ...styles.signInBtn, ...th.signInBtn }}
             >
               Sign In
             </button>
@@ -147,8 +224,6 @@ export default function Header({ user, onOpenAuth, onLogout, activeTab, onSearch
 const styles = {
   header: {
     height: '68px',
-    backgroundColor: '#0a0e17',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -166,8 +241,6 @@ const styles = {
   searchContainer: {
     display: 'flex',
     alignItems: 'center',
-    background: '#0f1626',
-    border: '1px solid rgba(255, 255, 255, 0.09)',
     borderRadius: '10px',
     padding: '9px 16px',
     width: '420px',
@@ -182,7 +255,6 @@ const styles = {
     background: 'transparent',
     border: 'none',
     outline: 'none',
-    color: '#e2e8f0',
     fontSize: '13px',
     width: '100%',
     fontFamily: 'inherit',
@@ -191,8 +263,6 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    background: 'rgba(15, 22, 38, 0.7)',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
     padding: '6px 12px',
     borderRadius: '20px',
   },
@@ -201,12 +271,12 @@ const styles = {
     height: '6px',
     borderRadius: '50%',
     backgroundColor: '#10b981',
+    flexShrink: 0,
   },
   nodeText: {
     fontSize: '10px',
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#94a3b8',
     fontFamily: 'monospace',
   },
   onlineBadge: {
@@ -223,10 +293,7 @@ const styles = {
     gap: '18px',
   },
   iconBtn: {
-    background: '#0f1626',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: '10px',
-    color: '#94a3b8',
     width: '40px',
     height: '40px',
     display: 'flex',
@@ -250,11 +317,8 @@ const styles = {
     top: '52px',
     right: 0,
     width: '340px',
-    background: '#0f1626',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
     borderRadius: '12px',
     padding: '14px',
-    boxShadow: '0 12px 35px rgba(0, 0, 0, 0.6)',
     zIndex: 50,
   },
   notifHeader: {
@@ -262,7 +326,6 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingBottom: '10px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
     marginBottom: '8px',
   },
   urgentBadge: {
@@ -276,7 +339,6 @@ const styles = {
   notifItem: {
     padding: '10px 8px',
     borderRadius: '8px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
   },
   authBtnGroup: {
     display: 'flex',
@@ -284,9 +346,6 @@ const styles = {
     gap: '10px',
   },
   signInBtn: {
-    background: '#0f1626',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    color: '#e2e8f0',
     padding: '8px 16px',
     borderRadius: '8px',
     fontSize: '12px',
@@ -310,8 +369,6 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    background: '#0f1626',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
     borderRadius: '30px',
     padding: '4px 14px 4px 6px',
     cursor: 'pointer',
@@ -329,6 +386,7 @@ const styles = {
     fontSize: '12px',
     fontWeight: 700,
     position: 'relative',
+    flexShrink: 0,
   },
   avatarStatusDot: {
     position: 'absolute',
@@ -338,7 +396,6 @@ const styles = {
     height: '8px',
     borderRadius: '50%',
     background: '#10b981',
-    border: '2px solid #0f1626',
   },
   userInfo: {
     display: 'flex',
@@ -347,7 +404,6 @@ const styles = {
   userName: {
     fontSize: '12px',
     fontWeight: 600,
-    color: '#f1f5f9',
     lineHeight: 1.2,
   },
   userRole: {
@@ -360,11 +416,8 @@ const styles = {
     top: '48px',
     right: 0,
     width: '240px',
-    background: '#0f1626',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
     borderRadius: '12px',
     padding: '10px',
-    boxShadow: '0 12px 35px rgba(0, 0, 0, 0.6)',
     zIndex: 50,
   },
   dropdownHeader: {
@@ -375,7 +428,6 @@ const styles = {
   },
   dropdownDivider: {
     height: '1px',
-    background: 'rgba(255, 255, 255, 0.06)',
     margin: '6px 0',
   },
   dropdownItem: {
@@ -383,7 +435,6 @@ const styles = {
     padding: '8px 10px',
     background: 'none',
     border: 'none',
-    color: '#cbd5e1',
     fontSize: '11px',
     fontWeight: 600,
     textAlign: 'left',

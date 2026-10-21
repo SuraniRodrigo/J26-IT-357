@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function DashboardView({ onNavigate }) {
+  const { isDark } = useTheme();
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineSuccess, setPipelineSuccess] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState('Q3-Q4 2025');
@@ -442,6 +444,7 @@ const styles = {
     gap: '26px',
     maxWidth: '1600px',
     margin: '0 auto',
+    color: 'var(--text-main)',
   },
   topBar: {
     display: 'flex',
@@ -473,12 +476,12 @@ const styles = {
     fontSize: '28px',
     fontWeight: 800,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
     letterSpacing: '-0.02em',
   },
   pageSubtitle: {
     fontSize: '13px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     marginTop: '4px',
     maxWidth: '850px',
     lineHeight: 1.5,
@@ -509,7 +512,7 @@ const styles = {
 
   /* ==================== DEMAND HERO HIGHLIGHT STYLES ==================== */
   demandHeroCard: {
-    background: 'linear-gradient(135deg, #0d1a33 0%, #080f1e 100%)',
+    background: 'var(--bg-card)',
     border: '2px solid rgba(56, 189, 248, 0.35)',
     borderRadius: '18px',
     padding: '28px',
@@ -657,8 +660,8 @@ const styles = {
 
   /* ==================== PIPELINE FLOW STYLES ==================== */
   pipelineCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '24px',
   },
@@ -672,11 +675,11 @@ const styles = {
     fontSize: '16px',
     fontWeight: 700,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
   },
   cardSubtitle: {
     fontSize: '12px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     marginTop: '3px',
   },
   contractPill: {
@@ -697,8 +700,8 @@ const styles = {
   flowNode: {
     flex: 1,
     minWidth: '200px',
-    background: '#090e1a',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card-subtle)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '12px',
     padding: '16px',
     cursor: 'pointer',
@@ -718,7 +721,7 @@ const styles = {
   flowNodeTitle: {
     fontSize: '14px',
     fontWeight: 700,
-    color: '#ffffff',
+    color: 'var(--text-main)',
     marginTop: '6px',
   },
   flowNodeEngine: {
@@ -752,8 +755,8 @@ const styles = {
     gap: '20px',
   },
   moduleSummaryCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '22px',
     display: 'flex',
@@ -769,7 +772,7 @@ const styles = {
   modMiniTitle: {
     fontSize: '15px',
     fontWeight: 700,
-    color: '#ffffff',
+    color: 'var(--text-main)',
     marginTop: '2px',
   },
   modMiniEngine: {
@@ -797,7 +800,7 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
     gap: '8px',
-    background: '#090e1a',
+    background: 'var(--bg-card-subtle)',
     padding: '10px 12px',
     borderRadius: '8px',
     marginBottom: '14px',
@@ -811,7 +814,7 @@ const styles = {
   telemetryVal: {
     fontSize: '13px',
     fontWeight: 700,
-    color: '#ffffff',
+    color: 'var(--text-main)',
     marginTop: '2px',
     display: 'block',
   },

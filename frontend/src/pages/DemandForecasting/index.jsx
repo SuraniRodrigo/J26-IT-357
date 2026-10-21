@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function DemandForecastingView() {
+  const { isDark } = useTheme();
   const [skuSearch, setSkuSearch] = useState('');
   const [isRecalculating, setIsRecalculating] = useState(false);
 
@@ -468,6 +470,7 @@ const styles = {
     gap: '24px',
     maxWidth: '1600px',
     margin: '0 auto',
+    color: 'var(--text-main)',
   },
   headerRow: {
     display: 'flex',
@@ -488,12 +491,12 @@ const styles = {
     fontSize: '28px',
     fontWeight: 700,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
     letterSpacing: '-0.02em',
   },
   pageSubtitle: {
     fontSize: '13px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     marginTop: '4px',
     maxWidth: '750px',
   },
@@ -528,8 +531,8 @@ const styles = {
     gap: '16px',
   },
   kpiCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '14px',
     padding: '18px 20px',
   },
@@ -549,7 +552,7 @@ const styles = {
     fontSize: '26px',
     fontWeight: 800,
     fontFamily: 'Outfit, sans-serif',
-    color: '#ffffff',
+    color: 'var(--text-main)',
   },
   unitLabel: {
     fontSize: '12px',
@@ -573,8 +576,8 @@ const styles = {
     gap: '20px',
   },
   trajectoryCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '20px',
   },
@@ -587,11 +590,11 @@ const styles = {
   cardTitle: {
     fontSize: '15px',
     fontWeight: 600,
-    color: '#f1f5f9',
+    color: 'var(--text-main)',
   },
   cardSubtitle: {
     fontSize: '12px',
-    color: '#94a3b8',
+    color: 'var(--text-muted)',
     marginTop: '2px',
   },
   timePills: {
@@ -631,7 +634,7 @@ const styles = {
     borderRadius: '20px',
   },
   anomaliesCard: {
-    background: '#0d1322',
+    background: 'var(--bg-card)',
     border: '1px solid rgba(239, 68, 68, 0.2)',
     borderRadius: '16px',
     padding: '20px',
@@ -653,8 +656,8 @@ const styles = {
     marginTop: '6px',
   },
   anomalyItem: {
-    background: '#090e1a',
-    border: '1px solid rgba(255, 255, 255, 0.05)',
+    background: 'var(--bg-card-subtle)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '10px',
     padding: '14px',
   },
@@ -667,7 +670,7 @@ const styles = {
   anomalyHeading: {
     fontSize: '12px',
     fontWeight: 600,
-    color: '#f1f5f9',
+    color: 'var(--text-main)',
   },
   iconSmall: {
     fontSize: '13px',
@@ -683,8 +686,8 @@ const styles = {
     gap: '20px',
   },
   intelCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '20px',
     display: 'flex',
@@ -755,10 +758,10 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    background: '#090e1a',
+    background: 'var(--bg-card-subtle)',
     borderRadius: '8px',
     padding: '10px 12px',
-    border: '1px solid rgba(255, 255, 255, 0.04)',
+    border: '1px solid var(--border-subtle)',
   },
   swatch: {
     width: '36px',
@@ -775,7 +778,7 @@ const styles = {
   swatchName: {
     fontSize: '12px',
     fontWeight: 600,
-    color: '#f1f5f9',
+    color: 'var(--text-main)',
   },
   swatchIndex: {
     fontSize: '10px',
@@ -810,8 +813,8 @@ const styles = {
     marginBottom: '6px',
   },
   tableCard: {
-    background: '#0d1322',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-subtle)',
     borderRadius: '16px',
     padding: '20px',
   },

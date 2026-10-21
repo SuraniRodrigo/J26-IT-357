@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function Footer() {
+  const { isDark } = useTheme();
   const [slstTime, setSlstTime] = useState('');
   const [utcTime, setUtcTime] = useState('');
 
   useEffect(() => {
     const updateClocks = () => {
       const now = new Date();
-      // Sri Lanka Time (Asia/Colombo)
       setSlstTime(
         now.toLocaleTimeString('en-US', {
           timeZone: 'Asia/Colombo',
@@ -17,7 +18,6 @@ export default function Footer() {
           second: '2-digit',
         })
       );
-      // UTC Time
       setUtcTime(
         now.toLocaleTimeString('en-US', {
           timeZone: 'UTC',
@@ -35,29 +35,34 @@ export default function Footer() {
   }, []);
 
   return (
-    <footer style={styles.footer}>
+    <footer style={{
+      ...styles.footer,
+      backgroundColor: isDark ? '#070a12' : '#ffffff',
+      borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.1)'}`,
+      color: isDark ? '#94a3b8' : '#64748b',
+    }}>
       {/* Left side: Telemetry & Engine Nodes */}
       <div style={styles.left}>
         <div style={styles.statusGroup}>
           <span style={styles.liveIndicator} className="pulse-dot" />
-          <span style={styles.systemName}>OPTICHAIN ENGINE</span>
+          <span style={{ ...styles.systemName, color: isDark ? '#f1f5f9' : '#0f172a' }}>OPTICHAIN ENGINE</span>
         </div>
 
-        <div style={styles.divider} />
+        <div style={{ ...styles.divider, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }} />
 
         <div style={styles.infoPill}>
-          <span style={{ color: '#64748b' }}>Gateway:</span>
+          <span style={{ color: isDark ? '#64748b' : '#94a3b8' }}>Gateway:</span>
           <strong style={{ color: '#38bdf8' }}>FastAPI :8000 (12ms)</strong>
         </div>
 
         <div style={styles.infoPill}>
-          <span style={{ color: '#64748b' }}>Disruption Engine:</span>
+          <span style={{ color: isDark ? '#64748b' : '#94a3b8' }}>Disruption Engine:</span>
           <strong style={{ color: '#10b981' }}>Autonomous Healing Active</strong>
         </div>
 
         <div style={styles.infoPill}>
-          <span style={{ color: '#64748b' }}>Contracts:</span>
-          <strong style={{ color: '#cbd5e1' }}>5 Schema-Enforced</strong>
+          <span style={{ color: isDark ? '#64748b' : '#94a3b8' }}>Contracts:</span>
+          <strong style={{ color: isDark ? '#cbd5e1' : '#334155' }}>5 Schema-Enforced</strong>
         </div>
       </div>
 
@@ -65,21 +70,35 @@ export default function Footer() {
       <div style={styles.right}>
         <div style={styles.clockContainer}>
           <span style={styles.clockLabel}>SLST (COLOMBO):</span>
-          <span style={styles.clockValue}>{slstTime || '19:10:00'}</span>
+          <span style={{
+            ...styles.clockValue,
+            background: isDark ? 'rgba(15,22,38,0.8)' : 'rgba(241,245,249,0.9)',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.1)'}`,
+          }}>{slstTime || '19:10:00'}</span>
         </div>
 
         <div style={styles.clockContainer}>
           <span style={styles.clockLabel}>UTC:</span>
-          <span style={{ ...styles.clockValue, color: '#94a3b8' }}>{utcTime || '13:40:00'}Z</span>
+          <span style={{
+            ...styles.clockValue,
+            color: isDark ? '#94a3b8' : '#64748b',
+            background: isDark ? 'rgba(15,22,38,0.8)' : 'rgba(241,245,249,0.9)',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.1)'}`,
+          }}>{utcTime || '13:40:00'}Z</span>
         </div>
 
-        <div style={styles.divider} />
+        <div style={{ ...styles.divider, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)' }} />
 
         <a
           href="http://127.0.0.1:8000/docs"
           target="_blank"
           rel="noreferrer"
-          style={styles.apiLink}
+          style={{
+            ...styles.apiLink,
+            background: isDark ? '#0f1626' : '#f8fafc',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.1)'}`,
+            color: isDark ? '#cbd5e1' : '#334155',
+          }}
           title="Open FastAPI Swagger Interactive Specification"
         >
           <span>API Docs</span>
@@ -90,7 +109,11 @@ export default function Footer() {
           </svg>
         </a>
 
-        <span style={styles.versionBadge}>v1.0.4-PROD</span>
+        <span style={{
+          ...styles.versionBadge,
+          color: isDark ? '#64748b' : '#94a3b8',
+          background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.04)',
+        }}>v1.0.4-PROD</span>
       </div>
     </footer>
   );
@@ -99,14 +122,11 @@ export default function Footer() {
 const styles = {
   footer: {
     height: '46px',
-    backgroundColor: '#070a12',
-    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '0 28px',
     fontSize: '11px',
-    color: '#94a3b8',
     position: 'sticky',
     bottom: 0,
     zIndex: 30,
@@ -127,17 +147,16 @@ const styles = {
     height: '7px',
     borderRadius: '50%',
     backgroundColor: '#10b981',
+    flexShrink: 0,
   },
   systemName: {
     fontWeight: 700,
     letterSpacing: '0.06em',
-    color: '#f1f5f9',
     fontSize: '10px',
   },
   divider: {
     width: '1px',
     height: '16px',
-    background: 'rgba(255, 255, 255, 0.08)',
   },
   infoPill: {
     display: 'flex',
@@ -165,8 +184,6 @@ const styles = {
     fontFamily: 'monospace',
     fontWeight: 600,
     color: '#38bdf8',
-    background: 'rgba(15, 22, 38, 0.8)',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
     borderRadius: '4px',
     padding: '2px 6px',
   },
@@ -174,20 +191,15 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '4px',
-    color: '#cbd5e1',
     textDecoration: 'none',
     fontWeight: 600,
     padding: '3px 8px',
     borderRadius: '4px',
-    background: '#0f1626',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
     transition: 'all 0.2s',
   },
   versionBadge: {
     fontSize: '10px',
     fontFamily: 'monospace',
-    color: '#64748b',
-    background: 'rgba(255, 255, 255, 0.03)',
     padding: '2px 6px',
     borderRadius: '4px',
   },

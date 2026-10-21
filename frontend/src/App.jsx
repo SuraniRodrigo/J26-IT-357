@@ -94,8 +94,8 @@ const styles = {
   appLayout: {
     display: 'flex',
     minHeight: '100vh',
-    backgroundColor: '#0a0e17',
-    color: '#f1f5f9',
+    backgroundColor: 'var(--bg-main)',
+    color: 'var(--text-main)',
     fontFamily: "'Inter', sans-serif",
   },
   mainContainer: {
@@ -107,7 +107,7 @@ const styles = {
   },
   contentArea: {
     flex: 1,
-    backgroundColor: '#0a0e17',
+    backgroundColor: 'var(--bg-main)',
     backgroundImage: 'radial-gradient(ellipse at 50% 0%, rgba(30, 58, 138, 0.08) 0%, transparent 70%)',
     overflowY: 'auto',
   },
