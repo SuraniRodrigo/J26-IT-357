@@ -1769,6 +1769,24 @@ export default function InventoryOptimizationView() {
         sewing_smv_minutes:'23.1', current_inventory:'1600', in_transit_qty:'500',
         demand_std_dev:'57', average_lead_time:'11', lead_time_std_dev:'2.6',
       },
+      'LK-APP-007': {
+        product_name:'Stormproof Running Jacket', unit_price_usd:'79.00', historical_orders:'6840',
+        total_historical_units:'13680', projected_demand_30d:'5120', fabric_requirement:'4096',
+        sewing_smv_minutes:'32.5', current_inventory:'620', in_transit_qty:'180',
+        demand_std_dev:'44', average_lead_time:'16', lead_time_std_dev:'4.2',
+      },
+      'LK-APP-008': {
+        product_name:'Seamless Compression Shorts', unit_price_usd:'36.75', historical_orders:'14320',
+        total_historical_units:'42960', projected_demand_30d:'10350', fabric_requirement:'5175',
+        sewing_smv_minutes:'17.4', current_inventory:'3800', in_transit_qty:'900',
+        demand_std_dev:'58', average_lead_time:'8', lead_time_std_dev:'1.6',
+      },
+      'LK-APP-009': {
+        product_name:'Lightweight Rain Shell', unit_price_usd:'88.00', historical_orders:'7520',
+        total_historical_units:'15040', projected_demand_30d:'6380', fabric_requirement:'5104',
+        sewing_smv_minutes:'34.2', current_inventory:'740', in_transit_qty:'220',
+        demand_std_dev:'46', average_lead_time:'14', lead_time_std_dev:'3.8',
+      },
       'LK-FSS-001': {
         product_name:'Field & Stream Sportsman 16 Gun Fire Safe', department:'Apparel',
         category:'Apparel Style', export_markets:'Not provided', unit_price_usd:'0',
@@ -8374,6 +8392,9 @@ export default function InventoryOptimizationView() {
                     <option value="LK-APP-004">LK-APP-004 · Sports Bra</option>
                     <option value="LK-APP-005">LK-APP-005 · Training Hoodie</option>
                     <option value="LK-APP-006">LK-APP-006 · Yoga Leggings</option>
+                    <option value="LK-APP-007">LK-APP-007 · Running Jacket</option>
+                    <option value="LK-APP-008">LK-APP-008 · Compression Shorts</option>
+                    <option value="LK-APP-009">LK-APP-009 · Rain Shell</option>
                     <option value="LK-FSS-001">LK-FSS-001 · Field &amp; Stream Safe</option>
                   </select>
                   <button type="button" className="btn-hover" onClick={useDemandProductSample} style={{ ...styles.addBtn, padding:'9px 14px', fontSize:'12px' }}>

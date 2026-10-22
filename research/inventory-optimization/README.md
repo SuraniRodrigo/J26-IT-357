@@ -160,8 +160,8 @@ latest matching timestamp is used. Risk Score (%) maps to disruption
 probability, Trust Score (%) maps to supplier trust, and Expected Delay (Days)
 is added to the normal supplier lead time before the risk adjustment. Supplier
 name and reported risk level are retained with the inventory record.
-The presentation dropdown provides six matched synthetic apparel examples
-(`LK-APP-001` through `LK-APP-006`) and a report-based forecast example
+The presentation dropdown provides nine matched synthetic apparel examples
+(`LK-APP-001` through `LK-APP-009`) and a report-based forecast example
 (`LK-FSS-001`).
 
 `LK-FSS-001` uses the supplied April 2026 forecast report's projected demand
