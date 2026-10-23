@@ -598,7 +598,7 @@ function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
   );
 }
 
-function ProductionApp() {
+function ProductionApp({ onBack }) {
   const [theme, setTheme] = useState(() =>
     window.localStorage.getItem("optichain-production-theme") === "dark"
       ? "dark"
@@ -789,6 +789,17 @@ function ProductionApp() {
       </aside>
       <main className="factory-main">
         <header className="factory-topbar">
+          <button
+            type="button"
+            className="production-back-button"
+            onClick={onBack}
+            aria-label="Back to components"
+            title="Back to components"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
           <strong>Self-Healing Production Optimizer</strong>
           <span className="topbar-factory">
             <b>♙</b> Katunayake Factory / Shift A
@@ -882,10 +893,39 @@ function ProductionApp() {
 }
 
 const modules = [
-  { id: "demand", name: "Demand Forecasting", shortName: "Demand", icon: "DF", status: "Forecasting active", description: "Plan demand, review forecasts, and compare market trends." },
-  { id: "inventory", name: "Inventory Guardian", shortName: "Inventory", icon: "IG", status: "Stock health monitoring", description: "Optimize buffer levels and monitor stock risk." },
-  { id: "supply", name: "Supply Disruption", shortName: "Supply", icon: "SD", status: "Supplier signals live", description: "Detect supplier delays and prepare disruption responses." },
-  { id: "production", name: "Production Optimizer", shortName: "Production", icon: "PO", status: "Self-healing enabled", description: "Monitor lines, diagnose disruptions, and regenerate schedules." },
+  {
+    id: "demand",
+    name: "Demand Forecasting",
+    shortName: "Demand",
+    icon: "DF",
+    status: "Forecasting active",
+    description: "Plan demand, review forecasts, and compare market trends.",
+  },
+  {
+    id: "inventory",
+    name: "Inventory Guardian",
+    shortName: "Inventory",
+    icon: "IG",
+    status: "Stock health monitoring",
+    description: "Optimize buffer levels and monitor stock risk.",
+  },
+  {
+    id: "supply",
+    name: "Supply Disruption",
+    shortName: "Supply",
+    icon: "SD",
+    status: "Supplier signals live",
+    description: "Detect supplier delays and prepare disruption responses.",
+  },
+  {
+    id: "production",
+    name: "Production Optimizer",
+    shortName: "Production",
+    icon: "PO",
+    status: "Self-healing enabled",
+    description:
+      "Monitor lines, diagnose disruptions, and regenerate schedules.",
+  },
 ];
 
 function LoginPage({ onLogin }) {
@@ -907,17 +947,42 @@ function LoginPage({ onLogin }) {
     <main className="login-page">
       <section className="login-brand-panel">
         <div className="login-brand-mark">OP</div>
-        <div><span>OPTICHAIN</span><p>Supply chain intelligence</p></div>
+        <div>
+          <span>OPTICHAIN</span>
+          <p>Supply chain intelligence</p>
+        </div>
       </section>
       <section className="login-card-wrap">
         <form className="login-card" onSubmit={submit}>
           <span className="login-kicker">SECURE WORKSPACE</span>
           <h1>Welcome back</h1>
           <p>Sign in to open your operations dashboard.</p>
-          <label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@optichain.com" /></label>
-          <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" /></label>
-          {error && <div className="login-error" role="alert">{error}</div>}
-          <button className="login-submit" type="submit">Sign in <Icon name="chevron" size={16} /></button>
+          <label>
+            Email address
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="name@optichain.com"
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your password"
+            />
+          </label>
+          {error && (
+            <div className="login-error" role="alert">
+              {error}
+            </div>
+          )}
+          <button className="login-submit" type="submit">
+            Sign in <Icon name="chevron" size={16} />
+          </button>
         </form>
       </section>
     </main>
@@ -928,7 +993,9 @@ function ModulePlaceholder({ module, onBack }) {
   return (
     <main className="module-placeholder">
       <header className="module-placeholder-header">
-        <button type="button" onClick={onBack}>← All components</button>
+        <button type="button" onClick={onBack}>
+          ← All components
+        </button>
         <span>{module.status}</span>
       </header>
       <section>
@@ -937,9 +1004,18 @@ function ModulePlaceholder({ module, onBack }) {
         <h1>{module.name}</h1>
         <p>{module.description}</p>
         <div className="module-placeholder-grid">
-          <article><span>Module status</span><strong>Ready</strong></article>
-          <article><span>Data connection</span><strong>Configured</strong></article>
-          <article><span>Last updated</span><strong>Now</strong></article>
+          <article>
+            <span>Module status</span>
+            <strong>Ready</strong>
+          </article>
+          <article>
+            <span>Data connection</span>
+            <strong>Configured</strong>
+          </article>
+          <article>
+            <span>Last updated</span>
+            <strong>Now</strong>
+          </article>
         </div>
       </section>
     </main>
@@ -947,7 +1023,9 @@ function ModulePlaceholder({ module, onBack }) {
 }
 
 export default function App() {
-  const [user, setUser] = useState(() => window.localStorage.getItem("optichain-user") || "");
+  const [user, setUser] = useState(
+    () => window.localStorage.getItem("optichain-user") || "",
+  );
   const [activeModule, setActiveModule] = useState(null);
 
   function logout() {
@@ -957,24 +1035,60 @@ export default function App() {
   }
 
   if (!user) return <LoginPage onLogin={setUser} />;
-  if (activeModule?.id === "production") return <ProductionApp />;
-  if (activeModule) return <ModulePlaceholder module={activeModule} onBack={() => setActiveModule(null)} />;
+  if (activeModule?.id === "production")
+    return <ProductionApp onBack={() => setActiveModule(null)} />;
+  if (activeModule)
+    return (
+      <ModulePlaceholder
+        module={activeModule}
+        onBack={() => setActiveModule(null)}
+      />
+    );
 
   return (
     <main className="operations-dashboard">
       <header className="operations-header">
-        <div className="operations-brand"><span>OP</span><strong>OPTICHAIN</strong></div>
-        <div className="operations-user"><span>{user}</span><button type="button" onClick={logout}>Logout</button></div>
+        <div className="operations-brand">
+          <span>OP</span>
+          <strong>OPTICHAIN</strong>
+        </div>
+        <div className="operations-user">
+          <span>{user}</span>
+          <button type="button" onClick={logout}>
+            Logout
+          </button>
+        </div>
       </header>
       <section className="operations-content">
-        <div className="operations-heading"><span>OPERATIONS DASHBOARD</span><h1>Choose a component</h1><p>Manage forecasting, inventory, supplier risk, and production from one workspace.</p></div>
+        <div className="operations-heading">
+          <span>OPERATIONS DASHBOARD</span>
+          <h1>Choose a component</h1>
+          <p>
+            Manage forecasting, inventory, supplier risk, and production from
+            one workspace.
+          </p>
+        </div>
         <div className="module-grid">
           {modules.map((module) => (
-            <button key={module.id} type="button" className="module-card" onClick={() => setActiveModule(module)}>
+            <button
+              key={module.id}
+              type="button"
+              className="module-card"
+              onClick={() => setActiveModule(module)}
+            >
               <span className="module-icon">{module.icon}</span>
-              <span className="module-card-copy"><small>{module.shortName}</small><strong>{module.name}</strong><p>{module.description}</p></span>
-              <span className="module-status"><i />{module.status}</span>
-              <span className="module-arrow"><Icon name="chevron" size={16} /></span>
+              <span className="module-card-copy">
+                <small>{module.shortName}</small>
+                <strong>{module.name}</strong>
+                <p>{module.description}</p>
+              </span>
+              <span className="module-status">
+                <i />
+                {module.status}
+              </span>
+              <span className="module-arrow">
+                <Icon name="chevron" size={16} />
+              </span>
             </button>
           ))}
         </div>
