@@ -1,11 +1,40 @@
 import { useState } from 'react';
 
+function getLocalDateValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dateFromValue(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatScenarioDate(date, relativeLabel = '') {
+  const formatted = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+  return relativeLabel ? `${relativeLabel}, ${formatted}` : formatted;
+}
+
+function daysAgo(days) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - days);
+  return date;
+}
+
 const initialScenarios = [
-  { id: 1, title: 'Material delay', order: 'ORD-2012', detail: '60 min', date: 'Mon, 12 Aug 2024', result: 'Recovered', tone: 'recovered' },
-  { id: 2, title: 'Line 03 absenteeism', detail: '15 workers · 4 hours', date: 'Fri, 9 Aug 2024', result: 'Recovered', tone: 'recovered' },
-  { id: 3, title: 'Power outage', detail: 'Whole factory · 120 min', date: 'Tue, 6 Aug 2024', result: 'Partial recovery', tone: 'partial' },
-  { id: 4, title: 'Line 01 quality issue', detail: 'High reject rate · 90 min', date: 'Thu, 1 Aug 2024', result: 'Recovered', tone: 'recovered' },
-  { id: 5, title: 'Fabric delay', detail: 'ORD-1890 · 180 min', date: 'Mon, 29 Jul 2024', result: 'Partial recovery', tone: 'partial' },
+  { id: 1, title: 'Material delay', order: 'ORD-2012', detail: '60 min', date: formatScenarioDate(daysAgo(1), 'Yesterday'), result: 'Recovered', tone: 'recovered' },
+  { id: 2, title: 'Line 03 absenteeism', detail: '15 workers · 4 hours', date: formatScenarioDate(daysAgo(4)), result: 'Recovered', tone: 'recovered' },
+  { id: 3, title: 'Power outage', detail: 'Whole factory · 120 min', date: formatScenarioDate(daysAgo(7)), result: 'Partial recovery', tone: 'partial' },
+  { id: 4, title: 'Line 01 quality issue', detail: 'High reject rate · 90 min', date: formatScenarioDate(daysAgo(12)), result: 'Recovered', tone: 'recovered' },
+  { id: 5, title: 'Fabric delay', detail: 'ORD-1890 · 180 min', date: formatScenarioDate(daysAgo(15)), result: 'Partial recovery', tone: 'partial' },
 ];
 
 const initialLines = [
@@ -25,6 +54,7 @@ function SimulationModal({ onClose, onRun }) {
   const [productionLine, setProductionLine] = useState('Line 02');
   const [affectedOrder, setAffectedOrder] = useState('ORD-2048');
   const [startTime, setStartTime] = useState('11:00');
+  const [simulationDate, setSimulationDate] = useState(getLocalDateValue());
   const [duration, setDuration] = useState('90 minutes');
   const [severity, setSeverity] = useState('High');
   const [unavailableMachines, setUnavailableMachines] = useState('2');
@@ -32,7 +62,7 @@ function SimulationModal({ onClose, onRun }) {
 
   function submit(event) {
     event.preventDefault();
-    onRun({ scenarioName, disruptionType, productionLine, affectedOrder, startTime, duration, severity, unavailableMachines, notes });
+    onRun({ scenarioName, disruptionType, productionLine, affectedOrder, simulationDate, startTime, duration, severity, unavailableMachines, notes });
   }
 
   return (
@@ -49,6 +79,7 @@ function SimulationModal({ onClose, onRun }) {
           <div className="simulation-field"><label htmlFor="scenario-line">Production line <b>*</b></label><select id="scenario-line" value={productionLine} onChange={(event) => setProductionLine(event.target.value)}>{initialLines.map((line) => <option key={line.name}>{line.name}</option>)}</select></div>
           <div className="simulation-field"><label htmlFor="affected-order">Affected order <b>*</b></label><select id="affected-order" value={affectedOrder} onChange={(event) => setAffectedOrder(event.target.value)}>{orders.map((order) => <option key={order}>{order}</option>)}</select></div>
           <div className="simulation-field"><label htmlFor="scenario-start">Start time <b>*</b></label><input id="scenario-start" type="time" required value={startTime} onChange={(event) => setStartTime(event.target.value)} /></div>
+          <div className="simulation-field"><label htmlFor="scenario-date">Simulation date <span>(optional)</span></label><input id="scenario-date" type="date" value={simulationDate} onChange={(event) => setSimulationDate(event.target.value)} /></div>
           <div className="simulation-field"><label htmlFor="scenario-duration">Duration <b>*</b></label><select id="scenario-duration" value={duration} onChange={(event) => setDuration(event.target.value)}>{durations.map((item) => <option key={item}>{item}</option>)}</select></div>
           <div className="simulation-field"><label htmlFor="scenario-severity">Severity <b>*</b></label><select id="scenario-severity" value={severity} onChange={(event) => setSeverity(event.target.value)}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></div>
           <div className="simulation-field"><label htmlFor="unavailable-machines">Unavailable machines <b>*</b></label><input id="unavailable-machines" type="number" min="0" max="50" required value={unavailableMachines} onChange={(event) => setUnavailableMachines(event.target.value)} /></div>
@@ -67,12 +98,16 @@ export default function SimulationDashboard() {
   const [lastScenario, setLastScenario] = useState(null);
 
   function runSimulation(scenario) {
+    const selectedDateValue = scenario.simulationDate || getLocalDateValue();
+    const selectedDate = dateFromValue(selectedDateValue);
+    const todayValue = getLocalDateValue();
+    const relativeLabel = selectedDateValue === todayValue ? 'Today' : '';
     setScenarios((current) => [{
       id: Date.now(),
       title: scenario.disruptionType,
       order: scenario.affectedOrder,
       detail: scenario.duration,
-      date: `Today, ${scenario.startTime}`,
+      date: `${formatScenarioDate(selectedDate, relativeLabel)}, ${scenario.startTime}`,
       result: 'Sandbox complete',
       tone: 'recovered',
     }, ...current]);
