@@ -1224,6 +1224,112 @@ const calculateFinancialImpact = (product, roq, skuSS) => {
   };
 };
 
+function UpstreamSignalSummary({ directParams, isDark, c }) {
+  const probability = Number(directParams.disruption_probability) || 0;
+  const riskLevel = probability > 0.6 ? 'CRITICAL'
+    : probability > 0.4 ? 'HIGH'
+      : probability > 0.2 ? 'MEDIUM' : 'LOW';
+  const riskColor = probability > 0.6 ? '#EF4444'
+    : probability > 0.2 ? '#D97706' : '#059669';
+  const cardStyle = {
+    background: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF',
+    border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0'}`,
+    borderRadius: '10px',
+    padding: '12px 14px',
+  };
+  const labelStyle = {
+    fontSize: '10px',
+    fontWeight: 700,
+    color: c.sub,
+    marginBottom: '6px',
+  };
+  const valueStyle = {
+    fontSize: '18px',
+    fontWeight: 800,
+    color: c.title,
+  };
+
+  return (
+    <section style={{
+      background: isDark ? 'rgba(59,130,246,0.04)' : '#EFF6FF',
+      border: `1px solid ${isDark ? 'rgba(59,130,246,0.25)' : '#BFDBFE'}`,
+      borderRadius: '14px',
+      padding: '14px 16px',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+        <div>
+          <div style={{ fontSize: '13px', fontWeight: 800, color: isDark ? '#60A5FA' : '#1D4ED8' }}>
+            Planning signals
+          </div>
+          <div style={{ fontSize: '11px', color: c.sub, marginTop: '3px' }}>
+            Sample catalog values · not live Module 1 or 2 data
+          </div>
+        </div>
+        <span style={{
+          fontSize: '10px',
+          fontWeight: 700,
+          color: '#92400E',
+          background: '#FEF3C7',
+          padding: '4px 9px',
+          borderRadius: '10px',
+        }}>
+          Sample data
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+        <div style={cardStyle}>
+          <div style={labelStyle}>Forecast demand</div>
+          <div style={valueStyle}>
+            {directParams.forecasted_demand > 0 ? directParams.forecasted_demand.toLocaleString() : '—'}
+          </div>
+          <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>units per planning cycle</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={labelStyle}>Disruption risk</div>
+          <div style={{ ...valueStyle, color: riskColor }}>{(probability * 100).toFixed(0)}%</div>
+          <div style={{ height: '4px', borderRadius: '2px', background: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0', marginTop: '7px' }}>
+            <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, probability * 100))}%`, borderRadius: '2px', background: riskColor }} />
+          </div>
+        </div>
+        <div style={cardStyle}>
+          <div style={labelStyle}>Supplier lead time</div>
+          <div style={valueStyle}>
+            {directParams.average_lead_time > 0 ? `${directParams.average_lead_time.toFixed(1)} days` : '—'}
+          </div>
+          <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>estimated delivery time</div>
+        </div>
+        <div style={cardStyle}>
+          <div style={labelStyle}>Risk level</div>
+          <div style={{ ...valueStyle, color: riskColor }}>{riskLevel}</div>
+          <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>based on disruption risk</div>
+        </div>
+      </div>
+
+      <details style={{ marginTop: '10px', color: c.sub, fontSize: '11px' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700, padding: '4px 0' }}>More calculation details</summary>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', marginTop: '8px' }}>
+          <div style={cardStyle}>
+            <div style={labelStyle}>Demand variability</div>
+            <div style={valueStyle}>±{directParams.demand_std_dev > 0 ? directParams.demand_std_dev.toFixed(1) : '—'}</div>
+            <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>units standard deviation</div>
+          </div>
+          <div style={cardStyle}>
+            <div style={labelStyle}>Supplier reliability</div>
+            <div style={valueStyle}>{directParams.supplier_trust_score || '—'} / 100</div>
+            <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>OTIF score</div>
+          </div>
+          <div style={cardStyle}>
+            <div style={labelStyle}>Lead-time variability</div>
+            <div style={valueStyle}>±{directParams.lead_time_std_dev?.toFixed(2) || '—'} days</div>
+            <div style={{ fontSize: '10px', color: c.sub, marginTop: '3px' }}>standard deviation</div>
+          </div>
+        </div>
+      </details>
+    </section>
+  );
+}
+
 export default function InventoryOptimizationView() {
   // ── Theme ─────────────────────────────────────────────────────────────────
   const [theme, setTheme] = useState(() => {
@@ -1894,6 +2000,11 @@ export default function InventoryOptimizationView() {
       setIsDemandProductModalOpen(false);
       showToast(`Demand SKU ${created.product_id} added; 30-day demand is retained for inventory planning.`);
       await fetchAll();
+      setSortCol(null);
+      setProductsList(current => [
+        ...current.filter(product => product.product_id !== created.product_id),
+        created,
+      ]);
       setSelectedSku(created.product_id);
     } catch (err) {
       showToast(`Demand SKU creation failed: ${err.message || 'Error'}`, 'error');
@@ -2543,15 +2654,17 @@ export default function InventoryOptimizationView() {
         || (availabilityFilter === 'READY' && !hasShortage);
       return catOk && srchOk && availOk;
     });
-    list = [...list].sort((a, b) => {
-      let av, bv;
-      if (sortCol === 'disruption_probability') { av = a.disruption_probability; bv = b.disruption_probability; }
-      else if (sortCol === 'current_inventory')  { av = a.current_inventory; bv = b.current_inventory; }
-      else if (sortCol === 'safety_stock')  { av = a.forecasted_demand * 0.35; bv = b.forecasted_demand * 0.35; }
-      else if (sortCol === 'roq') { av = a.forecasted_demand * 7 * (1 + a.disruption_probability); bv = b.forecasted_demand * 7 * (1 + b.disruption_probability); }
-      else { av = a[sortCol] ?? 0; bv = b[sortCol] ?? 0; }
-      return sortDir === 'asc' ? av - bv : bv - av;
-    });
+    if (sortCol) {
+      list = [...list].sort((a, b) => {
+        let av, bv;
+        if (sortCol === 'disruption_probability') { av = a.disruption_probability; bv = b.disruption_probability; }
+        else if (sortCol === 'current_inventory')  { av = a.current_inventory; bv = b.current_inventory; }
+        else if (sortCol === 'safety_stock')  { av = a.forecasted_demand * 0.35; bv = b.forecasted_demand * 0.35; }
+        else if (sortCol === 'roq') { av = a.forecasted_demand * 7 * (1 + a.disruption_probability); bv = b.forecasted_demand * 7 * (1 + b.disruption_probability); }
+        else { av = a[sortCol] ?? 0; bv = b[sortCol] ?? 0; }
+        return sortDir === 'asc' ? av - bv : bv - av;
+      });
+    }
     return list;
   }, [productsList, selectedCategory, searchQuery, sortCol, sortDir, availabilityFilter]);
 
@@ -9113,107 +9226,7 @@ export default function InventoryOptimizationView() {
                     </div>
                   </div>
 
-                  {/* 2. Upstream Signals: Module 1 (Demand) & Module 2 (Supply Risk) */}
-                  <div style={{ background: isDark ? 'rgba(37,99,235,0.06)' : '#EFF6FF', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.25)' : '#BFDBFE'}`, borderRadius: '14px', padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '15px' }}>📡</span>
-                        <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#60A5FA' : '#1D4ED8', letterSpacing: '.03em' }}>
-                          UPSTREAM SIGNALS: MODULE 1 &amp; MODULE 2 (AI AUTO-FETCHED)
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '9.5px', color: c.sub }}>
-                          🕐 {new Date().toLocaleTimeString()}
-                        </span>
-                        <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', background: '#FEF3C7', padding: '2px 8px', borderRadius: '8px', border: '1px solid #FCD34D' }}>
-                          ⚡ DEMO DATA (APIs Pending)
-                        </span>
-                        <button
-                          onClick={() => {
-                            const match = productsList.find(p => p.product_id === directParams.product_id);
-                            if (match) {
-                              setDirectParams(p => ({
-                                ...p,
-                                forecasted_demand: match.forecasted_demand,
-                                demand_std_dev: match.demand_std_dev,
-                                disruption_probability: match.disruption_probability,
-                                supplier_trust_score: match.supplier_trust_score,
-                                average_lead_time: match.average_lead_time,
-                                lead_time_std_dev: match.lead_time_std_dev,
-                              }));
-                              showToast(`🔄 Upstream feeds refreshed for ${directParams.product_id}`);
-                            }
-                          }}
-                          style={{ fontSize: '10.5px', fontWeight: 700, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', border: '1px solid #93C5FD', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer' }}
-                        >
-                          🔄 Refresh
-                        </button>
-                      </div>
-                    </div>
-
-                    <div style={{ marginBottom: '10px', fontSize: '10.5px', color: isDark ? '#93C5FD' : '#1E40AF', background: isDark ? 'rgba(37,99,235,0.12)' : '#DBEAFE', padding: '6px 10px', borderRadius: '8px', fontWeight: 600 }}>
-                      🔒 These values are <strong>auto-fetched from Module 1 &amp; 2 AI models</strong>. The inventory manager does not edit them.
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '8px' }}>
-                      {/* M1: Forecast Demand */}
-                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#BFDBFE'}`, borderRadius: '8px', padding: '10px' }}>
-                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#2563EB' }}>📈 M1 · FORECAST DEMAND (D)</div>
-                        <div style={{ fontSize: '17px', fontWeight: 900, color: directParams.forecasted_demand > 0 ? (isDark ? '#60A5FA' : '#1D4ED8') : '#EF4444', marginTop: '2px' }}>
-                          {directParams.forecasted_demand > 0 ? directParams.forecasted_demand.toLocaleString() : '0 (Invalid)'}
-                        </div>
-                        <div style={{ fontSize: '9px', color: c.sub }}>units / cycle</div>
-                      </div>
-
-                      {/* M1: Demand Volatility */}
-                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#BFDBFE'}`, borderRadius: '8px', padding: '10px' }}>
-                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#2563EB' }}>📊 M1 · VOLATILITY (σ_D)</div>
-                        <div style={{ fontSize: '17px', fontWeight: 900, color: isDark ? '#60A5FA' : '#1D4ED8', marginTop: '2px' }}>
-                          ±{directParams.demand_std_dev > 0 ? directParams.demand_std_dev.toFixed(1) : '—'}
-                        </div>
-                        <div style={{ fontSize: '9px', color: c.sub }}>units std. dev.</div>
-                      </div>
-
-                      {/* M2: Disruption Risk */}
-                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '8px', padding: '10px' }}>
-                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#D97706' }}>⚠️ M2 · DISRUPTION PROB.</div>
-                        <div style={{ fontSize: '17px', fontWeight: 900, color: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#D97706' : '#10B981', marginTop: '2px' }}>
-                          {(directParams.disruption_probability * 100).toFixed(0)}%
-                        </div>
-                        <div style={{ height: '3px', borderRadius: '2px', background: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0', marginTop: '4px' }}>
-                          <div style={{ height: '100%', width: `${directParams.disruption_probability * 100}%`, background: directParams.disruption_probability > 0.6 ? '#EF4444' : '#F59E0B' }} />
-                        </div>
-                      </div>
-
-                      {/* M2: Supplier Trust Score */}
-                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '8px', padding: '10px' }}>
-                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#D97706' }}>🤝 M2 · SUPPLIER TRUST</div>
-                        <div style={{ fontSize: '17px', fontWeight: 900, color: (directParams.supplier_trust_score || 0) >= 75 ? '#10B981' : '#F59E0B', marginTop: '2px' }}>
-                          {directParams.supplier_trust_score || 75}<span style={{ fontSize: '11px', fontWeight: 600 }}>/100</span>
-                        </div>
-                        <div style={{ fontSize: '9px', color: c.sub }}>OTIF rating</div>
-                      </div>
-
-                      {/* M2: Lead Time */}
-                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '8px', padding: '10px' }}>
-                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#D97706' }}>⏱ M2 · LEAD TIME (L)</div>
-                        <div style={{ fontSize: '17px', fontWeight: 900, color: isDark ? '#FBBF24' : '#92400E', marginTop: '2px' }}>
-                          {directParams.average_lead_time > 0 ? directParams.average_lead_time.toFixed(1) : '—'} d
-                        </div>
-                        <div style={{ fontSize: '9px', color: c.sub }}>σ = ±{directParams.lead_time_std_dev?.toFixed(2) || '—'} d</div>
-                      </div>
-
-                      {/* M2: Risk Tier */}
-                      <div style={{ background: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF', border: `1px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '8px', padding: '10px' }}>
-                        <div style={{ fontSize: '9.5px', fontWeight: 800, color: '#D97706' }}>🛡 M2 · RISK TIER</div>
-                        <div style={{ fontSize: '15px', fontWeight: 900, color: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#F59E0B' : '#10B981', marginTop: '3px' }}>
-                          {directParams.disruption_probability > 0.6 ? 'CRITICAL' : directParams.disruption_probability > 0.4 ? 'HIGH' : directParams.disruption_probability > 0.2 ? 'MEDIUM' : 'LOW'}
-                        </div>
-                        <div style={{ fontSize: '9px', color: c.sub }}>AI classification</div>
-                      </div>
-                    </div>
-                  </div>
+                  <UpstreamSignalSummary directParams={directParams} isDark={isDark} c={c} />
 
                   {/* 3. Section C & D: Inventory Manager Manual Inputs */}
                   <div style={{ background: isDark ? 'rgba(16,185,129,0.04)' : '#F0FDF4', border: `1.5px solid ${isDark ? 'rgba(16,185,129,0.25)' : '#BBF7D0'}`, borderRadius: '14px', padding: '14px 16px' }}>
@@ -9994,7 +10007,7 @@ export default function InventoryOptimizationView() {
                   </div>
                 </div>
 
-                {/* 4. Action Shortcuts & What-If Simulator Jump */}
+                {/* Action shortcut to the What-If Simulator */}
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     className="btn-hover"
@@ -10021,55 +10034,6 @@ export default function InventoryOptimizationView() {
                   >
                     🧪 Launch in What-If Simulator ↗
                   </button>
-                  <button
-                    className="btn-hover"
-                    onClick={() => {
-                      setSelectedSku(item.product_id);
-                      setActiveTab('apiTester');
-                      setDrawerItem(null);
-                    }}
-                    style={{
-                      flex: 1,
-                      background: isDark ? '#1E293B' : '#E2E8F0',
-                      color: isDark ? '#E2E8F0' : '#1E293B',
-                      border: `1px solid ${c.cardBorder}`,
-                      padding: '11px',
-                      borderRadius: '10px',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    ⚡ Test in Live API Studio ↗
-                  </button>
-                </div>
-
-                {/* 5. Database & Audit Traceability */}
-                <div style={{
-                  padding: '12px 14px',
-                  background: isDark ? 'rgba(0,0,0,0.2)' : '#F1F5F9',
-                  borderRadius: '10px',
-                  border: `1px dashed ${c.tagBorder}`,
-                  fontSize: '10.5px',
-                  color: c.sub,
-                  lineHeight: 1.6,
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                    <span>Persistent Table:</span>
-                    <span style={{ color: isDark ? '#93C5FD' : '#2563EB', fontFamily: 'monospace' }}>inventory_products</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Storage Engine:</span>
-                    <span>SQLite (backend/optichain_inventory.db)</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>MAS ERP Sync:</span>
-                    <span style={{ color: '#10B981', fontWeight: 700 }}>● Active Real-time</span>
-                  </div>
                 </div>
               </div>
             </div>
@@ -10367,140 +10331,7 @@ export default function InventoryOptimizationView() {
                 </div>
               </div>
 
-              {/* UPSTREAM SIGNALS: MODULE 1 & MODULE 2 — READ-ONLY AUTO-FETCHED */}
-              <div style={{ background: isDark ? 'rgba(59,130,246,0.04)' : '#EFF6FF', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.25)' : '#BFDBFE'}`, borderRadius: '14px', padding: '16px 18px', boxSizing: 'border-box' }}>
-                {/* Section Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '15px' }}>📡</span>
-                    <span style={{ fontSize: '12px', fontWeight: 800, color: isDark ? '#60A5FA' : '#1D4ED8', letterSpacing: '.03em' }}>
-                      UPSTREAM SIGNALS: MODULE 1 (DEMAND) &amp; MODULE 2 (SUPPLY RISK)
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '10px', color: c.sub }}>
-                      🕐 Fetched: {new Date().toLocaleTimeString()}
-                    </span>
-                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#D97706', background: '#FEF3C7', padding: '3px 10px', borderRadius: '10px', border: '1px solid #FCD34D' }}>
-                      ⚡ DEMO DATA (Upstream APIs Pending)
-                    </span>
-                    <button
-                      onClick={async () => {
-                        // When live: replace this with fetchDemoUpstreamFeeds() or fetchLiveUpstream()
-                        const match = (productsList || []).find(p => p.product_id === directParams.product_id);
-                        if (match) {
-                          setDirectParams(p => ({
-                            ...p,
-                            forecasted_demand: match.forecasted_demand,
-                            demand_std_dev: match.demand_std_dev,
-                            disruption_probability: match.disruption_probability,
-                            supplier_trust_score: match.supplier_trust_score,
-                            average_lead_time: match.average_lead_time,
-                            lead_time_std_dev: match.lead_time_std_dev,
-                          }));
-                          showToast(`🔄 Upstream signals refreshed for ${directParams.product_id} from demo catalog`);
-                        }
-                      }}
-                      style={{ fontSize: '11px', fontWeight: 700, color: '#2563EB', background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF', border: '1.5px solid #93C5FD', borderRadius: '8px', padding: '4px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
-                    >
-                      🔄 Refresh Upstream
-                    </button>
-                  </div>
-                </div>
-
-                {/* Info Banner */}
-                <div style={{ marginBottom: '12px', padding: '8px 12px', background: isDark ? 'rgba(37,99,235,0.1)' : '#DBEAFE', borderRadius: '8px', fontSize: '11px', color: isDark ? '#93C5FD' : '#1D4ED8', fontWeight: 600 }}>
-                  🔒 These values are <strong>auto-fetched from Module 1 &amp; Module 2</strong>. You cannot edit them — they represent the AI-generated demand forecast and supply-risk score for the selected SKU.
-                </div>
-
-                {/* Read-Only Signal Cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
-
-                  {/* M1: Forecasted Demand */}
-                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#BFDBFE'}`, borderRadius: '10px', padding: '12px 14px', position: 'relative' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '.05em' }}>📈 M1 · Forecast Demand</span>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: directParams.forecasted_demand > 0 ? (isDark ? '#60A5FA' : '#1D4ED8') : '#EF4444' }}>
-                      {directParams.forecasted_demand > 0 ? directParams.forecasted_demand.toLocaleString() : '—'}
-                    </div>
-                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>units / planning cycle</div>
-                    {directParams.forecasted_demand <= 0 && (
-                      <div style={{ marginTop: '6px', fontSize: '10px', color: '#EF4444', fontWeight: 700 }}>⚠ No data — select a SKU above</div>
-                    )}
-                  </div>
-
-                  {/* M1: Demand Volatility */}
-                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(59,130,246,0.2)' : '#BFDBFE'}`, borderRadius: '10px', padding: '12px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '.05em' }}>📊 M1 · Demand Volatility (σ_D)</span>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: isDark ? '#60A5FA' : '#1D4ED8' }}>
-                      ±{directParams.demand_std_dev > 0 ? directParams.demand_std_dev.toFixed(1) : '—'}
-                    </div>
-                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>units std. deviation</div>
-                  </div>
-
-                  {/* M2: Disruption Probability */}
-                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '10px', padding: '12px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>⚠️ M2 · Disruption Risk</span>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#D97706' : '#10B981' }}>
-                      {(directParams.disruption_probability * 100).toFixed(0)}%
-                    </div>
-                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>disruption probability</div>
-                    {/* Risk bar */}
-                    <div style={{ marginTop: '6px', height: '4px', borderRadius: '2px', background: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0' }}>
-                      <div style={{ height: '100%', width: `${directParams.disruption_probability * 100}%`, borderRadius: '2px', background: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#F59E0B' : '#10B981', transition: 'width 0.4s ease' }} />
-                    </div>
-                  </div>
-
-                  {/* M2: Supplier Trust Score */}
-                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '10px', padding: '12px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>🤝 M2 · Supplier Trust</span>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: (directParams.supplier_trust_score || 0) >= 75 ? '#10B981' : '#F59E0B' }}>
-                      {directParams.supplier_trust_score || '—'}<span style={{ fontSize: '12px', fontWeight: 600 }}>/100</span>
-                    </div>
-                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>OTIF reliability score</div>
-                    {/* Trust bar */}
-                    <div style={{ marginTop: '6px', height: '4px', borderRadius: '2px', background: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0' }}>
-                      <div style={{ height: '100%', width: `${directParams.supplier_trust_score || 0}%`, borderRadius: '2px', background: (directParams.supplier_trust_score || 0) >= 75 ? '#10B981' : '#F59E0B', transition: 'width 0.4s ease' }} />
-                    </div>
-                  </div>
-
-                  {/* M2: Lead Time */}
-                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '10px', padding: '12px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>⏱ M2 · Avg Lead Time</span>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: isDark ? '#FBBF24' : '#92400E' }}>
-                      {directParams.average_lead_time > 0 ? directParams.average_lead_time.toFixed(1) : '—'}
-                    </div>
-                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>days · σ = ±{directParams.lead_time_std_dev?.toFixed(2) || '—'} days</div>
-                  </div>
-
-                  {/* M2: Risk Level Summary */}
-                  <div style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#fff', border: `1.5px solid ${isDark ? 'rgba(217,119,6,0.25)' : '#FDE68A'}`, borderRadius: '10px', padding: '12px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: '.05em' }}>🛡 M2 · Risk Classification</span>
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: '#D97706', background: '#FEF3C7', padding: '1px 7px', borderRadius: '8px', border: '1px solid #FDE68A' }}>Demo</span>
-                    </div>
-                    <div style={{ fontSize: '18px', fontWeight: 900, color: directParams.disruption_probability > 0.6 ? '#EF4444' : directParams.disruption_probability > 0.3 ? '#F59E0B' : '#10B981' }}>
-                      {directParams.disruption_probability > 0.6 ? 'CRITICAL' : directParams.disruption_probability > 0.4 ? 'HIGH' : directParams.disruption_probability > 0.2 ? 'MEDIUM' : 'LOW'}
-                    </div>
-                    <div style={{ fontSize: '10px', color: c.sub, marginTop: '2px' }}>computed from disruption prob.</div>
-                  </div>
-
-                </div>
-              </div>
+              <UpstreamSignalSummary directParams={directParams} isDark={isDark} c={c} />
 
 
               {/* SECTION D: OPTIMIZATION SETTINGS & POLICIES */}

@@ -21,13 +21,6 @@ export async function optimizeInventoryDetailed(payload) {
 }
 
 /**
- * Fetches system health and module versioning status.
- */
-export async function getInventoryHealth() {
-  return apiRequest('/api/inventory/health');
-}
-
-/**
  * Fetches the full monitored product catalog with mock upstream feeds.
  */
 export async function getInventoryProducts() {
