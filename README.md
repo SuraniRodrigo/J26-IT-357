@@ -95,6 +95,11 @@ the backend restarts and is not shared between multiple backend workers. The
 existing `/api/production/schedule` and `/api/v1/optimizer/recalculate`
 endpoints remain available for the production scheduling algorithms.
 
+The Production Optimizer lets users edit each active line's product, optional
+order number, and planned unit quantity from the overview. These plan details
+are saved in that browser's local storage and drive the overview's target and
+progress totals; they are not yet persisted to or shared through the backend.
+
 ## Testing
 
 ```bash
