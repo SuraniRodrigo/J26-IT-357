@@ -4,6 +4,7 @@
 **Project Reference:** J26-IT-357  
 **Student ID:** IT23401808  
 **Student Name:** Senadeera H.G.K.I  
+**Git Branch:** `Hierarchical_Garment_Demand_Forecasting_And_Trend_Analysis_Module`  
 **Primary Discipline:** Software Architecture, Machine Learning, Hierarchical Time-Series Econometrics, and Supply Chain Engineering  
 
 ---
