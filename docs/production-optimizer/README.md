@@ -327,3 +327,44 @@ component submission documents:
   workflow does.
 - No live factory telemetry or production database persistence is implemented
   by the Production UI API.
+
+## Future development
+
+The following proposals reflect the Production Optimizer presentation. They
+are future work; they are not currently implemented as live integrations or
+deployed AI-agent functionality.
+
+### 1. Better schedulers
+
+- **Reinforcement Learning (PPO):** Build on the existing garment dispatching
+  environment and PPO training script to develop and evaluate an AI agent that
+  can recommend rapid schedule adjustments when machine breakdowns occur. The
+  trained policy is not currently connected to the production API or UI.
+- **Multi-objective optimization:** Extend scheduling objectives to consider
+  worker fatigue and fairness, energy use, and changeover costs alongside
+  makespan and order deadlines. Evaluate the trade-offs before selecting a
+  schedule.
+
+### 2. Real-time factory connection
+
+- **MES/ERP integration:** Connect to factory Manufacturing Execution System
+  (MES) and Enterprise Resource Planning (ERP) platforms, such as SAP, to
+  exchange orders, resource availability, and schedule updates. Integrations
+  should be validated against each factory's systems and approval workflows.
+- **IoT sensors:** Ingest machine and line telemetry to monitor operating
+  status, worker efficiency indicators where appropriate, and downtime, with
+  suitable data-quality, privacy, and access controls.
+
+### 3. Improved risk prediction
+
+- **Graph Neural Networks (GNNs):** Investigate graph-based models for
+  representing multi-tier supplier networks and predicting regional supply
+  delays that could affect production plans.
+- **Live news and weather signals:** Evaluate external news, weather, and port
+  congestion data as additional risk signals for disruption forecasting.
+  External data would need reliable sources, validation, and safeguards against
+  stale or inaccurate inputs.
+
+Delivery prerequisites include persistent storage, integration and model
+evaluation, role-based approval, audit history, and safe fallbacks before
+recommendations can be applied to a live production schedule.
