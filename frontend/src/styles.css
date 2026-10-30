@@ -389,6 +389,7 @@ select option { color: #31465a; background: #fff; }
 .overview-heading { min-height: 66px; display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; }
 .overview-heading h1 { margin: 0; color: #102343; font: 700 28px 'Space Grotesk', sans-serif; letter-spacing: -.04em; }
 .overview-heading p { margin: 4px 0 0; color: #72839c; font-size: 14px; }
+.overview-controls { display: flex; align-items: center; gap: 12px; }
 .sync-status { display: flex; align-items: center; gap: 8px; margin-top: 17px; color: #677995; font-size: 10px; white-space: nowrap; }
 .sync-status i { width: 8px; height: 8px; border-radius: 50%; background: #41c979; }
 .overview-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin: 8px 0 13px; }
@@ -412,6 +413,7 @@ select option { color: #31465a; background: #fff; }
 .line-status { padding: 5px 11px; border-radius: 20px; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .line-status.running { color: #087d53; background: #d9f6ed; }
 .line-status.risk { color: #b96b00; background: #fff0cf; }
+.line-status.recovering { color: #956300; background: #fff0cf; }
 .line-status.maintenance { color: #5b6b82; background: #edf0f4; }
 .factory-order { display: flex; align-items: center; gap: 10px; min-width: 0; margin-top: 14px; }
 .factory-order > i, .maintenance-info > i { width: 41px; height: 41px; flex: 0 0 41px; display: grid; place-items: center; border-radius: 7px; color: #408db8; background: #eff7fc; font-size: 23px; font-style: normal; }
@@ -427,6 +429,7 @@ select option { color: #31465a; background: #fff; }
 .production-progress > i { height: 11px; display: block; overflow: hidden; border-radius: 8px; background: #e7ebf0; }
 .production-progress > i > b { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, #19b69d, #28c1a6); }
 .factory-line-card.risk .production-progress > i > b { background: linear-gradient(90deg, #e99716, #f5b33f); }
+.factory-line-card.recovering .production-progress > i > b { background: linear-gradient(90deg, #d99a19, #efbc4f); }
 .maintenance-info { display: flex; align-items: center; gap: 11px; margin-top: 23px; }
 .maintenance-info > i { color: #8998aa; background: #f0f2f5; }
 .maintenance-info > span { flex: initial; }
@@ -826,6 +829,8 @@ select option { color: #31465a; background: #fff; }
   .profile-button { width: 30px; height: 30px; flex: 0 0 30px; }
   .factory-content { padding: 14px 10px; }
   .overview-heading { min-height: 59px; }
+  .overview-controls { align-items: flex-end; flex-direction: column; gap: 5px; }
+  .overview-controls .factory-outline-button { min-height: 30px; padding: 0 7px; font-size: 8px; }
   .overview-heading h1 { font-size: 21px; }
   .overview-heading p { font-size: 10px; }
   .sync-status { margin-top: 9px; font-size: 8px; }
@@ -1258,6 +1263,7 @@ select option { color: #31465a; background: #fff; }
 .factory-shell[data-theme='dark'] .factory-line-card:hover,
 .factory-shell[data-theme='dark'] .risk-card:hover { border-color: #456482; }
 .factory-shell[data-theme='dark'] .factory-line-card.risk,
+.factory-shell[data-theme='dark'] .factory-line-card.recovering,
 .factory-shell[data-theme='dark'] .risk-card.selected { border-color: #87652d; background: #302a20; }
 .factory-shell[data-theme='dark'] .overview-panel { box-shadow: 0 5px 18px #020b1526; }
 .factory-shell[data-theme='dark'] .chart-grid path { stroke: #2a4058; }
