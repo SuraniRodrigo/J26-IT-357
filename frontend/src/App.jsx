@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DisruptionInjectorModal from "./components/optimizer/DisruptionInjectorModal";
 import DisruptionInbox from "./components/optimizer/DisruptionInbox";
 import LineActionDrawer from "./components/optimizer/LineActionDrawer";
+import ProductionPlanModal from "./components/optimizer/ProductionPlanModal";
 import RecoveryPlan from "./components/optimizer/RecoveryPlan";
 import ScheduleDashboard from "./components/optimizer/ScheduleDashboard";
 import SimulationDashboard from "./components/optimizer/SimulationDashboard";
@@ -13,6 +14,8 @@ const initialLines = [
     id: "alpha",
     name: "Line Alpha",
     product: "Performance Tee · PO-4821",
+    order: "ORD-2041",
+    plannedUnits: 1200,
     status: "On Track",
     output: 92,
     target: 100,
@@ -25,6 +28,8 @@ const initialLines = [
     id: "beta",
     name: "Line Beta",
     product: "Activewear Legging · PO-4798",
+    order: "ORD-2048",
+    plannedUnits: 850,
     status: "Disrupted",
     output: 54,
     target: 100,
@@ -38,6 +43,8 @@ const initialLines = [
     id: "gamma",
     name: "Line Gamma",
     product: "Cotton Polo · PO-4850",
+    order: "ORD-2050",
+    plannedUnits: 1100,
     status: "Recovering",
     output: 76,
     target: 100,
@@ -263,27 +270,9 @@ function DetectionLog({ lines, onDiagnose }) {
 }
 
 const factoryLines = [
-  {
-    id: "alpha",
-    name: "Line 01",
-    order: "ORD-2041",
-    product: "Polo Shirts (Export)",
-    targetPieces: 1200,
-  },
-  {
-    id: "beta",
-    name: "Line 02",
-    order: "ORD-2048",
-    product: "T-Shirts (EU)",
-    targetPieces: 850,
-  },
-  {
-    id: "gamma",
-    name: "Line 03",
-    order: "ORD-2050",
-    product: "Activewear (US)",
-    targetPieces: 1100,
-  },
+  { id: "alpha", name: "Line 01" },
+  { id: "beta", name: "Line 02" },
+  { id: "gamma", name: "Line 03" },
   {
     id: "maintenance",
     name: "Line 04",
@@ -303,6 +292,7 @@ function ProductionOverview({
   onViewLines,
   onViewDisruptions,
   onInjectDisruption,
+  onEditProductionPlan,
 }) {
   const activeLineCount = lines.filter(
     (line) => line.status !== "Disrupted",
@@ -310,56 +300,44 @@ function ProductionOverview({
   const averageOutput = Math.round(
     lines.reduce((total, line) => total + line.output, 0) / lines.length,
   );
-  const outputTarget = factoryLines
-    .filter((line) => line.targetPieces)
-    .reduce((total, line) => total + line.targetPieces, 0);
-  const currentOutput = factoryLines
-    .filter((line) => line.targetPieces)
-    .reduce((total, factoryLine) => {
-      const productionLine = lines.find(
-        (line) => line.id === factoryLine.id,
-      );
-      return (
-        total +
-        Math.round(
-          (factoryLine.targetPieces * (productionLine?.output ?? 0)) / 100,
-        )
-      );
-    }, 0);
+  const outputTarget = lines.reduce(
+    (total, line) => total + line.plannedUnits,
+    0,
+  );
+  const currentOutput = lines.reduce(
+    (total, line) =>
+      total +
+      Math.round((line.plannedUnits * line.output) / 100),
+    0,
+  );
   const disruptedLineCount = lines.filter(
     (line) => line.status === "Disrupted",
   ).length;
   const overviewLines = factoryLines.map((factoryLine) => {
-    if (!factoryLine.targetPieces) return factoryLine;
+      const productionLine = lines.find((line) => line.id === factoryLine.id);
+      if (!productionLine) return factoryLine;
+      const complete = Math.max(
+        0,
+        Math.min(100, Math.round(productionLine.output)),
+      );
+      const tone =
+        productionLine.status === "Disrupted"
+          ? "risk"
+          : productionLine.status === "Recovering"
+            ? "recovering"
+            : "running";
 
-    const productionLine = lines.find(
-      (line) => line.id === factoryLine.id,
-    );
-    const complete = Math.max(
-      0,
-      Math.min(100, Math.round(productionLine?.output ?? 0)),
-    );
-    const tone =
-      productionLine?.status === "Disrupted"
-        ? "risk"
-        : productionLine?.status === "Recovering"
-          ? "recovering"
-          : "running";
-
-    return {
-      ...factoryLine,
-      status:
-        productionLine?.status === "Disrupted"
-          ? "Disrupted"
-          : productionLine?.status === "Recovering"
-            ? "Recovering"
-            : "Running",
-      complete,
-      output: `${Math.round((factoryLine.targetPieces * complete) / 100).toLocaleString()} / ${factoryLine.targetPieces.toLocaleString()}`,
-      target: `${factoryLine.targetPieces.toLocaleString()} pcs`,
-      tone,
-    };
-  });
+      return {
+        ...factoryLine,
+        order: productionLine.order,
+        product: productionLine.product,
+        status: productionLine.status,
+        complete,
+        output: `${Math.round((productionLine.plannedUnits * complete) / 100).toLocaleString()} / ${productionLine.plannedUnits.toLocaleString()}`,
+        target: `${productionLine.plannedUnits.toLocaleString()} pcs`,
+        tone,
+      };
+    });
   const outputVariance = currentOutput - outputTarget;
   const outputVariancePercent = Math.round(
     (outputVariance / outputTarget) * 100,
@@ -373,6 +351,13 @@ function ProductionOverview({
           <p>Live line status and production performance.</p>
         </div>
         <div className="overview-controls">
+          <button
+            type="button"
+            className="factory-outline-button"
+            onClick={onEditProductionPlan}
+          >
+            Edit production plan
+          </button>
           <button
             type="button"
             className="factory-outline-button"
@@ -682,15 +667,51 @@ function ProductionApp({ onBack }) {
   );
   const [lines, setLines] = useState(initialLines);
   const [modalOpen, setModalOpen] = useState(false);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
   const [selectedLine, setSelectedLine] = useState(null);
   const [activeTab, setActiveTab] = useState("Overview");
   const [loading, setLoading] = useState(false);
   const [backendError, setBackendError] = useState("");
+  const [planError, setPlanError] = useState("");
   const [activeDisruption, setActiveDisruption] = useState({
     line_id: "Line Beta",
     disruption_type: "Machine Failure",
     severity_minutes: 46,
   });
+
+  useEffect(() => {
+    const savedPlan = window.localStorage.getItem("optichain-production-plan");
+    if (!savedPlan) return;
+
+    try {
+      const parsedPlan = JSON.parse(savedPlan);
+      if (!Array.isArray(parsedPlan)) {
+        throw new Error("Saved production plan must be a list of lines.");
+      }
+
+      const updatedLines = initialLines.map((line) => {
+        const savedLine = parsedPlan.find((item) => item?.id === line.id);
+        if (!savedLine) return line;
+        if (
+          typeof savedLine.order !== "string" ||
+          typeof savedLine.product !== "string" ||
+          !Number.isSafeInteger(savedLine.plannedUnits) ||
+          savedLine.plannedUnits < 1
+        ) {
+          throw new Error(`Saved production details for ${line.name} are invalid.`);
+        }
+        return {
+          ...line,
+          order: savedLine.order,
+          product: savedLine.product,
+          plannedUnits: savedLine.plannedUnits,
+        };
+      });
+      setLines(updatedLines);
+    } catch (error) {
+      setPlanError(`Could not load the saved production plan: ${error.message}`);
+    }
+  }, []);
 
   function toggleTheme() {
     const nextTheme = theme === "light" ? "dark" : "light";
@@ -807,6 +828,34 @@ function ProductionApp({ onBack }) {
     setSelectedLine(null);
   }
 
+  function saveProductionPlan(plan) {
+    try {
+      window.localStorage.setItem(
+        "optichain-production-plan",
+        JSON.stringify(plan),
+      );
+      setLines((current) =>
+        current.map((line) => {
+          const plannedLine = plan.find((item) => item.id === line.id);
+          return plannedLine
+            ? {
+                ...line,
+                order: plannedLine.order,
+                product: plannedLine.product,
+                plannedUnits: plannedLine.plannedUnits,
+              }
+            : line;
+        }),
+      );
+      setPlanError("");
+      setPlanModalOpen(false);
+      return true;
+    } catch (error) {
+      setPlanError(`Could not save the production plan: ${error.message}`);
+      return false;
+    }
+  }
+
   function selectFactoryLine(lineId) {
     const line = lines.find((item) => item.id === lineId);
     if (line) setSelectedLine(line);
@@ -916,6 +965,11 @@ function ProductionApp({ onBack }) {
           </button>
         </header>
         <div className="factory-content">
+          {planError && (
+            <div className="api-error" role="alert">
+              {planError}
+            </div>
+          )}
           {backendError && (
             <div className="api-error" role="alert">
               Backend unavailable: {backendError}
@@ -928,6 +982,7 @@ function ProductionApp({ onBack }) {
               onViewLines={() => setActiveTab("Schedule")}
               onViewDisruptions={() => setActiveTab("Disruptions")}
               onInjectDisruption={() => setModalOpen(true)}
+              onEditProductionPlan={() => setPlanModalOpen(true)}
             />
           )}
           {activeTab === "Disruptions" && (
@@ -948,6 +1003,13 @@ function ProductionApp({ onBack }) {
           lines={lines}
           onClose={() => setModalOpen(false)}
           onSubmit={injectDisruption}
+        />
+      )}
+      {planModalOpen && (
+        <ProductionPlanModal
+          lines={lines}
+          onClose={() => setPlanModalOpen(false)}
+          onSave={saveProductionPlan}
         />
       )}
       {selectedLine && (
