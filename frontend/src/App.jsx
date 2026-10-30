@@ -266,35 +266,23 @@ const factoryLines = [
   {
     id: "alpha",
     name: "Line 01",
-    status: "Running",
     order: "ORD-2041",
     product: "Polo Shirts (Export)",
-    target: "1,200 pcs",
-    complete: 72,
-    output: "864 / 1,200",
-    tone: "running",
+    targetPieces: 1200,
   },
   {
     id: "beta",
     name: "Line 02",
-    status: "At risk",
     order: "ORD-2048",
     product: "T-Shirts (EU)",
-    target: "850 pcs",
-    complete: 38,
-    output: "323 / 850",
-    tone: "risk",
+    targetPieces: 850,
   },
   {
     id: "gamma",
     name: "Line 03",
-    status: "Running",
     order: "ORD-2050",
     product: "Activewear (US)",
-    target: "1,100 pcs",
-    complete: 68,
-    output: "748 / 1,100",
-    tone: "running",
+    targetPieces: 1100,
   },
   {
     id: "maintenance",
@@ -309,7 +297,74 @@ const factoryLines = [
   },
 ];
 
-function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
+function ProductionOverview({
+  lines,
+  onSelectLine,
+  onViewLines,
+  onViewDisruptions,
+  onInjectDisruption,
+}) {
+  const activeLineCount = lines.filter(
+    (line) => line.status !== "Disrupted",
+  ).length;
+  const averageOutput = Math.round(
+    lines.reduce((total, line) => total + line.output, 0) / lines.length,
+  );
+  const outputTarget = factoryLines
+    .filter((line) => line.targetPieces)
+    .reduce((total, line) => total + line.targetPieces, 0);
+  const currentOutput = factoryLines
+    .filter((line) => line.targetPieces)
+    .reduce((total, factoryLine) => {
+      const productionLine = lines.find(
+        (line) => line.id === factoryLine.id,
+      );
+      return (
+        total +
+        Math.round(
+          (factoryLine.targetPieces * (productionLine?.output ?? 0)) / 100,
+        )
+      );
+    }, 0);
+  const disruptedLineCount = lines.filter(
+    (line) => line.status === "Disrupted",
+  ).length;
+  const overviewLines = factoryLines.map((factoryLine) => {
+    if (!factoryLine.targetPieces) return factoryLine;
+
+    const productionLine = lines.find(
+      (line) => line.id === factoryLine.id,
+    );
+    const complete = Math.max(
+      0,
+      Math.min(100, Math.round(productionLine?.output ?? 0)),
+    );
+    const tone =
+      productionLine?.status === "Disrupted"
+        ? "risk"
+        : productionLine?.status === "Recovering"
+          ? "recovering"
+          : "running";
+
+    return {
+      ...factoryLine,
+      status:
+        productionLine?.status === "Disrupted"
+          ? "Disrupted"
+          : productionLine?.status === "Recovering"
+            ? "Recovering"
+            : "Running",
+      complete,
+      output: `${Math.round((factoryLine.targetPieces * complete) / 100).toLocaleString()} / ${factoryLine.targetPieces.toLocaleString()}`,
+      target: `${factoryLine.targetPieces.toLocaleString()} pcs`,
+      tone,
+    };
+  });
+  const outputVariance = currentOutput - outputTarget;
+  const outputVariancePercent = Math.round(
+    (outputVariance / outputTarget) * 100,
+  );
+
   return (
     <section className="overview-screen">
       <div className="overview-heading">
@@ -317,17 +372,33 @@ function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
           <h1>Production overview</h1>
           <p>Live line status and production performance.</p>
         </div>
-        <span className="sync-status">
-          <i /> Last synced: 10:42
-        </span>
+        <div className="overview-controls">
+          <button
+            type="button"
+            className="factory-outline-button"
+            onClick={onInjectDisruption}
+          >
+            Simulate disruption
+          </button>
+          <span className="sync-status">
+            <i /> Demo data · updates after simulation
+          </span>
+        </div>
       </div>
       <div className="overview-kpis">
         <article className="overview-kpi">
           <span className="kpi-icon blue">◩</span>
           <div>
             <small>Active lines</small>
-            <strong>12 of 16</strong>
-            <span>75% operational</span>
+            <strong>
+              {activeLineCount} of {lines.length}
+            </strong>
+            <span>
+              {lines.length
+                ? Math.round((activeLineCount / lines.length) * 100)
+                : 0}
+              % operational
+            </span>
           </div>
           <b>›</b>
         </article>
@@ -335,8 +406,8 @@ function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
           <span className="kpi-icon green">▥</span>
           <div>
             <small>Efficiency</small>
-            <strong>84%</strong>
-            <span>+6% vs. last hour</span>
+            <strong>{averageOutput}%</strong>
+            <span>Average line output</span>
           </div>
           <b>›</b>
         </article>
@@ -344,23 +415,23 @@ function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
           <span className="kpi-icon blue">⬡</span>
           <div>
             <small>Output</small>
-            <strong>6,240 pcs</strong>
-            <span>of 8,000 target</span>
+            <strong>{currentOutput.toLocaleString()} pcs</strong>
+            <span>of {outputTarget.toLocaleString()} target</span>
           </div>
           <b>›</b>
         </article>
         <article className="overview-kpi">
           <span className="kpi-icon orange">▲</span>
           <div>
-            <small>At-risk orders</small>
-            <strong className="kpi-alert">3</strong>
+            <small>Disrupted lines</small>
+            <strong className="kpi-alert">{disruptedLineCount}</strong>
             <span>require attention</span>
           </div>
           <b>›</b>
         </article>
       </div>
       <div className="factory-line-grid">
-        {factoryLines.map((line) => (
+        {overviewLines.map((line) => (
           <button
             key={line.name}
             type="button"
@@ -418,7 +489,7 @@ function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
         <section className="overview-panel output-panel">
           <div className="overview-panel-heading">
             <h2>
-              <span className="heading-icon blue">▥</span> Output trend today
+              <span className="heading-icon blue">▥</span> Illustrative output trend
             </h2>
             <div className="chart-legend">
               <span>
@@ -435,7 +506,7 @@ function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
               className="output-chart"
               viewBox="0 0 520 198"
               role="img"
-              aria-label="Actual production output increases throughout the day, below the target line"
+              aria-label="Illustrative output trend; current production totals are shown below"
             >
               <g className="chart-grid">
                 {[20, 52, 84, 116, 148, 180].map((y) => (
@@ -528,15 +599,17 @@ function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
             <div>
               <span>◉</span>
               <small>Current output</small>
-              <strong>6,240 pcs</strong>
+              <strong>{currentOutput.toLocaleString()} pcs</strong>
             </div>
             <div>
               <small>Target by 18:00</small>
-              <strong>8,000 pcs</strong>
+              <strong>{outputTarget.toLocaleString()} pcs</strong>
             </div>
             <div>
               <small>Variance</small>
-              <strong className="variance">-1,760 pcs (-22%)</strong>
+              <strong className="variance">
+                {outputVariance.toLocaleString()} pcs ({outputVariancePercent}%)
+              </strong>
             </div>
           </div>
         </section>
@@ -547,30 +620,33 @@ function ProductionOverview({ onSelectLine, onViewLines, onViewDisruptions }) {
             </h2>
           </div>
           <div className="event-list">
-            <article className="factory-event">
-              <time>10:28</time>
-              <i className="event-dot green" />
-              <div>
-                <strong>Line 03 reached 70% target</strong>
-                <span>
-                  ORD-2050 – Activewear (US)
-                  <br />
-                  Production is on track.
-                </span>
-              </div>
-            </article>
-            <article className="factory-event">
-              <time>10:15</time>
-              <i className="event-dot orange" />
-              <div>
-                <strong>Fabric delivery delay predicted for ORD-2048</strong>
-                <span>
-                  Line 02 – T-Shirts (EU)
-                  <br />
-                  Model predicts 2–3 hour delay. Alternative plan suggested.
-                </span>
-              </div>
-            </article>
+            {lines.map((line) => {
+              const eventDescription =
+                line.status === "Disrupted"
+                  ? line.issue || "Disruption detected"
+                  : line.status === "Recovering"
+                    ? line.issue || "Recovery in progress"
+                    : "Production operating normally";
+
+              return (
+                <article className="factory-event" key={line.id}>
+                  <time>Live</time>
+                  <i
+                    className={`event-dot ${line.status === "Disrupted" ? "orange" : line.status === "Recovering" ? "slate" : "green"}`}
+                  />
+                  <div>
+                    <strong>
+                      {line.name}: {line.status}
+                    </strong>
+                    <span>
+                      {eventDescription}
+                      <br />
+                      Current output: {Math.round(line.output)}%
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
             <article className="factory-event">
               <time>09:50</time>
               <i className="event-dot slate" />
@@ -622,7 +698,7 @@ function ProductionApp({ onBack }) {
     setTheme(nextTheme);
   }
 
-  function applyBackendSchedule(result) {
+  function applyBackendSchedule(result, disruption) {
     const statusByApiValue = {
       disruption_detected: { status: "Disrupted", color: "red" },
       absorbing_rerouted_work: { status: "Recovering", color: "amber" },
@@ -642,7 +718,7 @@ function ProductionApp({ onBack }) {
           output: sequence.capacity_metrics.available_capacity_percent,
           issue:
             sequence.line_status === "disruption_detected"
-              ? line.issue || "Production disruption"
+              ? disruption.disruption_type
               : sequence.line_status === "absorbing_rerouted_work"
                 ? `Rerouted from ${result.affected_line}`
                 : undefined,
@@ -664,7 +740,7 @@ function ProductionApp({ onBack }) {
     setBackendError("");
     try {
       const result = await recalculateSchedule(disruption);
-      applyBackendSchedule(result);
+      applyBackendSchedule(result, disruption);
       setActiveDisruption(disruption);
       setModalOpen(false);
     } catch (error) {
@@ -690,7 +766,7 @@ function ProductionApp({ onBack }) {
     setBackendError("");
     try {
       const result = await recalculateSchedule(disruption);
-      applyBackendSchedule(result);
+      applyBackendSchedule(result, disruption);
       setActiveDisruption(disruption);
     } catch (error) {
       setBackendError(error.message);
@@ -705,7 +781,7 @@ function ProductionApp({ onBack }) {
     setBackendError("");
     try {
       const result = await recalculateSchedule(activeDisruption);
-      applyBackendSchedule(result);
+      applyBackendSchedule(result, activeDisruption);
     } catch (error) {
       setBackendError(error.message);
     } finally {
@@ -847,9 +923,11 @@ function ProductionApp({ onBack }) {
           )}
           {activeTab === "Overview" && (
             <ProductionOverview
+              lines={lines}
               onSelectLine={selectFactoryLine}
               onViewLines={() => setActiveTab("Schedule")}
               onViewDisruptions={() => setActiveTab("Disruptions")}
+              onInjectDisruption={() => setModalOpen(true)}
             />
           )}
           {activeTab === "Disruptions" && (
