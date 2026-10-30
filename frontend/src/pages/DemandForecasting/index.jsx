@@ -279,20 +279,26 @@ const FALLBACK_DEMAND_DRIVERS = {
   ],
 };
 
+// Date anchors for future prediction constraint
+const TODAY_ANCHOR = new Date();
+const CURRENT_YEAR = TODAY_ANCHOR.getFullYear(); // 2026
+const CURRENT_MONTH_IDX = TODAY_ANCHOR.getMonth(); // 0-based: 0=Jan ... 9=Oct ... 11=Dec
+const TODAY_ISO_DATE = TODAY_ANCHOR.toISOString().split('T')[0];
+
 const ALL_12_MONTHS = [
-  { value: 'January', label: '01 · January (Post-Holiday Clearance)', seasonMult: 0.85 },
-  { value: 'February', label: '02 · February (Late Winter / Spring Pre-Orders)', seasonMult: 0.90 },
-  { value: 'March', label: '03 · March (Spring Launch & Pre-Summer)', seasonMult: 1.25 },
-  { value: 'April', label: '04 · April (Activewear & Festival Expansion)', seasonMult: 1.15 },
-  { value: 'May', label: '05 · May (Pre-Summer Athleisure Peak)', seasonMult: 1.20 },
-  { value: 'June', label: '06 · June (High Summer Volume & Rapid Reorders)', seasonMult: 1.10 },
-  { value: 'July', label: '07 · July (Mid-Year Trade Rebalancing)', seasonMult: 0.95 },
-  { value: 'August', label: '08 · August (Back-to-School Ramp & Fall Knits)', seasonMult: 1.15 },
-  { value: 'September', label: '09 · September (Fall Outerwear Delivery)', seasonMult: 1.20 },
-  { value: 'October', label: '10 · October (Pre-Holiday Wholesale Bulking)', seasonMult: 1.30 },
-  { value: 'November', label: '11 · November (Black Friday & Cyber Week Surge)', seasonMult: 1.45 },
-  { value: 'December', label: '12 · December (Holiday Peak & Urgent Reorders)', seasonMult: 1.40 },
-  { value: 'CUSTOM', label: '✨ Custom Period / Campaign Window (User-Defined)', seasonMult: 1.20 },
+  { value: 'January', label: '01 · January (Post-Holiday Clearance)', seasonMult: 0.85, monthIdx: 0 },
+  { value: 'February', label: '02 · February (Late Winter / Spring Pre-Orders)', seasonMult: 0.90, monthIdx: 1 },
+  { value: 'March', label: '03 · March (Spring Launch & Pre-Summer)', seasonMult: 1.25, monthIdx: 2 },
+  { value: 'April', label: '04 · April (Activewear & Festival Expansion)', seasonMult: 1.15, monthIdx: 3 },
+  { value: 'May', label: '05 · May (Pre-Summer Athleisure Peak)', seasonMult: 1.20, monthIdx: 4 },
+  { value: 'June', label: '06 · June (High Summer Volume & Rapid Reorders)', seasonMult: 1.10, monthIdx: 5 },
+  { value: 'July', label: '07 · July (Mid-Year Trade Rebalancing)', seasonMult: 0.95, monthIdx: 6 },
+  { value: 'August', label: '08 · August (Back-to-School Ramp & Fall Knits)', seasonMult: 1.15, monthIdx: 7 },
+  { value: 'September', label: '09 · September (Fall Outerwear Delivery)', seasonMult: 1.20, monthIdx: 8 },
+  { value: 'October', label: '10 · October (Pre-Holiday Wholesale Bulking)', seasonMult: 1.30, monthIdx: 9 },
+  { value: 'November', label: '11 · November (Black Friday & Cyber Week Surge)', seasonMult: 1.45, monthIdx: 10 },
+  { value: 'December', label: '12 · December (Holiday Peak & Urgent Reorders)', seasonMult: 1.40, monthIdx: 11 },
+  { value: 'CUSTOM', label: '✨ Custom Future Period / Campaign Window (User-Defined)', seasonMult: 1.20, monthIdx: 99 },
 ];
 
 export default function DemandForecastingView({ onNavigate }) {
@@ -307,7 +313,7 @@ export default function DemandForecastingView({ onNavigate }) {
   const [durationEndMonth, setDurationEndMonth] = useState(''); // Empty: user selects end month (e.g. June)
   const [durationStartYear, setDurationStartYear] = useState('2026');
   const [durationEndYear, setDurationEndYear] = useState('2026');
-  const [selectedMonth, setSelectedMonth] = useState(''); // Empty: user must select from 12 months or custom
+  const [selectedMonth, setSelectedMonth] = useState(''); // Empty: user must select from future months or custom
   const [customPeriodName, setCustomPeriodName] = useState(''); // Empty: user inputs if custom selected
   const [selectedYear, setSelectedYear] = useState('2026'); // Selectable: 2026, 2027, 2028
   const [periodHorizonDays, setPeriodHorizonDays] = useState(30);
@@ -548,6 +554,17 @@ export default function DemandForecastingView({ onNavigate }) {
     const sy = Number(startY) || 2026;
     const ey = Number(endY) || sy;
 
+    if (sy === 2026 && sIdx <= CURRENT_MONTH_IDX) {
+      return {
+        isValid: false,
+        error: 'In 2026, start month must be a future month (November 2026 onwards). Past dates cannot be selected for future predictions.',
+        monthsCount: 0,
+        daysCount: 0,
+        label: '',
+        avgSeason: 1.20,
+      };
+    }
+
     const totalMonths = (ey - sy) * 12 + (eIdx - sIdx + 1);
     if (totalMonths < 1) {
       return {
@@ -638,6 +655,7 @@ export default function DemandForecastingView({ onNavigate }) {
         lead_time_variability: 2.5,
         disruption_probability: 0.12,
         valid_upstream_risk_signal: true,
+        target_period: fullPeriodLabel,
       },
       material_requirements: {
         safety_stock_units: safetyStock,
@@ -657,17 +675,31 @@ export default function DemandForecastingView({ onNavigate }) {
   const handleCalculatePeriodForecast = async () => {
     if (planningMode === 'month') {
       if (!selectedMonth) {
-        setPeriodValidationError('Please select a planning month (from all 12 calendar months) or choose a custom period.');
+        setPeriodValidationError('Please select a future planning month or choose a custom future period.');
         return;
       }
+      if (selectedYear === '2026') {
+        const found = ALL_12_MONTHS.find((m) => m.value === selectedMonth);
+        if (found && found.monthIdx !== 99 && found.monthIdx <= CURRENT_MONTH_IDX) {
+          setPeriodValidationError('Cannot select a past month for future prediction. In 2026, only future dates (November 2026 onwards) can be selected.');
+          return;
+        }
+      }
       if (selectedMonth === 'CUSTOM' && !customPeriodName.trim()) {
-        setPeriodValidationError('Please enter a name for your custom period / campaign window.');
+        setPeriodValidationError('Please enter a name for your custom future period / campaign window.');
         return;
       }
     } else {
       if (!durationStartMonth || !durationEndMonth) {
         setPeriodValidationError('Please select both a FROM Month and a TO Month to calculate the time duration.');
         return;
+      }
+      if (durationStartYear === '2026') {
+        const sFound = ALL_12_MONTHS.find((m) => m.value === durationStartMonth);
+        if (sFound && sFound.monthIdx <= CURRENT_MONTH_IDX) {
+          setPeriodValidationError('In 2026, start month must be a future month (November 2026 onwards). Past months cannot be selected.');
+          return;
+        }
       }
       const durCheck = calculateMonthDurationInfo(durationStartMonth, durationEndMonth, durationStartYear, durationEndYear);
       if (!durCheck.isValid) {
@@ -689,14 +721,16 @@ export default function DemandForecastingView({ onNavigate }) {
     let seasonMultiplierToUse = Number(factorSeasonMultiplier);
 
     if (planningMode === 'month') {
-      fullPeriodLabel = selectedMonth === 'CUSTOM'
+      const baseLabel = selectedMonth === 'CUSTOM'
         ? `${customPeriodName.trim()} (${selectedYear})`
         : `${selectedMonth} ${selectedYear}`;
+      fullPeriodLabel = baseLabel;
       horizon = Number(periodHorizonDays);
       seasonMultiplierToUse = Number(factorSeasonMultiplier);
     } else {
       const durInfo = calculateMonthDurationInfo(durationStartMonth, durationEndMonth, durationStartYear, durationEndYear);
-      fullPeriodLabel = `${durInfo.label} (${durInfo.monthsCount} Months / ${durInfo.daysCount} Days)`;
+      const baseLabel = `${durInfo.label} (${durInfo.monthsCount} Months / ${durInfo.daysCount} Days)`;
+      fullPeriodLabel = baseLabel;
       horizon = durInfo.daysCount;
       seasonMultiplierToUse = durInfo.avgSeason;
     }
@@ -1704,11 +1738,11 @@ export default function DemandForecastingView({ onNavigate }) {
       <div style={styles.headerRow}>
         <div>
           <div style={styles.eyebrow}>
-            <span style={{ color: '#38bdf8' }}>↗</span> OPTICHAIN AI ENGINE · REAL CSV DATA INTEGRATION
+            <span style={{ color: '#38bdf8' }}>↗</span> OPTICHAIN AI ENGINE
           </div>
           <h1 style={styles.pageTitle}>Demand Forecasting & Material Planning</h1>
           <p style={styles.pageSubtitle}>
-            Live predictive modeling powered directly by authentic <strong>Enterprise Order Book (180,519 records)</strong> with coherent MinT variance-covariance reconciliation.
+            Live predictive modeling powered directly by authentic <strong>Enterprise Order Book</strong> with coherent MinT variance-covariance reconciliation.
           </p>
         </div>
 
@@ -1726,7 +1760,7 @@ export default function DemandForecastingView({ onNavigate }) {
             onClick={handleRecalculate}
             style={styles.primaryBtn}
             disabled={isRecalculating}
-            title="Execute MinT reconciliation on live backend"
+            title="Generate future reconciled demand predictions"
           >
             <svg
               width="14"
@@ -1740,7 +1774,7 @@ export default function DemandForecastingView({ onNavigate }) {
             >
               <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
             </svg>
-            {isRecalculating ? 'Reconciling Live CSV Tree...' : 'Run MinT Reconciliation'}
+            {isRecalculating ? 'Predicting Future Demand...' : 'Predict Future Demand'}
           </button>
         </div>
       </div>
@@ -3676,18 +3710,31 @@ export default function DemandForecastingView({ onNavigate }) {
               </div>
             </div>
 
-            {/* Mode 1: Month Only Option (Unchanged 12 Calendar Months & Custom Window) */}
+            {/* Mode 1: Month Only Option (Future Prediction Month & Custom Window) */}
             {planningMode === 'month' && (
               <>
                 <div style={styles.inputRowGrid}>
                   <div style={styles.inputFieldGroup}>
-                    <label style={styles.inputLabel}>TARGET PLANNING MONTH (ALL 12 MONTHS)</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={styles.inputLabel}>
+                        TARGET PLANNING MONTH {selectedYear === '2026' ? '(FUTURE PREDICTION ONLY)' : '(ALL 12 MONTHS)'}
+                      </label>
+                      {selectedYear === '2026' && (
+                        <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 700 }}>
+                          🔮 Future Prediction Active (Nov–Dec 2026)
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={selectedMonth}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setSelectedMonth(val);
                         const found = ALL_12_MONTHS.find((m) => m.value === val);
+                        if (selectedYear === '2026' && found && found.monthIdx !== 99 && found.monthIdx <= CURRENT_MONTH_IDX) {
+                          setPeriodValidationError('In 2026, past months cannot be selected. Please choose a future prediction month (November 2026 onwards).');
+                          return;
+                        }
+                        setSelectedMonth(val);
                         if (found) {
                           setFactorSeasonMultiplier(found.seasonMult);
                         }
@@ -3695,27 +3742,44 @@ export default function DemandForecastingView({ onNavigate }) {
                       }}
                       style={styles.periodSelectInput}
                     >
-                      <option value="">-- Choose Planning Month (12 Months Available) --</option>
-                      {ALL_12_MONTHS.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          {m.label}
-                        </option>
-                      ))}
+                      <option value="">-- Choose Future Planning Month --</option>
+                      {ALL_12_MONTHS.map((m) => {
+                        const isPast = selectedYear === '2026' && m.monthIdx !== 99 && m.monthIdx <= CURRENT_MONTH_IDX;
+                        return (
+                          <option key={m.value} value={m.value} disabled={isPast}>
+                            {m.label} {isPast ? ' 🚫 (Past - Cannot Select)' : ' 🔮 (Future Predict)'}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     <div style={styles.inputFieldGroup}>
-                      <label style={styles.inputLabel}>YEAR</label>
-                      <select
+                      <label style={styles.inputLabel}>YEAR (TYPE YEAR)</label>
+                      <input
+                        type="number"
+                        min="2026"
+                        max="2035"
+                        step="1"
                         value={selectedYear}
-                        onChange={(e) => setSelectedYear(e.target.value)}
-                        style={styles.periodSelectInput}
-                      >
-                        <option value="2026">2026</option>
-                        <option value="2027">2027</option>
-                        <option value="2028">2028</option>
-                      </select>
+                        onChange={(e) => {
+                          const newY = e.target.value;
+                          setSelectedYear(newY);
+                          const numY = Number(newY);
+                          const found = ALL_12_MONTHS.find((m) => m.value === selectedMonth);
+                          if (newY && numY < 2026) {
+                            setPeriodValidationError('Planning year must be 2026 or a future year.');
+                          } else if (newY === '2026' && found && found.monthIdx !== 99 && found.monthIdx <= CURRENT_MONTH_IDX) {
+                            setSelectedMonth('');
+                            setPeriodValidationError('For 2026, please select a future prediction month (November 2026 onwards).');
+                          } else {
+                            setPeriodValidationError('');
+                          }
+                        }}
+                        placeholder="e.g. 2026"
+                        style={styles.periodNumberInput}
+                      />
                     </div>
 
                     <div style={styles.inputFieldGroup}>
@@ -3733,10 +3797,12 @@ export default function DemandForecastingView({ onNavigate }) {
                   </div>
                 </div>
 
+
+
                 {/* Custom Period Input Field (if user selects Custom Period) */}
                 {selectedMonth === 'CUSTOM' && (
-                  <div style={{ ...styles.inputFieldGroup, marginTop: '2px' }}>
-                    <label style={styles.inputLabel}>CUSTOM PLANNING PERIOD / EVENT WINDOW</label>
+                  <div style={{ ...styles.inputFieldGroup, marginTop: '8px' }}>
+                    <label style={styles.inputLabel}>CUSTOM FUTURE PLANNING PERIOD / EVENT WINDOW</label>
                     <input
                       type="text"
                       value={customPeriodName}
@@ -3758,75 +3824,112 @@ export default function DemandForecastingView({ onNavigate }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   {/* From: Start Month & Year */}
                   <div style={styles.inputFieldGroup}>
-                    <label style={styles.inputLabel}>FROM MONTH (START DURATION)</label>
+                    <label style={styles.inputLabel}>FROM MONTH & YEAR (START DURATION - TYPE YEAR)</label>
                     <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
                       <select
                         value={durationStartMonth}
                         onChange={(e) => {
-                          setDurationStartMonth(e.target.value);
+                          const val = e.target.value;
+                          const found = ALL_12_MONTHS.find((m) => m.value === val);
+                          if (durationStartYear === '2026' && found && found.monthIdx !== 99 && found.monthIdx <= CURRENT_MONTH_IDX) {
+                            setPeriodValidationError('In 2026, start month must be a future month (November 2026 onwards).');
+                            return;
+                          }
+                          setDurationStartMonth(val);
                           setPeriodValidationError('');
                         }}
                         style={styles.periodSelectInput}
                       >
-                        <option value="">-- Start Month --</option>
-                        {ALL_12_MONTHS.filter((m) => m.value !== 'CUSTOM').map((m) => (
-                          <option key={m.value} value={m.value}>
-                            {m.label}
-                          </option>
-                        ))}
+                        <option value="">-- Start Month (Future) --</option>
+                        {ALL_12_MONTHS.filter((m) => m.value !== 'CUSTOM').map((m) => {
+                          const isPast = durationStartYear === '2026' && m.monthIdx <= CURRENT_MONTH_IDX;
+                          return (
+                            <option key={m.value} value={m.value} disabled={isPast}>
+                              {m.label} {isPast ? ' 🚫 (Past - Cannot Select)' : ' 🔮 (Future)'}
+                            </option>
+                          );
+                        })}
                       </select>
 
-                      <select
+                      <input
+                        type="number"
+                        min="2026"
+                        max="2035"
+                        step="1"
                         value={durationStartYear}
                         onChange={(e) => {
                           const val = e.target.value;
                           setDurationStartYear(val);
-                          if (Number(durationEndYear) < Number(val)) {
+                          if (val && Number(durationEndYear) < Number(val)) {
                             setDurationEndYear(val);
                           }
-                          setPeriodValidationError('');
+                          const found = ALL_12_MONTHS.find((m) => m.value === durationStartMonth);
+                          if (val && Number(val) < 2026) {
+                            setPeriodValidationError('Start year must be 2026 or a future year.');
+                          } else if (val === '2026' && found && found.monthIdx !== 99 && found.monthIdx <= CURRENT_MONTH_IDX) {
+                            setDurationStartMonth('');
+                            setPeriodValidationError('In 2026, start month must be a future month (November 2026 onwards).');
+                          } else {
+                            setPeriodValidationError('');
+                          }
                         }}
-                        style={styles.periodSelectInput}
-                      >
-                        <option value="2026">2026</option>
-                        <option value="2027">2027</option>
-                        <option value="2028">2028</option>
-                      </select>
+                        placeholder="Year"
+                        style={styles.periodNumberInput}
+                      />
                     </div>
                   </div>
 
                   {/* To: End Month & Year */}
                   <div style={styles.inputFieldGroup}>
-                    <label style={styles.inputLabel}>TO MONTH (END DURATION)</label>
+                    <label style={styles.inputLabel}>TO MONTH & YEAR (END DURATION - TYPE YEAR)</label>
                     <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
                       <select
                         value={durationEndMonth}
                         onChange={(e) => {
-                          setDurationEndMonth(e.target.value);
+                          const val = e.target.value;
+                          const found = ALL_12_MONTHS.find((m) => m.value === val);
+                          if (durationEndYear === '2026' && found && found.monthIdx !== 99 && found.monthIdx <= CURRENT_MONTH_IDX) {
+                            setPeriodValidationError('In 2026, end month must be a future month (November 2026 onwards).');
+                            return;
+                          }
+                          setDurationEndMonth(val);
                           setPeriodValidationError('');
                         }}
                         style={styles.periodSelectInput}
                       >
-                        <option value="">-- End Month --</option>
-                        {ALL_12_MONTHS.filter((m) => m.value !== 'CUSTOM').map((m) => (
-                          <option key={m.value} value={m.value}>
-                            {m.label}
-                          </option>
-                        ))}
+                        <option value="">-- End Month (Future) --</option>
+                        {ALL_12_MONTHS.filter((m) => m.value !== 'CUSTOM').map((m) => {
+                          const isPast = durationEndYear === '2026' && m.monthIdx <= CURRENT_MONTH_IDX;
+                          return (
+                            <option key={m.value} value={m.value} disabled={isPast}>
+                              {m.label} {isPast ? ' 🚫 (Past - Cannot Select)' : ' 🔮 (Future)'}
+                            </option>
+                          );
+                        })}
                       </select>
 
-                      <select
+                      <input
+                        type="number"
+                        min="2026"
+                        max="2035"
+                        step="1"
                         value={durationEndYear}
                         onChange={(e) => {
-                          setDurationEndYear(e.target.value);
-                          setPeriodValidationError('');
+                          const val = e.target.value;
+                          setDurationEndYear(val);
+                          const found = ALL_12_MONTHS.find((m) => m.value === durationEndMonth);
+                          if (val && Number(val) < 2026) {
+                            setPeriodValidationError('End year must be 2026 or a future year.');
+                          } else if (val === '2026' && found && found.monthIdx !== 99 && found.monthIdx <= CURRENT_MONTH_IDX) {
+                            setDurationEndMonth('');
+                            setPeriodValidationError('In 2026, end month must be a future month (November 2026 onwards).');
+                          } else {
+                            setPeriodValidationError('');
+                          }
                         }}
-                        style={styles.periodSelectInput}
-                      >
-                        <option value="2026">2026</option>
-                        <option value="2027">2027</option>
-                        <option value="2028">2028</option>
-                      </select>
+                        placeholder="Year"
+                        style={styles.periodNumberInput}
+                      />
                     </div>
                   </div>
                 </div>
