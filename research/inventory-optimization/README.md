@@ -203,7 +203,125 @@ requires an ERP integration.
 
 ---
 
-## 8. Reproduction Instructions
+## 8. How to Run This Module
+
+### 8.1 Environment Requirements
+- Python 3.10+ (recommended 3.11)
+- pip and virtual environment support
+- Access to the project root repository
+- Optional: Node.js 18+ and npm if the frontend dashboard is to be tested in parallel
+- SQLite is used for the project inventory database; PostgreSQL is configured for the full project stack in the containerized deployment
+
+### 8.2 Required Files and Artifacts
+The module depends on the following repository paths:
+
+- Primary optimizer logic: `backend/app/ml/inventory/inventory_optimizer.py`
+- Inventory service layer: `backend/app/services/inventory_service.py`
+- API routes: `backend/app/api/routes/inventory.py`
+- Inventory schema and persistence models: `backend/app/schemas/inventory.py`, `backend/app/models/inventory.py`, `backend/app/models/inventory_sql.py`
+- Runtime database: `backend/optichain_inventory.db`
+- Demo upstream feeds: `research/inventory-optimization/datasets/demo/dummy_demand_forecasts.csv`, `research/inventory-optimization/datasets/demo/dummy_supplier_risk_scores.csv`, `research/inventory-optimization/datasets/demo/demand_module_inventory_products.csv`, `research/inventory-optimization/datasets/demo/demand_sku_supplier_risk.csv`
+- Research datasets: `research/inventory-optimization/datasets/raw/` and `research/inventory-optimization/datasets/processed/`
+- Model artifact: `research/inventory-optimization/models/OptiChain_Backorder_XGBoost_Model.joblib`
+- Result outputs: `research/inventory-optimization/results/tables/` and `research/inventory-optimization/results/metrics/`
+- Automated validation: `backend/tests/test_inventory_optimizer.py`, `backend/tests/test_inventory_upstream.py`
+
+### 8.3 Run Commands
+```bash
+# From the project root
+cd backend
+python -m venv .venv
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+# Linux / macOS
+# source .venv/bin/activate
+
+pip install -r requirements.txt
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Optional dashboard launch:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+After starting the backend, access the inventory module through:
+- `http://localhost:8000/docs`
+- `http://localhost:8000/redoc`
+
+### 8.4 Key Inventory API Endpoint
+
+**Endpoint:** `POST /inventory/optimize`
+
+**Purpose:** Runs the disruption-aware adaptive inventory optimization engine for one or more monitored materials.
+
+**Request body:** Product/material inputs including on-hand stock, demand forecast, disruption risk, supplier trust, normal lead time, lead-time variability, and demand variability.
+
+**Response:** Inventory policy output containing the risk-adjusted lead time, safety stock, reorder point, reorder quantity, shortage estimate, risk score, and recommended action.
+
+This is the primary API contract used by the module when a request for a replenishment policy is made from the frontend or an external service.
+
+### 8.5 Typical Module Execution Flow
+1. Load a demo or integrated upstream dataset from the paths above.
+2. Trigger inventory optimization through the API or the dashboard (`/api/inventory/...`).
+3. The service layer calls `inventory_optimizer.py` to compute disruption-adjusted lead time, safety stock, reorder point, reorder quantity, and shortage risk.
+4. The XGBoost backorder classifier generates a supplier-risk alert.
+5. Results are stored in the inventory database and exposed to downstream scheduling and production planning modules.
+
+---
+
+## 9. Integration with Other Modules
+
+This module acts as the bridge between procurement intelligence and production scheduling:
+
+1. **Module 1: Market Prophet**
+   - Supplies demand forecasts and projected consumption patterns.
+   - These values drive expected daily demand and the coverage horizon.
+
+2. **Module 2: Procurement Guardian**
+   - Supplies disruption probabilities, supplier trust levels, and upstream lead-time risk.
+   - These inputs feed the risk-adjusted lead time and dynamic safety-stock formula.
+
+3. **This Module (Inventory Guardian)**
+   - Combines demand and supplier risk to generate reorder points, reorder quantities, shortage estimates, and inventory availability signals.
+   - Produces the actionable recommendation used downstream.
+
+4. **Module 4: Line Optimizer**
+   - Consumes the optimized inventory availability results to prevent sewing-line stoppages and reallocate production under disruption conditions.
+
+This makes the inventory module the operational risk buffer layer between procurement risk exposure and factory-level production feasibility.
+
+---
+
+## 10. Assumptions, Dependencies, and Limitations
+
+### Assumptions
+- Demand forecasts are available in a form compatible with per-product inventory planning.
+- Supplier disruption risk is represented by a probability or equivalent score that can be translated into a risk factor.
+- Inventory inputs such as on-hand stock, in-transit stock, lead time, and variability are measured consistently at the SKU or material level.
+- Production planning follows a periodic review model rather than fully continuous real-time telemetry.
+
+### Dependencies
+- Python scientific libraries such as NumPy and pandas
+- XGBoost model artifact for backorder prediction
+- FastAPI backend and inventory API routes
+- SQLite or PostgreSQL-backed persistence for inventory records
+- Frontend dashboard or API client for interactive demo and presentation workflows
+
+### Limitations
+- Several upstream feeds in the repository are synthetic demo datasets and not full production-grade supplier records.
+- The XGBoost model is an auxiliary alerting mechanism and does not replace the stochastic inventory policy logic.
+- Reorder decisions assume periodic review cycles and may not reflect fully dynamic warehouse sensor data.
+- Some demo records intentionally include placeholders when exact production values are unavailable.
+- External ERP or live supplier integration remains separate from the optimization engine itself.
+
+---
+
+## 11. Reproduction Instructions
 
 ### 8.1 Backend Test Suite Execution
 ```bash
