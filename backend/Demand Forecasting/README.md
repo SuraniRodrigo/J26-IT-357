@@ -1,6 +1,9 @@
+# IT23401808 - Senadeera H.G.K.I
 # OPTICHAIN — AI-Driven Supply Chain Disruption Predictor & Line Optimizer for Sri Lankan Garment Factories
 ## Component 1: Market Prophet — Demand Forecasting & Material Planning Engine
 **Project Reference:** J26-IT-357  
+**Student ID:** IT23401808  
+**Student Name:** Senadeera H.G.K.I  
 **Primary Discipline:** Software Architecture, Machine Learning, Hierarchical Time-Series Econometrics, and Supply Chain Engineering  
 
 ---
@@ -16,58 +19,37 @@ Within the OptiChain ecosystem, **Component 1 (Market Prophet)** operates as the
 ## Table of Contents
 
 1. [Research Background & Industrial Context](#1-research-background--industrial-context)
-2. [Research Problem, Aim & Objectives]
-(#2-research-problem-aim--objectives)
+2. [Research Problem, Aim & Objectives](#2-research-problem-aim--objectives)
 3. [OptiChain System Architecture & Module Boundaries](#3-optichain-system-architecture--module-boundaries)
 4. [Dataset Selection, Engineering & Provenance](#4-dataset-selection-engineering--provenance)
-   - [DataCo Global Supply Chain Dataset]
-   (#4.1-dataco-global-supply-chain-dataset)
-   - [M5 Hierarchical Time-Series Benchmark Dataset]
-   (#4.2-m5-hierarchical-time-series-benchmark-dataset)
-   - [Four-Tier Data Provenance Framework]
-   (#4.3-four-tier-data-provenance-framework)
+   - [DataCo Global Supply Chain Dataset](#41-dataco-global-supply-chain-dataset)
+   - [M5 Hierarchical Time-Series Benchmark Dataset](#42-m5-hierarchical-time-series-benchmark-dataset)
+   - [Four-Tier Data Provenance Framework](#43-four-tier-data-provenance-framework)
 5. [Data Preprocessing & Feature Engineering Pipeline](#5-data-preprocessing--feature-engineering-pipeline)
 6. [Machine Learning Forecasting Methodology](#6-machine-learning-forecasting-methodology)
-   - [Base Node Forecaster Architecture]
-   (#6.1-base-node-forecaster-architecture)
-   - [Baseline Forecasting Models Evaluated]
-   (#6.2-baseline-forecasting-models-evaluated)
+   - [Base Node Forecaster Architecture](#61-base-node-forecaster-architecture)
+   - [Baseline Forecasting Models Evaluated](#62-baseline-forecasting-models-evaluated)
 7. [Hierarchical Forecasting & Matrix Resolution](#7-hierarchical-forecasting--matrix-resolution)
-   - [Structural Hierarchy Definition]
-   (#7.1-structural-hierarchy-definition)
-   - [The Programmatic Summing Matrix $S \in \mathbb{R}^{46 \times 35}$]
-   (#7.2-the-programmatic-summing-matrix-s-in-mathbbr46-times-35)
-   - [Resolution of Prior Matrix Dimension Inconsistencies]
-   (#7.3-resolution-of-prior-matrix-dimension-inconsistencies)
+   - [Structural Hierarchy Definition](#71-structural-hierarchy-definition)
+   - [The Programmatic Summing Matrix $S \in \mathbb{R}^{46 \times 35}$](#72-the-programmatic-summing-matrix-s-in-mathbbr46-times-35)
+   - [Resolution of Prior Matrix Dimension Inconsistencies](#73-resolution-of-prior-matrix-dimension-inconsistencies)
 8. [Forecast Reconciliation Engine (MinT)](#8-forecast-reconciliation-engine-mint)
-   - [Mathematical Formulation of MinT]
-   (#8.1-mathematical-formulation-of-mint)
-   - [Ledoit-Wolf-Style Covariance Shrinkage Estimation]
-   (#8.2-ledoit-wolf-style-covariance-shrinkage-estimation)
-   - [Alternative Reconciliation Algorithms Evaluated]
-   (#8.3-alternative-reconciliation-algorithms-evaluated)
-   - [Non-Negative Forecast Handling]
-   (#8.4-non-negative-forecast-handling)
-   - [Forecast Coherence vs. Forecast Accuracy]
-   (#8.5-forecast-coherence-vs-forecast-accuracy)
+   - [Mathematical Formulation of MinT](#81-mathematical-formulation-of-mint)
+   - [Ledoit-Wolf-Style Covariance Shrinkage Estimation](#82-ledoit-wolf-style-covariance-shrinkage-estimation)
+   - [Alternative Reconciliation Algorithms Evaluated](#83-alternative-reconciliation-algorithms-evaluated)
+   - [Non-Negative Forecast Handling](#84-non-negative-forecast-handling)
+   - [Forecast Coherence vs. Forecast Accuracy](#85-forecast-coherence-vs-forecast-accuracy)
 9. [Empirical Evaluation & Benchmark Results](#9-empirical-evaluation--benchmark-results)
 10. [Multi-Driver Apparel Scenario Adjustments](#10-multi-driver-apparel-scenario-adjustments)
 11. [Forecast Uncertainty & Prediction Intervals](#11-forecast-uncertainty--prediction-intervals)
 12. [Material Requirements Planning (MRP) Mathematics](#12-material-requirements-planning-mrp-mathematics)
-    - [Daily Demand Rate & Period Uncertainty]
-    (#12.1-daily-demand-rate--period-uncertainty)
-    - [Safety Stock under Dual Uncertainty]
-    (#12.2-safety-stock-under-dual-uncertainty)
-    - [Reorder Point ($ROP$)]
-    (#12.3-reorder-point-rop)
-    - [Economic Order Quantity ($EOQ$) with Unit Consistency]
-    (#12.4-economic-order-quantity-eoq-with-unit-consistency)
-    - [Fabric Bill of Materials (BOM) Consumption]
-    (#12.5-fabric-bill-of-materials-bom-consumption)
-    - [Sewing SMV Labor Hours & Line Allocations]
-    (#12.6-sewing-smv-labor-hours--line-allocations)
-    - [Net Replenishment Requirements]
-    (#12.7-net-replenishment-requirements)
+    - [Daily Demand Rate & Period Uncertainty](#121-daily-demand-rate--period-uncertainty)
+    - [Safety Stock under Dual Uncertainty](#122-safety-stock-under-dual-uncertainty)
+    - [Reorder Point ($ROP$)](#123-reorder-point-rop)
+    - [Economic Order Quantity ($EOQ$) with Unit Consistency](#124-economic-order-quantity-eoq-with-unit-consistency)
+    - [Fabric Bill of Materials (BOM) Consumption](#125-fabric-bill-of-materials-bom-consumption)
+    - [Sewing SMV Labor Hours & Line Allocations](#126-sewing-smv-labor-hours--line-allocations)
+    - [Net Replenishment Requirements](#127-net-replenishment-requirements)
 13. [End-to-End Worked Numerical Demonstration](#13-end-to-end-worked-numerical-demonstration)
 14. [Frontend Architecture & Operational Perspectives](#14-frontend-architecture--operational-perspectives)
 15. [Backend Architecture & API Specifications](#15-backend-architecture--api-specifications)
@@ -76,7 +58,7 @@ Within the OptiChain ecosystem, **Component 1 (Market Prophet)** operates as the
 18. [Automated Testing & Verification Evidence](#18-automated-testing--verification-evidence)
 19. [Installation, Training & Execution Runbook](#19-installation-training--execution-runbook)
 20. [Academic Research Limitations](#20-academic-research-limitations)
-21. [Future Research Roadmap](#21-future-research-roadmap)
+21. [Future Developments & Research Roadmap](#21-future-developments--research-roadmap)
 22. [References & Citations](#22-references--citations)
 
 ---
@@ -715,13 +697,17 @@ npm run dev
 
 ---
 
-## 21. Future Research Roadmap
+## 21. Future Developments & Research Roadmap
 
-1. **Direct MES/ERP Connectors:** Develop OPC-UA and REST bridges to factory ERPs (FastReact, Infor M3, SAP AFS) for real-time cut-and-sew data ingestion.
-2. **Deep Neural Hierarchical Forecasters:** Implement Temporal Fusion Transformers (TFT) or DeepAR with hierarchical loss functions to model non-linear interactions.
-3. **Style-Specific GSD Database:** Ingest General Sewing Data (GSD) motion engineering sheets to compute dynamic, seam-level SMV requirements.
-4. **AIS Port Tracking Integration:** Ingest live maritime container tracking feeds for Colombo Port to dynamically update supplier delivery buffers.
-5. **Constrained Quadratic Programming:** Implement OSQP solvers to replace truncation with exact non-negative quadratic programming during batch reconciliation.
+1. **Automated 3D Virtual Garment Prototyping:**
+   - Automatically convert the generated 2D dress images into 3D digital garment models (compatible with industry tools like **CLO 3D** or **Browzwear**), allowing designers and buyers to preview fit and drape virtually without wasting physical fabric samples.
+2. **Buyer Pre-Validation & Closed-Loop Demand Tuning:**
+   - Display the AI-generated dress designs on a digital buyer portal before production; track buyer pre-orders, ratings, and interest to immediately recalculate and fine-tune final manufacturing demand forecasts.
+3. **Direct MES/ERP Connectors:** Develop OPC-UA and REST bridges to factory ERPs (FastReact, Infor M3, SAP AFS) for real-time cut-and-sew data ingestion.
+4. **Deep Neural Hierarchical Forecasters:** Implement Temporal Fusion Transformers (TFT) or DeepAR with hierarchical loss functions to model non-linear interactions.
+5. **Style-Specific GSD Database:** Ingest General Sewing Data (GSD) motion engineering sheets to compute dynamic, seam-level SMV requirements.
+6. **AIS Port Tracking Integration:** Ingest live maritime container tracking feeds for Colombo Port to dynamically update supplier delivery buffers.
+7. **Constrained Quadratic Programming:** Implement OSQP solvers to replace truncation with exact non-negative quadratic programming during batch reconciliation.
 
 ---
 

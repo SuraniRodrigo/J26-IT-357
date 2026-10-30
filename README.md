@@ -1,7 +1,9 @@
+# IT23401808 - Senadeera H.G.K.I
 # OPTICHAIN — AI-Driven Supply Chain Disruption Predictor & Line Optimizer for Sri Lankan Garment Factories
 ## Component 1: Market Prophet — Demand Forecasting & Material Planning Engine
 **Project Reference:** J26-IT-357  
-**Academic Level:** University Final Year Research Project / Technical Master Specification  
+**Student ID:** IT23401808  
+**Student Name:** Senadeera H.G.K.I  
 **Primary Discipline:** Software Architecture, Machine Learning, Hierarchical Time-Series Econometrics, and Supply Chain Engineering  
 
 ---
@@ -10,7 +12,11 @@
 
 **OptiChain** is an enterprise-grade, artificial-intelligence-driven decision-support platform engineered specifically to mitigate multi-tier supply chain disruptions and optimize sewing-line production scheduling within the Sri Lankan apparel export manufacturing sector. 
 
-Within the OptiChain ecosystem, **Component 1 (Market Prophet)** operates as the primary demand intelligence and material planning engine. It reconciles multi-level hierarchical demand forecasts across manufacturing export clusters, international apparel buyers, and style Stock Keeping Units (SKUs) using mathematically optimal **Minimum Trace (MinT)** reconciliation. The reconciled demand projections feed directly into an analytical **Material Requirements Planning (MRP)** engine that computes fabric Bill of Materials (BOM) yardage, Standard Minute Value (SMV) sewing labor requirements, safety stocks under dual stochasticity, and Economic Order Quantities (EOQ). Finally, Market Prophet bridges to downstream OptiChain modules via a decoupled REST contract to **Component 3 (Inventory Guardian)** for disruption-aware buffer optimization.
+Within the OptiChain ecosystem, 
+**Component 1 (Market Prophet)** operates as the primary demand intelligence and material planning engine. It reconciles multi-level hierarchical demand forecasts across manufacturing export clusters, international apparel buyers, and style Stock Keeping Units (SKUs) using mathematically optimal 
+**Minimum Trace (MinT)** reconciliation. The reconciled demand projections feed directly into an analytical 
+**Material Requirements Planning (MRP)** engine that computes fabric Bill of Materials (BOM) yardage, Standard Minute Value (SMV) sewing labor requirements, safety stocks under dual stochasticity, and Economic Order Quantities (EOQ). Finally, Market Prophet bridges to downstream OptiChain modules via a decoupled REST contract to 
+**Component 3 (Inventory Guardian)** for disruption-aware buffer optimization.
 
 ---
 
@@ -56,7 +62,7 @@ Within the OptiChain ecosystem, **Component 1 (Market Prophet)** operates as the
 18. [Automated Testing & Verification Evidence](#18-automated-testing--verification-evidence)
 19. [Installation, Training & Execution Runbook](#19-installation-training--execution-runbook)
 20. [Academic Research Limitations](#20-academic-research-limitations)
-21. [Future Research Roadmap](#21-future-research-roadmap)
+21. [Future Developments & Research Roadmap](#21-future-developments--research-roadmap)
 22. [References & Citations](#22-references--citations)
 
 ---
@@ -695,13 +701,17 @@ npm run dev
 
 ---
 
-## 21. Future Research Roadmap
+## 21. Future Developments & Research Roadmap
 
-1. **Direct MES/ERP Connectors:** Develop OPC-UA and REST bridges to factory ERPs (FastReact, Infor M3, SAP AFS) for real-time cut-and-sew data ingestion.
-2. **Deep Neural Hierarchical Forecasters:** Implement Temporal Fusion Transformers (TFT) or DeepAR with hierarchical loss functions to model non-linear interactions.
-3. **Style-Specific GSD Database:** Ingest General Sewing Data (GSD) motion engineering sheets to compute dynamic, seam-level SMV requirements.
-4. **AIS Port Tracking Integration:** Ingest live maritime container tracking feeds for Colombo Port to dynamically update supplier delivery buffers.
-5. **Constrained Quadratic Programming:** Implement OSQP solvers to replace truncation with exact non-negative quadratic programming during batch reconciliation.
+1. **Automated 3D Virtual Garment Prototyping:**
+   - Automatically convert the generated 2D dress images into 3D digital garment models (compatible with industry tools like **CLO 3D** or **Browzwear**), allowing designers and buyers to preview fit and drape virtually without wasting physical fabric samples.
+2. **Buyer Pre-Validation & Closed-Loop Demand Tuning:**
+   - Display the AI-generated dress designs on a digital buyer portal before production; track buyer pre-orders, ratings, and interest to immediately recalculate and fine-tune final manufacturing demand forecasts.
+3. **Direct MES/ERP Connectors:** Develop OPC-UA and REST bridges to factory ERPs (FastReact, Infor M3, SAP AFS) for real-time cut-and-sew data ingestion.
+4. **Deep Neural Hierarchical Forecasters:** Implement Temporal Fusion Transformers (TFT) or DeepAR with hierarchical loss functions to model non-linear interactions.
+5. **Style-Specific GSD Database:** Ingest General Sewing Data (GSD) motion engineering sheets to compute dynamic, seam-level SMV requirements.
+6. **AIS Port Tracking Integration:** Ingest live maritime container tracking feeds for Colombo Port to dynamically update supplier delivery buffers.
+7. **Constrained Quadratic Programming:** Implement OSQP solvers to replace truncation with exact non-negative quadratic programming during batch reconciliation.
 
 ---
 
